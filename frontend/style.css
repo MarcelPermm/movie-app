@@ -1,0 +1,343 @@
+/* ─── Переменные ─────────────────────────────────────────── */
+:root {
+  --bg:        #0a0a0f;
+  --surface:   #12121a;
+  --border:    #222230;
+  --gold:      #c9a84c;
+  --gold-dim:  #8a6c2a;
+  --text:      #e8e4dc;
+  --text-dim:  #7a7570;
+  --red:       #c94c4c;
+  --green:     #4cac70;
+  --radius:    12px;
+  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── Сброс и базовые стили ──────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Текстурный оверлей — придаёт глубину */
+.grain {
+  position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.35;
+}
+
+/* ─── Шапка ──────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; gap: 24px;
+  padding: 0 32px;
+  height: 68px;
+  background: rgba(10, 10, 15, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Playfair Display', serif;
+  font-size: 22px; font-weight: 700;
+  color: var(--gold);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.logo-icon { font-size: 20px; }
+
+.nav { display: flex; gap: 4px; margin-left: 8px; }
+
+.nav-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 16px;
+  background: none; border: none; border-radius: 8px;
+  color: var(--text-dim);
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.nav-btn:hover { color: var(--text); background: var(--surface); }
+.nav-btn.active { color: var(--gold); background: rgba(201, 168, 76, 0.1); }
+
+.fav-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  background: var(--gold); color: var(--bg);
+  border-radius: 10px; font-size: 11px; font-weight: 700;
+}
+
+.search-wrap {
+  display: flex; align-items: center; gap: 0;
+  margin-left: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color var(--transition);
+}
+.search-wrap:focus-within { border-color: var(--gold-dim); }
+
+.search-input {
+  background: none; border: none; outline: none;
+  padding: 9px 14px;
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px;
+  width: 220px;
+}
+.search-input::placeholder { color: var(--text-dim); }
+
+.search-btn {
+  background: none; border: none;
+  padding: 9px 14px;
+  color: var(--text-dim); font-size: 18px;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+.search-btn:hover { color: var(--gold); }
+
+/* ─── Основной контент ───────────────────────────────────── */
+.main { padding: 40px 32px 80px; max-width: 1400px; margin: 0 auto; }
+
+.tab { display: none; animation: fadeIn 0.3s ease; }
+.tab.active { display: block; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.section-header { margin-bottom: 32px; }
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(28px, 4vw, 42px); font-weight: 900;
+  line-height: 1.1; margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--text) 0%, var(--gold) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.section-sub { color: var(--text-dim); font-size: 15px; margin-bottom: 20px; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+  color: var(--bg); border: none; border-radius: 10px;
+  font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition);
+  box-shadow: 0 4px 20px rgba(201, 168, 76, 0.25);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201, 168, 76, 0.4); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ─── Сетка фильмов ──────────────────────────────────────── */
+.movies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+/* ─── Карточка фильма ────────────────────────────────────── */
+.movie-card {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+  animation: cardIn 0.4s ease both;
+}
+@keyframes cardIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: none; } }
+
+.movie-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+  border-color: var(--gold-dim);
+}
+
+.movie-poster {
+  width: 100%; aspect-ratio: 2/3;
+  object-fit: cover; display: block;
+  background: var(--border);
+  transition: transform var(--transition);
+}
+.movie-card:hover .movie-poster { transform: scale(1.03); }
+
+.no-poster {
+  width: 100%; aspect-ratio: 2/3;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #1a1a28, #0d0d18);
+  color: var(--text-dim); font-size: 13px; text-align: center; padding: 16px;
+  gap: 8px;
+}
+.no-poster-icon { font-size: 32px; opacity: 0.3; }
+
+.movie-info {
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.movie-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 14px; font-weight: 700; line-height: 1.3;
+  color: var(--text);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.movie-meta { display: flex; align-items: center; justify-content: space-between; }
+.movie-year { font-size: 12px; color: var(--text-dim); }
+.movie-rating {
+  display: flex; align-items: center; gap: 3px;
+  font-size: 12px; font-weight: 600; color: var(--gold);
+}
+
+/* Кнопка избранного */
+.fav-btn {
+  position: absolute; top: 10px; right: 10px;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 15, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%; font-size: 15px;
+  cursor: pointer;
+  transition: transform var(--transition), background var(--transition), border-color var(--transition);
+  z-index: 2;
+}
+.fav-btn:hover { transform: scale(1.15); background: rgba(201, 168, 76, 0.2); border-color: var(--gold); }
+.fav-btn.is-fav { background: rgba(201, 168, 76, 0.25); border-color: var(--gold); }
+
+/* Значок похожести */
+.similarity-badge {
+  position: absolute; top: 10px; left: 10px;
+  padding: 3px 8px;
+  background: rgba(201, 168, 76, 0.15);
+  border: 1px solid var(--gold-dim);
+  border-radius: 20px; font-size: 11px; font-weight: 600; color: var(--gold);
+  backdrop-filter: blur(8px);
+}
+
+/* ─── Состояния ──────────────────────────────────────────── */
+.loader {
+  grid-column: 1/-1;
+  display: flex; align-items: center; justify-content: center;
+  height: 200px;
+  color: var(--text-dim); font-size: 15px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+.empty-state {
+  grid-column: 1/-1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 280px; gap: 12px;
+  color: var(--text-dim); font-size: 15px; text-align: center;
+}
+.empty-icon { font-size: 48px; opacity: 0.2; }
+
+/* ─── Модальное окно ─────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.8); backdrop-filter: blur(12px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+
+.modal {
+  position: relative;
+  width: 100%; max-width: 700px;
+  max-height: 90vh; overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transform: scale(0.95); opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.modal-overlay.open .modal { transform: none; opacity: 1; }
+
+.modal-close {
+  position: absolute; top: 16px; right: 16px; z-index: 10;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,15,0.7); backdrop-filter: blur(8px);
+  border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text); font-size: 14px; cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+.modal-close:hover { background: var(--red); transform: rotate(90deg); }
+
+.modal-hero { position: relative; }
+.modal-backdrop {
+  width: 100%; height: 280px; object-fit: cover; display: block;
+  background: var(--border);
+}
+.modal-backdrop-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(to bottom, transparent 30%, var(--surface));
+}
+.modal-poster-wrap {
+  position: absolute; bottom: -40px; left: 28px;
+  width: 100px; border-radius: 8px; overflow: hidden;
+  border: 2px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.modal-poster { width: 100%; display: block; }
+
+.modal-body { padding: 56px 28px 28px; }
+.modal-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 26px; font-weight: 900; line-height: 1.2; margin-bottom: 8px;
+}
+.modal-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.modal-tag {
+  padding: 4px 12px;
+  background: rgba(201, 168, 76, 0.1); border: 1px solid var(--gold-dim);
+  border-radius: 20px; font-size: 12px; color: var(--gold);
+}
+.modal-overview { color: var(--text-dim); line-height: 1.7; font-size: 14px; margin-bottom: 20px; }
+.modal-stats { display: flex; gap: 24px; margin-bottom: 20px; }
+.modal-stat { display: flex; flex-direction: column; gap: 2px; }
+.modal-stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.modal-stat-value { font-size: 18px; font-weight: 700; color: var(--gold); }
+.modal-actions { display: flex; gap: 10px; }
+.modal-fav-btn {
+  flex: 1; padding: 12px;
+  background: rgba(201, 168, 76, 0.1); border: 1px solid var(--gold-dim);
+  border-radius: 10px; color: var(--gold);
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background var(--transition);
+}
+.modal-fav-btn:hover { background: rgba(201, 168, 76, 0.25); }
+.modal-fav-btn.remove { background: rgba(201, 76, 76, 0.1); border-color: #8a2a2a; color: var(--red); }
+.modal-fav-btn.remove:hover { background: rgba(201, 76, 76, 0.25); }
+
+/* ─── Тосты ──────────────────────────────────────────────── */
+.toast-container {
+  position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  padding: 12px 18px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; font-size: 14px; color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  max-width: 280px;
+}
+.toast.show { transform: none; }
+.toast.success { border-color: var(--green); color: var(--green); }
+.toast.error   { border-color: var(--red);   color: var(--red);   }
+
+/* ─── Адаптивность ───────────────────────────────────────── */
+@media (max-width: 768px) {
+  .header { padding: 0 16px; gap: 12px; }
+  .search-wrap { display: none; }
+  .main { padding: 24px 16px 60px; }
+  .movies-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+  .modal-body { padding: 56px 20px 20px; }
+}

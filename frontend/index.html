@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CineMatch — умные рекомендации фильмов</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="grain"></div>
+
+  <header class="header">
+    <div class="logo">
+      <span class="logo-icon">◈</span>
+      <span class="logo-text">CineMatch</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="discover">Обзор</button>
+      <button class="nav-btn" data-tab="favorites">Избранное <span class="fav-count" id="fav-count">0</span></button>
+      <button class="nav-btn" data-tab="recommendations">Рекомендации</button>
+    </nav>
+    <div class="search-wrap">
+      <input type="text" id="search-input" class="search-input" placeholder="Найти фильм..." />
+      <button id="search-btn" class="search-btn">⌕</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- ВКЛАДКА: ОБЗОР / ПОИСК -->
+    <section class="tab active" id="tab-discover">
+      <div class="section-header">
+        <h2 class="section-title" id="discover-title">Популярные фильмы</h2>
+        <p class="section-sub">Добавляй понравившиеся в избранное — и мы подберём похожие</p>
+      </div>
+      <div class="movies-grid" id="movies-grid">
+        <div class="loader">Загружаем фильмы…</div>
+      </div>
+    </section>
+
+    <!-- ВКЛАДКА: ИЗБРАННОЕ -->
+    <section class="tab" id="tab-favorites">
+      <div class="section-header">
+        <h2 class="section-title">Избранное</h2>
+        <p class="section-sub">Фильмы, которые тебе понравились</p>
+      </div>
+      <div class="movies-grid" id="favorites-grid">
+        <div class="empty-state">
+          <span class="empty-icon">♡</span>
+          <p>Пока пусто. Добавь фильмы из «Обзора»</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ВКЛАДКА: РЕКОМЕНДАЦИИ -->
+    <section class="tab" id="tab-recommendations">
+      <div class="section-header">
+        <h2 class="section-title">Для тебя</h2>
+        <p class="section-sub">Подобрано на основе твоего избранного</p>
+        <button class="btn-primary" id="get-recs-btn">✦ Подобрать фильмы</button>
+      </div>
+      <div class="movies-grid" id="recs-grid">
+        <div class="empty-state">
+          <span class="empty-icon">✦</span>
+          <p>Нажми кнопку выше, чтобы получить рекомендации</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- МОДАЛЬНОЕ ОКНО С ДЕТАЛЯМИ ФИЛЬМА -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal">
+      <button class="modal-close" id="modal-close">✕</button>
+      <div class="modal-content" id="modal-content"></div>
+    </div>
+  </div>
+
+  <!-- ТОСТ-УВЕДОМЛЕНИЯ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
