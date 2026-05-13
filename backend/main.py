@@ -76,7 +76,9 @@ async def startup():
     except Exception as e:
         print(f"⚠️  IMDb недоступен: {e} — продолжаем без IMDb рейтингов")
     else:
-        print(f"✅ IMDb данные актуальны (обновлено: {imdb_loader.get_last_update().strftime('%d.%m.%Y')})")
+        last = imdb_loader.get_last_update()
+        ts = last.strftime('%d.%m.%Y') if last else "неизвестно"
+        print(f"✅ IMDb данные актуальны (обновлено: {ts})")
 
 
 async def tmdb_get(path: str, **params) -> dict:
