@@ -6,6 +6,7 @@ imdb_loader.py — IMDb рейтинги через PostgreSQL (Neon).
 """
 
 import gzip
+import io
 import asyncio
 import httpx
 import os
@@ -103,39 +104,61 @@ def get_imdb_stats_by_id(imdb_id: str) -> dict | None:
 
 
 async def download_and_load():
-    """Скачивает и загружает IMDb рейтинги (~8MB)."""
-    print("📥 Скачиваем IMDb ratings (~8MB)...")
-    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
-        r = await client.get(RATINGS_URL)
-        ratings_data = gzip.decompress(r.content).decode("utf-8")
-
-    print("💾 Загружаем ratings в базу...")
-    rows = []
-    for line in ratings_data.strip().split("\n")[1:]:
-        parts = line.split("\t")
-        if len(parts) == 3:
-            try:
-                rows.append((parts[0], float(parts[1]), int(parts[2])))
-            except Exception:
-                pass
-
-    conn = _get_conn()
+    """Скачивает и загружает IMDb рейтинги (~8MB) батчами — экономим память."""
     try:
-        with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE imdb_ratings")
-            psycopg2.extras.execute_values(
-                cur,
-                "INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s ON CONFLICT DO NOTHING",
-                rows,
-                page_size=1000,
-            )
-            cur.execute(
-                """INSERT INTO imdb_meta (key, value) VALUES (%s, %s)
-                   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
-                ("last_update", datetime.now().isoformat()),
-            )
-        conn.commit()
-        print(f"✅ Загружено {len(rows):,} рейтингов IMDb")
-    finally:
-        conn.close()
-    print("🎉 IMDb данные готовы!")
+        print("📥 Скачиваем IMDb ratings (~8MB)...")
+        async with httpx.AsyncClient(timeout=180, follow_redirects=True) as client:
+            r = await client.get(RATINGS_URL)
+
+        conn = _get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE imdb_ratings")
+            conn.commit()
+
+            total = 0
+            batch = []
+            with gzip.open(io.BytesIO(r.content)) as f:
+                next(f)  # пропускаем заголовок
+                for line in f:
+                    parts = line.decode().strip().split("\t")
+                    if len(parts) == 3:
+                        try:
+                            batch.append((parts[0], float(parts[1]), int(parts[2])))
+                        except Exception:
+                            pass
+                    if len(batch) >= 10_000:
+                        with conn.cursor() as cur:
+                            psycopg2.extras.execute_values(
+                                cur,
+                                "INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s ON CONFLICT DO NOTHING",
+                                batch,
+                            )
+                        conn.commit()
+                        total += len(batch)
+                        batch = []
+                        await asyncio.sleep(0)  # отдаём управление event loop
+
+            if batch:
+                with conn.cursor() as cur:
+                    psycopg2.extras.execute_values(
+                        cur,
+                        "INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s ON CONFLICT DO NOTHING",
+                        batch,
+                    )
+                conn.commit()
+                total += len(batch)
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO imdb_meta (key, value) VALUES (%s, %s)
+                       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+                    ("last_update", datetime.now().isoformat()),
+                )
+            conn.commit()
+            print(f"✅ Загружено {total:,} рейтингов IMDb")
+        finally:
+            conn.close()
+        print("🎉 IMDb данные готовы!")
+    except Exception as e:
+        print(f"⚠️  Ошибка загрузки IMDb: {e}")
