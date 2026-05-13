@@ -61,14 +61,20 @@ TV_NETWORKS = [
 @app.on_event("startup")
 async def startup():
     database.init_db()
-    imdb_loader.init_imdb_tables()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
-    # Загружаем IMDb данные в фоне (не блокируем старт)
-    if imdb_loader.needs_update():
-        print("📥 Запускаем загрузку IMDb данных в фоне...")
-        asyncio.create_task(imdb_loader.download_and_load())
+    # IMDb отключён на облаке — слишком большие файлы (~200MB) для бесплатного сервера
+    if os.getenv("DISABLE_IMDB", "false").lower() == "true":
+        print("ℹ️  IMDb отключён (DISABLE_IMDB=true) — используем только TMDB рейтинги")
+        return
+    try:
+        imdb_loader.init_imdb_tables()
+        if imdb_loader.needs_update():
+            print("📥 Запускаем загрузку IMDb данных в фоне...")
+            asyncio.create_task(imdb_loader.download_and_load())
+    except Exception as e:
+        print(f"⚠️  IMDb недоступен: {e} — продолжаем без IMDb рейтингов")
     else:
         print(f"✅ IMDb данные актуальны (обновлено: {imdb_loader.get_last_update().strftime('%d.%m.%Y')})")
 
