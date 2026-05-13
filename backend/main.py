@@ -733,6 +733,6 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
     return recs
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"message": "Movie Recommender API работает!"}
