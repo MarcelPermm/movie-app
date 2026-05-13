@@ -1,0 +1,7 @@
+# Секреты — никогда не коммитить
+backend/.env
+backend/*.db
+backend/__pycache__/
+backend/imdb_data/
+*.pyc
+.DS_Store

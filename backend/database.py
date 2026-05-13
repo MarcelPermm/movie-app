@@ -1,89 +1,396 @@
-"""
-database.py — отвечает за хранение избранных фильмов пользователя.
-Используем SQLite: это обычный файл на диске, не нужен отдельный сервер.
-"""
-
-import sqlite3
+import os
 import json
-from pathlib import Path
+import psycopg2
+import psycopg2.extras
+import psycopg2.errors as pg_errors
 
-DB_PATH = Path(__file__).parent / "favorites.db"
 
-
-def get_connection():
-    """Открывает соединение с базой данных."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # чтобы получать строки как словари
-    return conn
+def _get_conn():
+    url = os.getenv("DATABASE_URL", "")
+    # Render/Heroku могут вернуть "postgres://..." — psycopg2 требует "postgresql://"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def init_db():
-    """Создаёт таблицу при первом запуске, если её ещё нет."""
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS favorites (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                movie_id INTEGER UNIQUE NOT NULL,   -- ID фильма из TMDB
-                title TEXT NOT NULL,
-                genres TEXT NOT NULL,               -- хранится как JSON-строка
-                overview TEXT,
-                poster_path TEXT,
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS watched (
+                id           SERIAL PRIMARY KEY,
+                movie_id     INTEGER NOT NULL,
+                media_type   TEXT NOT NULL DEFAULT 'movie',
+                title        TEXT NOT NULL,
+                genres       TEXT NOT NULL DEFAULT '[]',
+                overview     TEXT,
+                poster_path  TEXT,
                 vote_average REAL,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                user_rating  INTEGER DEFAULT NULL,
+                review       TEXT DEFAULT NULL,
+                director     TEXT DEFAULT NULL,
+                cast_names   TEXT DEFAULT NULL,
+                added_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(movie_id, media_type)
             )
         """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id           SERIAL PRIMARY KEY,
+                movie_id     INTEGER NOT NULL,
+                media_type   TEXT NOT NULL DEFAULT 'movie',
+                title        TEXT NOT NULL,
+                genres       TEXT NOT NULL DEFAULT '[]',
+                overview     TEXT,
+                poster_path  TEXT,
+                vote_average REAL,
+                added_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(movie_id, media_type)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS dismissed (
+                movie_id     INTEGER NOT NULL,
+                media_type   TEXT NOT NULL DEFAULT 'movie',
+                title        TEXT,
+                genres       TEXT DEFAULT '[]',
+                cast_names   TEXT DEFAULT '[]',
+                country      TEXT DEFAULT NULL,
+                studio_names TEXT DEFAULT '[]',
+                dismissed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(movie_id, media_type)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS favorite_actors (
+                id           SERIAL PRIMARY KEY,
+                actor_id     INTEGER NOT NULL UNIQUE,
+                actor_name   TEXT NOT NULL,
+                profile_path TEXT,
+                added_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
+    finally:
+        conn.close()
 
 
-def add_favorite(movie: dict) -> bool:
-    """
-    Добавляет фильм в избранное.
-    Возвращает True если добавлен, False если уже был в избранном.
-    """
+# ─── Просмотренное ────────────────────────────────────────────────────────────
+
+def add_watched(movie: dict, media_type: str = "movie") -> bool:
+    conn = _get_conn()
     try:
-        with get_connection() as conn:
-            conn.execute("""
-                INSERT INTO favorites (movie_id, title, genres, overview, poster_path, vote_average)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                movie["id"],
-                movie["title"],
-                json.dumps(movie.get("genres", [])),   # список → строка JSON
-                movie.get("overview", ""),
-                movie.get("poster_path", ""),
-                movie.get("vote_average", 0.0),
-            ))
-            conn.commit()
-            return True
-    except sqlite3.IntegrityError:
-        # UNIQUE ограничение: фильм уже в избранном
-        return False
-
-
-def remove_favorite(movie_id: int) -> bool:
-    """Удаляет фильм из избранного по его TMDB ID."""
-    with get_connection() as conn:
-        cursor = conn.execute("DELETE FROM favorites WHERE movie_id = ?", (movie_id,))
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO watched
+                (movie_id, media_type, title, genres, overview, poster_path, vote_average, director, cast_names)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (movie_id, media_type) DO NOTHING
+        """, (
+            movie["id"], media_type, movie["title"],
+            json.dumps(movie.get("genres", [])),
+            movie.get("overview", ""),
+            movie.get("poster_path", ""),
+            movie.get("vote_average", 0.0),
+            movie.get("director"),
+            json.dumps(movie.get("cast_names", [])),
+        ))
+        inserted = cur.rowcount > 0
         conn.commit()
-        return cursor.rowcount > 0  # True если строка была удалена
+        return inserted
+    finally:
+        conn.close()
 
 
-def get_favorites() -> list[dict]:
-    """Возвращает все фильмы из избранного."""
-    with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM favorites ORDER BY added_at DESC").fetchall()
+def rate_watched(movie_id: int, rating: int, review: str = None, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE watched SET user_rating = %s, review = %s WHERE movie_id = %s AND media_type = %s",
+            (rating, review, movie_id, media_type)
+        )
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
+def remove_watched(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM watched WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_watched(media_type: str = "movie") -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM watched WHERE media_type = %s ORDER BY added_at DESC",
+            (media_type,)
+        )
+        rows = cur.fetchall()
         result = []
         for row in rows:
-            movie = dict(row)
-            movie["genres"] = json.loads(movie["genres"])  # строка JSON → список
-            result.append(movie)
+            m = dict(row)
+            m["genres"]     = json.loads(m["genres"]) if m.get("genres") else []
+            m["cast_names"] = json.loads(m["cast_names"]) if m.get("cast_names") else []
+            result.append(m)
         return result
+    finally:
+        conn.close()
 
 
-def is_favorite(movie_id: int) -> bool:
-    """Проверяет, находится ли фильм в избранном."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT 1 FROM favorites WHERE movie_id = ?", (movie_id,)
-        ).fetchone()
-        return row is not None
+def is_watched(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM watched WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def get_watched_rating(movie_id: int, media_type: str = "movie"):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_rating FROM watched WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        row = cur.fetchone()
+        return row["user_rating"] if row else None
+    finally:
+        conn.close()
+
+
+# ─── К просмотру ──────────────────────────────────────────────────────────────
+
+def add_watchlist(movie: dict, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO watchlist (movie_id, media_type, title, genres, overview, poster_path, vote_average)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (movie_id, media_type) DO NOTHING
+        """, (
+            movie["id"], media_type, movie["title"],
+            json.dumps(movie.get("genres", [])),
+            movie.get("overview", ""),
+            movie.get("poster_path", ""),
+            movie.get("vote_average", 0.0),
+        ))
+        inserted = cur.rowcount > 0
+        conn.commit()
+        return inserted
+    finally:
+        conn.close()
+
+
+def remove_watchlist(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM watchlist WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_watchlist(media_type: str = "movie") -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM watchlist WHERE media_type = %s ORDER BY added_at DESC",
+            (media_type,)
+        )
+        rows = cur.fetchall()
+        result = []
+        for row in rows:
+            m = dict(row)
+            m["genres"] = json.loads(m["genres"]) if m.get("genres") else []
+            result.append(m)
+        return result
+    finally:
+        conn.close()
+
+
+def is_watchlist(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM watchlist WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+# ─── Отклонённые ──────────────────────────────────────────────────────────────
+
+def dismiss_movie(movie: dict, media_type: str = "movie"):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO dismissed
+                (movie_id, media_type, title, genres, cast_names, country, studio_names)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (movie_id, media_type) DO UPDATE SET
+                title        = EXCLUDED.title,
+                genres       = EXCLUDED.genres,
+                cast_names   = EXCLUDED.cast_names,
+                country      = EXCLUDED.country,
+                studio_names = EXCLUDED.studio_names,
+                dismissed_at = CURRENT_TIMESTAMP
+        """, (
+            movie["id"], media_type,
+            movie.get("title", ""),
+            json.dumps(movie.get("genres", [])),
+            json.dumps(movie.get("cast_names", [])),
+            movie.get("country"),
+            json.dumps(movie.get("studio_names", [])),
+        ))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_dismissed(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM dismissed WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_dismissed(media_type: str = "movie") -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM dismissed WHERE media_type = %s ORDER BY dismissed_at DESC",
+            (media_type,)
+        )
+        rows = cur.fetchall()
+        result = []
+        for row in rows:
+            m = dict(row)
+            m["genres"]       = json.loads(m["genres"]) if m.get("genres") else []
+            m["cast_names"]   = json.loads(m["cast_names"]) if m.get("cast_names") else []
+            m["studio_names"] = json.loads(m["studio_names"]) if m.get("studio_names") else []
+            result.append(m)
+        return result
+    finally:
+        conn.close()
+
+
+def get_dismissed_ids(media_type: str = "movie") -> set:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT movie_id FROM dismissed WHERE media_type = %s",
+            (media_type,)
+        )
+        return {row["movie_id"] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def is_dismissed(movie_id: int, media_type: str = "movie") -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM dismissed WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+# ─── Избранные актёры ─────────────────────────────────────────────────────────
+
+def add_favorite_actor(actor_id: int, actor_name: str, profile_path: str = None):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO favorite_actors (actor_id, actor_name, profile_path)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (actor_id) DO UPDATE SET
+                actor_name   = EXCLUDED.actor_name,
+                profile_path = EXCLUDED.profile_path
+        """, (actor_id, actor_name, profile_path))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_favorite_actor(actor_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM favorite_actors WHERE actor_id = %s", (actor_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_favorite_actors() -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM favorite_actors ORDER BY added_at ASC")
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def is_favorite_actor(actor_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM favorite_actors WHERE actor_id = %s", (actor_id,))
+        return cur.fetchone() is not None
+    finally:
+        conn.close()

@@ -3,86 +3,189 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CineMatch — умные рекомендации фильмов</title>
+  <title>FilmByMihaylov</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
   <div class="grain"></div>
 
   <header class="header">
-    <div class="logo">
-      <span class="logo-icon">◈</span>
-      <span class="logo-text">CineMatch</span>
+    <div class="header-top">
+      <div class="logo"><span class="logo-icon">◈</span><span class="logo-text" id="logo-text">FilmByMihaylov</span></div>
+      <div class="mode-switcher">
+        <button class="mode-btn active" data-mode="movie">🎬 Фильмы</button>
+        <button class="mode-btn" data-mode="tv">📺 Сериалы</button>
+      </div>
+      <div class="search-wrap">
+        <input type="text" id="search-input" class="search-input" placeholder="Найти..." />
+        <button id="search-btn" class="search-btn">⌕</button>
+      </div>
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-tab="discover">Обзор</button>
-      <button class="nav-btn" data-tab="favorites">Избранное <span class="fav-count" id="fav-count">0</span></button>
+      <button class="nav-btn" data-tab="watched">Просмотренное <span class="fav-count" id="watch-count">0</span></button>
+      <button class="nav-btn" data-tab="watchlist">К просмотру <span class="fav-count" id="watchlist-count">0</span></button>
+      <button class="nav-btn" data-tab="dismissed">Отклонённые <span class="fav-count" id="dismissed-count">0</span></button>
+      <button class="nav-btn" data-tab="actors">Актёры</button>
       <button class="nav-btn" data-tab="recommendations">Рекомендации</button>
     </nav>
-    <div class="search-wrap">
-      <input type="text" id="search-input" class="search-input" placeholder="Найти фильм..." />
-      <button id="search-btn" class="search-btn">⌕</button>
-    </div>
   </header>
 
   <main class="main">
 
-    <!-- ВКЛАДКА: ОБЗОР / ПОИСК -->
     <section class="tab active" id="tab-discover">
       <div class="section-header">
         <h2 class="section-title" id="discover-title">Популярные фильмы</h2>
-        <p class="section-sub">Добавляй понравившиеся в избранное — и мы подберём похожие</p>
+        <p class="section-sub">Отмечай просмотренные фильмы и ставь оценки — и мы подберём похожие</p>
       </div>
-      <div class="movies-grid" id="movies-grid">
-        <div class="loader">Загружаем фильмы…</div>
-      </div>
+      <div class="movies-grid" id="movies-grid"><div class="loader">Загружаем фильмы…</div></div>
     </section>
 
-    <!-- ВКЛАДКА: ИЗБРАННОЕ -->
-    <section class="tab" id="tab-favorites">
+    <section class="tab" id="tab-watched">
       <div class="section-header">
-        <h2 class="section-title">Избранное</h2>
-        <p class="section-sub">Фильмы, которые тебе понравились</p>
-      </div>
-      <div class="movies-grid" id="favorites-grid">
-        <div class="empty-state">
-          <span class="empty-icon">♡</span>
-          <p>Пока пусто. Добавь фильмы из «Обзора»</p>
+        <h2 class="section-title">Просмотренное</h2>
+        <p class="section-sub">Фильмы которые ты уже посмотрел</p>
+        <div class="watched-filters">
+          <input type="text" id="watched-search" class="filter-input" placeholder="🔍 Поиск по названию…" />
+          <select class="filter-select" id="watched-rating-filter">
+            <option value="">Все оценки</option>
+            <option value="0">Без оценки</option>
+            <option value="10">10 — Шедевр</option>
+            <option value="9">9</option>
+            <option value="8">8</option>
+            <option value="7">7</option>
+            <option value="6">6</option>
+            <option value="5">5</option>
+            <option value="4">4</option>
+            <option value="3">3</option>
+            <option value="2">2</option>
+            <option value="1">1 — Ужасно</option>
+          </select>
         </div>
       </div>
+      <div class="movies-grid" id="watched-grid">
+        <div class="empty-state"><span class="empty-icon">🎬</span><p>Пока пусто. Отмечай фильмы просмотренными из «Обзора»</p></div>
+      </div>
     </section>
 
-    <!-- ВКЛАДКА: РЕКОМЕНДАЦИИ -->
+    <section class="tab" id="tab-watchlist">
+      <div class="section-header">
+        <h2 class="section-title">К просмотру</h2>
+        <p class="section-sub">Фильмы которые хочешь посмотреть позже</p>
+      </div>
+      <div class="movies-grid" id="watchlist-grid">
+        <div class="empty-state"><span class="empty-icon">🕐</span><p>Список пуст</p></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-dismissed">
+      <div class="section-header">
+        <h2 class="section-title">Отклонённые</h2>
+        <p class="section-sub">Фильмы которые ты скрыл из рекомендаций. Нажми ↩ чтобы вернуть.</p>
+      </div>
+      <div class="movies-grid" id="dismissed-grid">
+        <div class="empty-state"><span class="empty-icon">✕</span><p>Нет отклонённых фильмов</p></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-actors">
+      <div class="section-header">
+        <h2 class="section-title">Любимые актёры</h2>
+        <p class="section-sub">На основе твоих просмотренных фильмов и сериалов</p>
+      </div>
+      <div id="actors-grid" class="actors-grid">
+        <div class="empty-state"><span class="empty-icon">🎭</span><p>Отметь фильмы просмотренными, чтобы увидеть любимых актёров</p></div>
+      </div>
+    </section>
+
     <section class="tab" id="tab-recommendations">
       <div class="section-header">
         <h2 class="section-title">Для тебя</h2>
-        <p class="section-sub">Подобрано на основе твоего избранного</p>
-        <button class="btn-primary" id="get-recs-btn">✦ Подобрать фильмы</button>
+        <p class="section-sub">Подобрано на основе твоих оценок · до 2000 фильмов</p>
+        <div class="recs-controls">
+          <div class="recs-top-row">
+            <button class="btn-primary" id="get-recs-btn">✦ Подобрать фильмы</button>
+            <div class="sort-wrap" id="sort-wrap" style="display:none">
+              <span class="sort-label">Сортировка:</span>
+              <button class="sort-btn active" data-sort="similarity">По совпадению</button>
+              <button class="sort-btn" data-sort="rating">По оценке</button>
+              <button class="sort-btn" data-sort="popularity">По популярности</button>
+              <button class="sort-btn" data-sort="recent">Недавние</button>
+            </div>
+          </div>
+          <div class="filter-bar">
+            <div class="filter-bar-row">
+              <div class="mf-group" id="mf-genre-group">
+                <button class="mf-toggle" id="mf-genre-btn">Жанры <span class="mf-count" id="mf-genre-count" hidden>0</span></button>
+                <div class="mf-panel" id="mf-genre-panel" hidden></div>
+              </div>
+              <div class="mf-group" id="mf-country-group">
+                <button class="mf-toggle" id="mf-country-btn">Страны <span class="mf-count" id="mf-country-count" hidden>0</span></button>
+                <div class="mf-panel" id="mf-country-panel" hidden></div>
+              </div>
+              <select class="filter-select" id="filter-studio"><option value="0">Все студии</option></select>
+              <select class="filter-select" id="filter-year-from">
+                <option value="">Год от</option>
+                <option value="2025">2025</option>
+                <option value="2020">2020</option>
+                <option value="2015">2015</option>
+                <option value="2010">2010</option>
+                <option value="2005">2005</option>
+                <option value="2000">2000</option>
+                <option value="1990">1990</option>
+                <option value="1980">1980</option>
+                <option value="1970">1970</option>
+              </select>
+              <select class="filter-select" id="filter-year-to">
+                <option value="">Год до</option>
+                <option value="2026">2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2020">2020</option>
+                <option value="2015">2015</option>
+                <option value="2010">2010</option>
+                <option value="2005">2005</option>
+                <option value="2000">2000</option>
+                <option value="1990">1990</option>
+              </select>
+              <select class="filter-select filter-select-sm" id="filter-min-rating">
+                <option value="">Рейтинг</option>
+                <option value="6">6+</option>
+                <option value="7">7+</option>
+                <option value="7.5">7.5+</option>
+                <option value="8">8+</option>
+                <option value="8.5">8.5+</option>
+                <option value="9">9+</option>
+              </select>
+              <button class="apply-filters-btn" id="apply-filters-btn">Применить фильтры</button>
+            </div>
+            <div class="active-filters" id="active-filters"></div>
+          </div>
+        </div>
       </div>
       <div class="movies-grid" id="recs-grid">
-        <div class="empty-state">
-          <span class="empty-icon">✦</span>
-          <p>Нажми кнопку выше, чтобы получить рекомендации</p>
-        </div>
+        <div class="empty-state"><span class="empty-icon">✦</span><p>Нажми кнопку выше, чтобы получить рекомендации</p></div>
       </div>
     </section>
 
   </main>
 
-  <!-- МОДАЛЬНОЕ ОКНО С ДЕТАЛЯМИ ФИЛЬМА -->
   <div class="modal-overlay" id="modal-overlay">
     <div class="modal" id="modal">
+      <button class="modal-back-btn" id="modal-back-btn" style="display:none">← Назад</button>
       <button class="modal-close" id="modal-close">✕</button>
       <div class="modal-content" id="modal-content"></div>
+      <div class="similar-section" id="similar-section" style="display:none">
+        <h3 class="similar-title">Похожие фильмы</h3>
+        <div class="similar-grid" id="similar-grid"></div>
+      </div>
     </div>
   </div>
 
-  <!-- ТОСТ-УВЕДОМЛЕНИЯ -->
   <div class="toast-container" id="toast-container"></div>
-
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
