@@ -64,21 +64,17 @@ async def startup():
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
-    # IMDb отключён на облаке — слишком большие файлы (~200MB) для бесплатного сервера
-    if os.getenv("DISABLE_IMDB", "false").lower() == "true":
-        print("ℹ️  IMDb отключён (DISABLE_IMDB=true) — используем только TMDB рейтинги")
-        return
     try:
         imdb_loader.init_imdb_tables()
         if imdb_loader.needs_update():
-            print("📥 Запускаем загрузку IMDb данных в фоне...")
+            print("📥 Запускаем загрузку IMDb ratings в фоне (~8MB)...")
             asyncio.create_task(imdb_loader.download_and_load())
+        else:
+            last = imdb_loader.get_last_update()
+            ts = last.strftime('%d.%m.%Y') if last else "неизвестно"
+            print(f"✅ IMDb данные актуальны (обновлено: {ts})")
     except Exception as e:
         print(f"⚠️  IMDb недоступен: {e} — продолжаем без IMDb рейтингов")
-    else:
-        last = imdb_loader.get_last_update()
-        ts = last.strftime('%d.%m.%Y') if last else "неизвестно"
-        print(f"✅ IMDb данные актуальны (обновлено: {ts})")
 
 
 async def tmdb_get(path: str, **params) -> dict:
@@ -158,9 +154,10 @@ async def popular_movies(media_type: str = "movie"):
 @app.get("/movie/{movie_id}/details")
 async def movie_details(movie_id: int, media_type: str = "movie"):
     prefix = "/tv" if media_type == "tv" else "/movie"
-    details, credits = await asyncio.gather(
+    details, credits, ext_ids = await asyncio.gather(
         tmdb_get(f"{prefix}/{movie_id}"),
         tmdb_get(f"{prefix}/{movie_id}/credits"),
+        tmdb_get(f"{prefix}/{movie_id}/external_ids"),
     )
     if media_type == "tv":
         normalize_tv(details)
@@ -197,12 +194,9 @@ async def movie_details(movie_id: int, media_type: str = "movie"):
         out["seasons_count"]  = details.get("number_of_seasons")
         out["episodes_count"] = details.get("number_of_episodes")
 
-    if imdb_loader.has_imdb_data():
-        rd   = details.get("release_date") or ""
-        year = int(rd[:4]) if len(rd) >= 4 else None
-        orig = details.get("original_title") or details.get("original_name") or ""
-        ttl  = details.get("title") or details.get("name") or ""
-        imdb_stats = imdb_loader.get_imdb_stats_for_movie(orig, ttl, year)
+    imdb_id = ext_ids.get("imdb_id")
+    if imdb_id and imdb_loader.has_imdb_data():
+        imdb_stats = imdb_loader.get_imdb_stats_by_id(imdb_id)
         if imdb_stats:
             out["imdb_vote_count"] = int(imdb_stats["vote_count"])
             out["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
@@ -585,14 +579,6 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
     MIN_VOTES_GENRE = 20
     MIN_VOTES_ACTOR = 20
 
-    LOW_VOTE_COUNTRIES = {"RU", "TR"}
-    if country_list and all(c in LOW_VOTE_COUNTRIES for c in country_list):
-        IMDB_MIN_VOTES = 400
-    elif country_mode:
-        IMDB_MIN_VOTES = 1000
-    else:
-        IMDB_MIN_VOTES = 4000
-
     if studio_id:
         studio_base = {"with_networks": studio_id} if is_tv else {"with_companies": studio_id}
     else:
@@ -725,37 +711,14 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
                 movie["origin_country"] = [_LANG_COUNTRY[lang]]
 
     label = "сериалов" if is_tv else "фильмов"
-    print(f"📦 До IMDb фильтра: {len(unique)} {label}")
+    print(f"📦 До фильтра: {len(unique)} {label}")
 
-    # ── IMDb фильтр — убираем ноунеймов ───────────────────────────────────────
-    if imdb_loader.has_imdb_data():
-        min_votes = IMDB_MIN_VOTES
-
-        filtered = []
-
-        for movie in unique:
-            title    = (movie.get("title") or "").strip()
-            original = (movie.get("original_title") or movie.get("original_name") or "").strip()
-            year     = int(movie.get("release_date", "0000")[:4]) if movie.get("release_date") else None
-            imdb_stats = imdb_loader.get_imdb_stats_for_movie(original, title, year)
-
-            if imdb_stats:
-                # Нашли в IMDb — фильтруем по IMDb голосам
-                if imdb_stats["vote_count"] >= min_votes:
-                    movie["imdb_vote_count"] = int(imdb_stats["vote_count"])
-                    movie["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
-                    filtered.append(movie)
-            else:
-                # Не нашли в IMDb — фильтруем по TMDB голосам (порог выше, чем начальный)
-                if movie.get("vote_count", 0) >= 100:
-                    filtered.append(movie)
-
-        unique = filtered
-        print(f"📦 После IMDb фильтра: {len(unique)} фильмов (порог IMDb: {min_votes}, TMDB fallback: 100)")
-    else:
-        print("⚠️  IMDb данные ещё загружаются, используем TMDB vote_count")
-        unique = [m for m in unique if m.get("vote_count", 0) >= 100]
-        print(f"📦 После TMDB фильтра: {len(unique)} фильмов")
+    # ── Фильтр по TMDB vote_count — убираем ноунеймов ────────────────────────
+    # IMDb рейтинг показывается в деталях фильма через /external_ids,
+    # но для фильтрации 2000 кандидатов используем TMDB vote_count как прокси.
+    min_tmdb = 50 if country_mode else 100
+    unique = [m for m in unique if m.get("vote_count", 0) >= min_tmdb]
+    print(f"📦 После фильтра: {len(unique)} {label} (TMDB vote_count >= {min_tmdb})")
 
     print(f"📦 Итого кандидатов: {len(unique)} фильмов")
 
