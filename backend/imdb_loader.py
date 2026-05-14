@@ -64,6 +64,9 @@ def needs_update() -> bool:
     last = get_last_update()
     if last is None:
         return True
+    # Если данных меньше 100k — считаем загрузку незавершённой
+    if not has_imdb_data():
+        return True
     return datetime.now() - last > timedelta(days=7)
 
 
@@ -126,13 +129,12 @@ def get_imdb_stats_by_id(imdb_id: str) -> dict | None:
 
 
 def _sync_load(content: bytes) -> int:
-    """Синхронная загрузка в PostgreSQL — запускается в отдельном потоке."""
+    """Синхронная загрузка в PostgreSQL — запускается в отдельном потоке.
+    Использует UPSERT вместо TRUNCATE+INSERT — старые данные остаются
+    валидными даже если загрузка прервётся на середине.
+    """
     conn = _get_conn()
     try:
-        with conn.cursor() as cur:
-            cur.execute("TRUNCATE TABLE imdb_ratings")
-        conn.commit()
-
         total = 0
         batch = []
         with gzip.open(io.BytesIO(content)) as f:
@@ -148,7 +150,9 @@ def _sync_load(content: bytes) -> int:
                     with conn.cursor() as cur:
                         psycopg2.extras.execute_values(
                             cur,
-                            "INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s ON CONFLICT DO NOTHING",
+                            """INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s
+                               ON CONFLICT (imdb_id) DO UPDATE
+                               SET rating = EXCLUDED.rating, vote_count = EXCLUDED.vote_count""",
                             batch,
                         )
                     conn.commit()
@@ -159,7 +163,9 @@ def _sync_load(content: bytes) -> int:
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
-                    "INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s ON CONFLICT DO NOTHING",
+                    """INSERT INTO imdb_ratings (imdb_id, rating, vote_count) VALUES %s
+                       ON CONFLICT (imdb_id) DO UPDATE
+                       SET rating = EXCLUDED.rating, vote_count = EXCLUDED.vote_count""",
                     batch,
                 )
             conn.commit()
