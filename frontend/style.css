@@ -456,3 +456,114 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   transition: color var(--transition), border-color var(--transition);
 }
 .user-logout-btn:hover { color: var(--text); border-color: var(--gold-dim); }
+
+/* ═══════════════════════════════════════════════════════════
+   МОБИЛЬНАЯ ВЕРСИЯ  ≤ 640px
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* ─── Шапка ─────────────────────────────────────────────── */
+  .header { padding: 0 16px; }
+
+  .header-top {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 10px 0 6px;
+    gap: 8px;
+  }
+
+  .logo { font-size: 17px; }
+
+  /* Поиск — на отдельную строку, полная ширина */
+  .search-wrap { order: 3; width: 100%; margin-left: 0; }
+  .search-input { width: 100%; }
+
+  /* Переключатель режимов — компактнее */
+  .mode-btn { padding: 5px 10px; font-size: 12px; }
+
+  /* Бейдж — только имя и маленькая кнопка */
+  .user-badge { padding: 5px 10px; gap: 8px; }
+  .user-name { font-size: 12px; }
+  .user-logout-btn { font-size: 11px; padding: 2px 6px; }
+
+  /* Навигация — горизонтальный скролл */
+  .nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 2px;
+    padding: 4px 0 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-btn { white-space: nowrap; padding: 6px 10px; font-size: 12px; }
+
+  /* ─── Основной контент ───────────────────────────────────── */
+  .main { padding: 20px 16px 80px; }
+
+  /* ─── Сетка фильмов ─────────────────────────────────────── */
+  .movies-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  /* ─── Заголовок секции ───────────────────────────────────── */
+  .section-title { font-size: 26px; }
+  .section-sub { font-size: 13px; }
+
+  /* ─── Фильтры рекомендаций ───────────────────────────────── */
+  .recs-top-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .sort-wrap { flex-wrap: wrap; gap: 6px; }
+  .sort-label { width: 100%; }
+
+  .filter-bar-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .mf-group { width: 100%; }
+  .mf-toggle { width: 100%; justify-content: space-between; }
+  .mf-panel { min-width: 100%; left: 0; right: 0; }
+  .apply-filters-btn { grid-column: 1 / -1; margin-left: 0; width: 100%; }
+  .filter-select { width: 100%; }
+  .filter-select-sm { max-width: 100%; }
+
+  /* ─── Фильтры просмотренного ─────────────────────────────── */
+  .watched-filters { flex-direction: column; gap: 8px; }
+  .filter-input { width: 100%; }
+
+  /* ─── Модальное окно — полный экран ─────────────────────── */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100%;
+    max-height: 95vh;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .modal-backdrop { height: 200px; }
+  .modal-body { padding: 48px 16px 24px; }
+  .modal-title { font-size: 21px; }
+  .modal-stats { gap: 14px; }
+  .modal-actions { flex-direction: column; }
+  .modal-watched-btn, .modal-watch-btn { padding: 14px; font-size: 15px; }
+
+  /* Кнопки «назад» / «закрыть» в модалке */
+  .modal-close { top: 12px; right: 12px; }
+  .modal-back-btn { top: 12px; left: 12px; }
+
+  /* ─── Актёры ─────────────────────────────────────────────── */
+  .actors-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+  }
+
+  /* ─── Auth модалка ───────────────────────────────────────── */
+  .auth-modal {
+    margin: 16px;
+    padding: 28px 20px;
+  }
+
+  /* ─── Тосты ─────────────────────────────────────────────── */
+  .toast-container { bottom: 16px; left: 16px; right: 16px; right: 16px; align-items: center; }
+  .toast { width: 100%; max-width: 100%; text-align: center; transform: translateY(120%); }
+  .toast.show { transform: none; }
+}
