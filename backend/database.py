@@ -200,6 +200,50 @@ def get_watched_rating(movie_id: int, media_type: str = "movie"):
         conn.close()
 
 
+def get_watched_map(media_type: str = "movie") -> dict:
+    """Возвращает {movie_id: {user_rating, review}} — один запрос вместо N."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT movie_id, user_rating, review FROM watched WHERE media_type = %s",
+            (media_type,)
+        )
+        return {row["movie_id"]: {"user_rating": row["user_rating"], "review": row["review"]}
+                for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def get_watchlist_ids(media_type: str = "movie") -> set:
+    """Возвращает set movie_id — один запрос вместо N."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT movie_id FROM watchlist WHERE media_type = %s",
+            (media_type,)
+        )
+        return {row["movie_id"] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def get_watched_entry(movie_id: int, media_type: str = "movie") -> dict | None:
+    """Возвращает запись просмотренного для одного фильма."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT user_rating, review FROM watched WHERE movie_id = %s AND media_type = %s",
+            (movie_id, media_type)
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 # ─── К просмотру ──────────────────────────────────────────────────────────────
 
 def add_watchlist(movie: dict, media_type: str = "movie") -> bool:

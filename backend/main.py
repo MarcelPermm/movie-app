@@ -130,10 +130,12 @@ async def search_movies(q: str, media_type: str = "movie"):
     items = data.get("results", [])[:10]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
+    watched_map   = database.get_watched_map(media_type)
+    watchlist_ids = database.get_watchlist_ids(media_type)
     return [{**m,
-             "is_watched":   database.is_watched(m["id"], media_type),
-             "user_rating":  database.get_watched_rating(m["id"], media_type),
-             "is_watchlist": database.is_watchlist(m["id"], media_type)} for m in items]
+             "is_watched":   m["id"] in watched_map,
+             "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
+             "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
 @app.get("/popular")
@@ -143,10 +145,12 @@ async def popular_movies(media_type: str = "movie"):
     items = data.get("results", [])
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
+    watched_map   = database.get_watched_map(media_type)
+    watchlist_ids = database.get_watchlist_ids(media_type)
     return [{**m,
-             "is_watched":   database.is_watched(m["id"], media_type),
-             "user_rating":  database.get_watched_rating(m["id"], media_type),
-             "is_watchlist": database.is_watchlist(m["id"], media_type)} for m in items]
+             "is_watched":   m["id"] in watched_map,
+             "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
+             "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
@@ -178,15 +182,12 @@ async def movie_details(movie_id: int, media_type: str = "movie"):
     studios  = [{"id": c["id"], "name": c["name"], "logo": c.get("logo_path")} for c in details.get("production_companies", [])]
     countries = [c["iso_3166_1"] for c in details.get("production_countries", [])]
 
-    watched_info = None
-    for w in database.get_watched(media_type):
-        if w["movie_id"] == movie_id:
-            watched_info = {"user_rating": w.get("user_rating"), "review": w.get("review")}
-            break
+    entry        = database.get_watched_entry(movie_id, media_type)
+    watched_info = {"user_rating": entry["user_rating"], "review": entry["review"]} if entry else None
 
     out = {**details, "cast": cast, "director": director, "director_id": director_id,
            "studios": studios, "countries": countries,
-           "is_watched":   database.is_watched(movie_id, media_type),
+           "is_watched":   entry is not None,
            "is_watchlist": database.is_watchlist(movie_id, media_type),
            "watched_info": watched_info}
 
@@ -237,9 +238,11 @@ async def studio_movies(studio_id: int, media_type: str = "movie"):
     items = data.get("results", [])[:20]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
+    watched_map   = database.get_watched_map(media_type)
+    watchlist_ids = database.get_watchlist_ids(media_type)
     return [{**m,
-             "is_watched":   database.is_watched(m["id"], media_type),
-             "is_watchlist": database.is_watchlist(m["id"], media_type)} for m in items]
+             "is_watched":   m["id"] in watched_map,
+             "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
 # ─── Похожие / трейлер ────────────────────────────────────────────────────────
@@ -251,9 +254,11 @@ async def similar_movies(movie_id: int, media_type: str = "movie"):
     items = data.get("results", [])[:10]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
+    watched_map   = database.get_watched_map(media_type)
+    watchlist_ids = database.get_watchlist_ids(media_type)
     return [{**m,
-             "is_watched":   database.is_watched(m["id"], media_type),
-             "is_watchlist": database.is_watchlist(m["id"], media_type)} for m in items]
+             "is_watched":   m["id"] in watched_map,
+             "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
 @app.get("/trailer/{movie_id}")
