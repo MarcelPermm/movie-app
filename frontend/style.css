@@ -394,3 +394,64 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .person-no-photo-sm { width: 100%; height: 130px; display: flex; align-items: center; justify-content: center; background: var(--border); font-size: 36px; }
 .person-search-name { font-size: 12px; font-weight: 600; color: var(--text); padding: 6px 6px 2px; line-height: 1.3; }
 .person-search-dept { font-size: 10px; color: var(--gold); padding: 0 4px; }
+
+/* ─── Auth Modal ──────────────────────────────────────────── */
+.auth-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(10,10,15,0.93); backdrop-filter: blur(18px);
+  display: none; align-items: center; justify-content: center;
+}
+.auth-overlay.visible { display: flex; }
+.auth-modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 18px; padding: 40px 36px; width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+}
+.auth-logo {
+  font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 700;
+  color: var(--gold); text-align: center; margin-bottom: 6px;
+}
+.auth-tabs {
+  display: flex; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 3px; gap: 2px;
+}
+.auth-tab {
+  flex: 1; padding: 9px; background: none; border: none; border-radius: 8px;
+  color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 14px;
+  font-weight: 500; cursor: pointer; transition: all var(--transition);
+}
+.auth-tab:hover { color: var(--text); }
+.auth-tab.active { background: var(--gold); color: var(--bg); font-weight: 700; }
+.auth-input {
+  width: 100%; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); font-family: 'DM Sans', sans-serif;
+  font-size: 14px; outline: none; transition: border-color var(--transition);
+}
+.auth-input:focus { border-color: var(--gold-dim); }
+.auth-input::placeholder { color: var(--text-dim); }
+.auth-btn {
+  width: 100%; padding: 13px; background: var(--gold); border: none;
+  border-radius: 10px; color: var(--bg); font-family: 'DM Sans', sans-serif;
+  font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 2px;
+  transition: opacity var(--transition), transform var(--transition);
+}
+.auth-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.auth-btn:active { transform: none; }
+.auth-error { font-size: 13px; color: var(--red); text-align: center; min-height: 16px; }
+
+/* ─── User badge (header) ─────────────────────────────────── */
+.user-badge {
+  display: none; align-items: center; gap: 10px; flex-shrink: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px 12px;
+}
+.user-badge.visible { display: flex; }
+.user-name { font-size: 13px; font-weight: 600; color: var(--gold); }
+.user-logout-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  font-size: 11px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; padding: 3px 8px; border-radius: 6px;
+  transition: color var(--transition), border-color var(--transition);
+}
+.user-logout-btn:hover { color: var(--text); border-color: var(--gold-dim); }

@@ -16,6 +16,7 @@ const state = {
     genre:   { inc: new Set(), exc: new Set() },
     country: { inc: new Set(), exc: new Set() },
   },
+  user: null,  // { id, username, display_name }
 };
 
 // Хелпер — добавляет media_type к fetch-параметрам
@@ -1229,9 +1230,32 @@ function animateRemove(card, callback) {
 }
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
+function getUID() {
+  return state.user?.id ?? 1;
+}
+
 async function apiFetch(path, options = {}) {
-  const headers  = { "Content-Type": "application/json", ...options.headers };
-  const response = await fetch(`${API}${path}`, { ...options, headers });
+  const headers = { "Content-Type": "application/json", ...options.headers };
+
+  // Inject user_id into URL query string
+  const uid = getUID();
+  let fullPath = path;
+  if (!fullPath.includes("user_id=")) {
+    const sep = fullPath.includes("?") ? "&" : "?";
+    fullPath = `${fullPath}${sep}user_id=${uid}`;
+  }
+
+  // Inject user_id into POST/PUT/PATCH JSON body
+  let finalOptions = options;
+  if (options.body) {
+    try {
+      const bodyObj = JSON.parse(options.body);
+      if (bodyObj.user_id === undefined) bodyObj.user_id = uid;
+      finalOptions = { ...options, body: JSON.stringify(bodyObj) };
+    } catch {}
+  }
+
+  const response = await fetch(`${API}${fullPath}`, { ...finalOptions, headers });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw err;
@@ -1285,7 +1309,121 @@ async function init() {
   loadPopular();
 }
 
-init();
+// ─── Аутентификация ────────────────────────────────────────────────────────
+
+function switchAuthTab(tab) {
+  const isLogin = tab === "login";
+  $("auth-tab-login").classList.toggle("active", isLogin);
+  $("auth-tab-register").classList.toggle("active", !isLogin);
+  $("auth-login-form").style.display    = isLogin ? "" : "none";
+  $("auth-register-form").style.display = isLogin ? "none" : "";
+  $("auth-login-error").textContent = "";
+  $("auth-reg-error").textContent   = "";
+}
+
+async function authLogin() {
+  const username = $("auth-username-input").value.trim();
+  const errEl    = $("auth-login-error");
+  errEl.textContent = "";
+  if (!username) { errEl.textContent = "Введи логин"; return; }
+  try {
+    const resp = await fetch(`${API}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      errEl.textContent = e.detail || "Пользователь не найден";
+      return;
+    }
+    const user = await resp.json();
+    setUser(user);
+    $("auth-overlay").classList.remove("visible");
+    toast(`Привет, ${user.display_name}! 👋`, "success");
+    init();
+  } catch {
+    errEl.textContent = "Ошибка подключения к серверу";
+  }
+}
+
+async function authRegister() {
+  const username = $("auth-reg-username").value.trim();
+  const display  = $("auth-reg-display").value.trim();
+  const errEl    = $("auth-reg-error");
+  errEl.textContent = "";
+  if (!username) { errEl.textContent = "Введи логин"; return; }
+  if (!display)  { errEl.textContent = "Введи своё имя"; return; }
+  try {
+    const resp = await fetch(`${API}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, display_name: display }),
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      errEl.textContent = e.detail || "Ошибка регистрации";
+      return;
+    }
+    const user = await resp.json();
+    setUser(user);
+    $("auth-overlay").classList.remove("visible");
+    toast(`Добро пожаловать, ${user.display_name}! 🎬`, "success");
+    init();
+  } catch {
+    errEl.textContent = "Ошибка подключения к серверу";
+  }
+}
+
+function setUser(user) {
+  state.user = user;
+  localStorage.setItem("film_user", JSON.stringify(user));
+  const badge = $("user-badge");
+  if (badge) {
+    badge.classList.add("visible");
+    $("user-name").textContent = user.display_name;
+  }
+}
+
+function authLogout() {
+  state.user      = null;
+  state.watched   = new Map();
+  state.watchlist = new Set();
+  state.dismissed = new Set();
+  state.favActors = new Set();
+  localStorage.removeItem("film_user");
+  const badge = $("user-badge");
+  if (badge) badge.classList.remove("visible");
+  $("watch-count").textContent     = "0";
+  $("watchlist-count").textContent = "0";
+  $("dismissed-count").textContent = "0";
+  $("auth-username-input").value   = "";
+  $("auth-login-error").textContent = "";
+  switchAuthTab("login");
+  $("auth-overlay").classList.add("visible");
+}
+
+// Enter в полях авторизации
+document.addEventListener("DOMContentLoaded", () => {
+  $("auth-username-input")?.addEventListener("keydown", e => { if (e.key === "Enter") authLogin(); });
+  $("auth-reg-username")?.addEventListener("keydown",   e => { if (e.key === "Enter") authRegister(); });
+  $("auth-reg-display")?.addEventListener("keydown",    e => { if (e.key === "Enter") authRegister(); });
+});
+
+// ─── Запуск ────────────────────────────────────────────────────────────────
+(function startup() {
+  const saved = localStorage.getItem("film_user");
+  if (saved) {
+    try {
+      const user = JSON.parse(saved);
+      setUser(user);
+      init();
+      return;
+    } catch {}
+  }
+  // Нет сохранённого пользователя — показываем авторизацию
+  $("auth-overlay").classList.add("visible");
+})();
 
 // ─── Актёры ────────────────────────────────────────────────────────────────
 

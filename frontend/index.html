@@ -18,6 +18,10 @@
         <button class="mode-btn active" data-mode="movie">🎬 Фильмы</button>
         <button class="mode-btn" data-mode="tv">📺 Сериалы</button>
       </div>
+      <div class="user-badge" id="user-badge">
+        <span class="user-name" id="user-name"></span>
+        <button class="user-logout-btn" onclick="authLogout()">Выйти</button>
+      </div>
       <div class="search-wrap">
         <input type="text" id="search-input" class="search-input" placeholder="Найти..." />
         <button id="search-btn" class="search-btn">⌕</button>
@@ -180,6 +184,28 @@
       <div class="similar-section" id="similar-section" style="display:none">
         <h3 class="similar-title">Похожие фильмы</h3>
         <div class="similar-grid" id="similar-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div class="auth-overlay" id="auth-overlay">
+    <div class="auth-modal">
+      <div class="auth-logo"><span class="logo-icon">◈</span> FilmByMihaylov</div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="auth-tab-login" onclick="switchAuthTab('login')">Войти</button>
+        <button class="auth-tab" id="auth-tab-register" onclick="switchAuthTab('register')">Регистрация</button>
+      </div>
+      <div id="auth-login-form">
+        <input type="text" id="auth-username-input" class="auth-input" placeholder="Твой логин" />
+        <button class="auth-btn" onclick="authLogin()">Войти</button>
+        <p class="auth-error" id="auth-login-error"></p>
+      </div>
+      <div id="auth-register-form" style="display:none">
+        <input type="text" id="auth-reg-username" class="auth-input" placeholder="Придумай логин" />
+        <input type="text" id="auth-reg-display" class="auth-input" placeholder="Твоё имя" />
+        <button class="auth-btn" onclick="authRegister()">Зарегистрироваться</button>
+        <p class="auth-error" id="auth-reg-error"></p>
       </div>
     </div>
   </div>

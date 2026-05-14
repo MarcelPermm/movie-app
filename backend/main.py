@@ -97,6 +97,34 @@ def normalize_tv(item: dict) -> dict:
     return item
 
 
+# ─── Авторизация ──────────────────────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    username:     str
+    display_name: str
+
+class LoginRequest(BaseModel):
+    username: str
+
+@app.post("/auth/register")
+async def register(req: RegisterRequest):
+    username = req.username.strip()
+    display_name = req.display_name.strip()
+    if not username or not display_name:
+        raise HTTPException(400, "Логин и имя не могут быть пустыми")
+    user = database.create_user(username, display_name)
+    if not user:
+        raise HTTPException(409, "Такой логин уже занят")
+    return user
+
+@app.post("/auth/login")
+async def login(req: LoginRequest):
+    user = database.get_user_by_username(req.username.strip())
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    return user
+
+
 # ─── Жанры / студии ───────────────────────────────────────────────────────────
 
 @app.get("/genres")
@@ -122,7 +150,7 @@ async def search_persons(q: str):
 
 
 @app.get("/search")
-async def search_movies(q: str, media_type: str = "movie"):
+async def search_movies(q: str, media_type: str = "movie", user_id: int = 1):
     if not q.strip():
         raise HTTPException(400, "Пустой запрос")
     path = "/search/tv" if media_type == "tv" else "/search/movie"
@@ -130,8 +158,8 @@ async def search_movies(q: str, media_type: str = "movie"):
     items = data.get("results", [])[:10]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
-    watched_map   = database.get_watched_map(media_type)
-    watchlist_ids = database.get_watchlist_ids(media_type)
+    watched_map   = database.get_watched_map(media_type, user_id)
+    watchlist_ids = database.get_watchlist_ids(media_type, user_id)
     return [{**m,
              "is_watched":   m["id"] in watched_map,
              "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
@@ -139,14 +167,14 @@ async def search_movies(q: str, media_type: str = "movie"):
 
 
 @app.get("/popular")
-async def popular_movies(media_type: str = "movie"):
+async def popular_movies(media_type: str = "movie", user_id: int = 1):
     path = "/tv/popular" if media_type == "tv" else "/movie/popular"
     data = await tmdb_get(path)
     items = data.get("results", [])
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
-    watched_map   = database.get_watched_map(media_type)
-    watchlist_ids = database.get_watchlist_ids(media_type)
+    watched_map   = database.get_watched_map(media_type, user_id)
+    watchlist_ids = database.get_watchlist_ids(media_type, user_id)
     return [{**m,
              "is_watched":   m["id"] in watched_map,
              "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
@@ -156,7 +184,7 @@ async def popular_movies(media_type: str = "movie"):
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
 
 @app.get("/movie/{movie_id}/details")
-async def movie_details(movie_id: int, media_type: str = "movie"):
+async def movie_details(movie_id: int, media_type: str = "movie", user_id: int = 1):
     prefix = "/tv" if media_type == "tv" else "/movie"
     details, credits, ext_ids = await asyncio.gather(
         tmdb_get(f"{prefix}/{movie_id}"),
@@ -168,7 +196,6 @@ async def movie_details(movie_id: int, media_type: str = "movie"):
 
     cast = [{"id": p["id"], "name": p["name"], "character": p.get("character", ""), "profile_path": p.get("profile_path")} for p in credits.get("cast", [])[:12]]
     director = director_id = None
-    # Для сериалов берём создателей вместо режиссёра
     if media_type == "tv":
         creators = details.get("created_by", [])
         if creators:
@@ -182,13 +209,13 @@ async def movie_details(movie_id: int, media_type: str = "movie"):
     studios  = [{"id": c["id"], "name": c["name"], "logo": c.get("logo_path")} for c in details.get("production_companies", [])]
     countries = [c["iso_3166_1"] for c in details.get("production_countries", [])]
 
-    entry        = database.get_watched_entry(movie_id, media_type)
+    entry        = database.get_watched_entry(movie_id, media_type, user_id)
     watched_info = {"user_rating": entry["user_rating"], "review": entry["review"]} if entry else None
 
     out = {**details, "cast": cast, "director": director, "director_id": director_id,
            "studios": studios, "countries": countries,
            "is_watched":   entry is not None,
-           "is_watchlist": database.is_watchlist(movie_id, media_type),
+           "is_watchlist": database.is_watchlist(movie_id, media_type, user_id),
            "watched_info": watched_info}
 
     if media_type == "tv":
@@ -232,14 +259,14 @@ async def person_movies(person_id: int, media_type: str = "movie"):
 # ─── Студия ───────────────────────────────────────────────────────────────────
 
 @app.get("/studio/{studio_id}/movies")
-async def studio_movies(studio_id: int, media_type: str = "movie"):
+async def studio_movies(studio_id: int, media_type: str = "movie", user_id: int = 1):
     path = "/discover/tv" if media_type == "tv" else "/discover/movie"
     data = await tmdb_get(path, with_companies=studio_id, sort_by="popularity.desc")
     items = data.get("results", [])[:20]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
-    watched_map   = database.get_watched_map(media_type)
-    watchlist_ids = database.get_watchlist_ids(media_type)
+    watched_map   = database.get_watched_map(media_type, user_id)
+    watchlist_ids = database.get_watchlist_ids(media_type, user_id)
     return [{**m,
              "is_watched":   m["id"] in watched_map,
              "is_watchlist": m["id"] in watchlist_ids} for m in items]
@@ -248,14 +275,14 @@ async def studio_movies(studio_id: int, media_type: str = "movie"):
 # ─── Похожие / трейлер ────────────────────────────────────────────────────────
 
 @app.get("/similar/{movie_id}")
-async def similar_movies(movie_id: int, media_type: str = "movie"):
+async def similar_movies(movie_id: int, media_type: str = "movie", user_id: int = 1):
     prefix = "/tv" if media_type == "tv" else "/movie"
     data = await tmdb_get(f"{prefix}/{movie_id}/recommendations")
     items = data.get("results", [])[:10]
     if media_type == "tv":
         items = [normalize_tv(m) for m in items]
-    watched_map   = database.get_watched_map(media_type)
-    watchlist_ids = database.get_watchlist_ids(media_type)
+    watched_map   = database.get_watched_map(media_type, user_id)
+    watchlist_ids = database.get_watchlist_ids(media_type, user_id)
     return [{**m,
              "is_watched":   m["id"] in watched_map,
              "is_watchlist": m["id"] in watchlist_ids} for m in items]
@@ -303,17 +330,17 @@ async def tv_season_episodes(show_id: int, season_number: int):
 # ─── Любимые актёры ──────────────────────────────────────────────────────────
 
 @app.get("/watched/top-actors")
-async def watched_top_actors(limit: int = 30):
+async def watched_top_actors(limit: int = 30, user_id: int = 1):
     from collections import Counter
-    all_watched = database.get_watched("movie") + database.get_watched("tv")
+    all_watched = database.get_watched("movie", user_id) + database.get_watched("tv", user_id)
     actor_entries: dict[str, list] = {}
     for m in all_watched:
         for name in (m.get("cast_names") or []):
             if name not in actor_entries:
                 actor_entries[name] = []
             actor_entries[name].append({
-                "movie_id":   m["movie_id"],
-                "title":      m.get("title", ""),
+                "movie_id":    m["movie_id"],
+                "title":       m.get("title", ""),
                 "user_rating": m.get("user_rating"),
                 "poster_path": m.get("poster_path", ""),
                 "media_type":  m.get("media_type", "movie"),
@@ -321,7 +348,7 @@ async def watched_top_actors(limit: int = 30):
     sorted_actors = sorted(actor_entries.items(), key=lambda x: len(x[1]), reverse=True)[:limit]
     if not sorted_actors:
         return []
-    fav_ids = {a["actor_id"] for a in database.get_favorite_actors()}
+    fav_ids = {a["actor_id"] for a in database.get_favorite_actors(user_id)}
     search_results = await asyncio.gather(
         *[tmdb_get("/search/person", query=name) for name, _ in sorted_actors],
         return_exceptions=True,
@@ -345,13 +372,13 @@ async def watched_top_actors(limit: int = 30):
 
 
 @app.get("/person/{person_id}/watched-appearances")
-async def person_watched_appearances(person_id: int):
+async def person_watched_appearances(person_id: int, user_id: int = 1):
     movie_credits, tv_credits = await asyncio.gather(
         tmdb_get(f"/person/{person_id}/movie_credits"),
         tmdb_get(f"/person/{person_id}/tv_credits"),
     )
-    watched_movie = {m["movie_id"]: m for m in database.get_watched("movie")}
-    watched_tv    = {m["movie_id"]: m for m in database.get_watched("tv")}
+    watched_movie = {m["movie_id"]: m for m in database.get_watched("movie", user_id)}
+    watched_tv    = {m["movie_id"]: m for m in database.get_watched("tv", user_id)}
     seen: set[int] = set()
     results = []
     for item in movie_credits.get("cast", []) + movie_credits.get("crew", []):
@@ -372,41 +399,44 @@ class FavoriteActorRequest(BaseModel):
     actor_id:     int
     actor_name:   str
     profile_path: Optional[str] = None
+    user_id:      int = 1
 
 
 @app.get("/favorite-actors")
-async def get_favorite_actors():
-    return database.get_favorite_actors()
+async def get_favorite_actors(user_id: int = 1):
+    return database.get_favorite_actors(user_id)
 
 
 @app.post("/favorite-actors")
 async def add_favorite_actor(req: FavoriteActorRequest):
-    database.add_favorite_actor(req.actor_id, req.actor_name, req.profile_path)
+    database.add_favorite_actor(req.actor_id, req.actor_name, req.profile_path, req.user_id)
     return {"message": "Добавлен в избранные"}
 
 
 @app.delete("/favorite-actors/{actor_id}")
-async def remove_favorite_actor(actor_id: int):
-    database.remove_favorite_actor(actor_id)
+async def remove_favorite_actor(actor_id: int, user_id: int = 1):
+    database.remove_favorite_actor(actor_id, user_id)
     return {"message": "Убран из избранных"}
 
 
 # ─── Просмотренное ────────────────────────────────────────────────────────────
 
 @app.get("/watched")
-async def get_watched(media_type: str = "movie"):
-    return database.get_watched(media_type)
+async def get_watched(media_type: str = "movie", user_id: int = 1):
+    return database.get_watched(media_type, user_id)
 
 
 class WatchedRequest(BaseModel):
     movie_id:   int
     media_type: str = "movie"
+    user_id:    int = 1
 
 class RateRequest(BaseModel):
     movie_id:   int
     rating:     int
     media_type: str = "movie"
     review:     Optional[str] = None
+    user_id:    int = 1
 
 
 @app.post("/watched")
@@ -432,7 +462,7 @@ async def add_watched(req: WatchedRequest):
         "overview": details.get("overview", ""), "poster_path": details.get("poster_path", ""),
         "vote_average": details.get("vote_average", 0.0),
         "director": director, "cast_names": cast_names,
-    }, req.media_type)
+    }, req.media_type, req.user_id)
     if not added: raise HTTPException(409, "Уже в просмотренном")
     return {"message": f"«{details['title']}» добавлено в просмотренное"}
 
@@ -441,7 +471,7 @@ async def add_watched(req: WatchedRequest):
 async def rate_watched(req: RateRequest):
     if not 1 <= req.rating <= 10:
         raise HTTPException(400, "Оценка от 1 до 10")
-    if not database.is_watched(req.movie_id, req.media_type):
+    if not database.is_watched(req.movie_id, req.media_type, req.user_id):
         prefix = "/tv" if req.media_type == "tv" else "/movie"
         try:
             details, credits = await asyncio.gather(
@@ -458,30 +488,31 @@ async def rate_watched(req: RateRequest):
                 "overview": details.get("overview", ""), "poster_path": details.get("poster_path", ""),
                 "vote_average": details.get("vote_average", 0.0),
                 "director": director, "cast_names": cast_names,
-            }, req.media_type)
+            }, req.media_type, req.user_id)
         except Exception:
             raise HTTPException(404, "Не найдено")
-    if not database.rate_watched(req.movie_id, req.rating, req.review, req.media_type):
+    if not database.rate_watched(req.movie_id, req.rating, req.review, req.media_type, req.user_id):
         raise HTTPException(404, "Не найдено в просмотренном")
     return {"message": "Оценка сохранена"}
 
 
 @app.delete("/watched/{movie_id}")
-async def remove_watched(movie_id: int, media_type: str = "movie"):
-    if not database.remove_watched(movie_id, media_type): raise HTTPException(404, "Не найден")
+async def remove_watched(movie_id: int, media_type: str = "movie", user_id: int = 1):
+    if not database.remove_watched(movie_id, media_type, user_id): raise HTTPException(404, "Не найден")
     return {"message": "Удалено"}
 
 
 # ─── К просмотру ──────────────────────────────────────────────────────────────
 
 @app.get("/watchlist")
-async def get_watchlist(media_type: str = "movie"):
-    return database.get_watchlist(media_type)
+async def get_watchlist(media_type: str = "movie", user_id: int = 1):
+    return database.get_watchlist(media_type, user_id)
 
 
 class MovieRequest(BaseModel):
     movie_id:   int
     media_type: str = "movie"
+    user_id:    int = 1
 
 
 @app.post("/watchlist")
@@ -498,27 +529,28 @@ async def add_watchlist(req: MovieRequest):
         "id": item["id"], "title": item["title"], "genres": genres,
         "overview": item.get("overview", ""), "poster_path": item.get("poster_path", ""),
         "vote_average": item.get("vote_average", 0.0),
-    }, req.media_type)
+    }, req.media_type, req.user_id)
     if not added: raise HTTPException(409, "Уже в списке")
     return {"message": f"«{item['title']}» добавлен"}
 
 
 @app.delete("/watchlist/{movie_id}")
-async def remove_watchlist(movie_id: int, media_type: str = "movie"):
-    if not database.remove_watchlist(movie_id, media_type): raise HTTPException(404, "Не найден")
+async def remove_watchlist(movie_id: int, media_type: str = "movie", user_id: int = 1):
+    if not database.remove_watchlist(movie_id, media_type, user_id): raise HTTPException(404, "Не найден")
     return {"message": "Удалено"}
 
 
 # ─── Отклонённые ──────────────────────────────────────────────────────────────
 
 @app.get("/dismissed")
-async def get_dismissed(media_type: str = "movie"):
-    return database.get_dismissed(media_type)
+async def get_dismissed(media_type: str = "movie", user_id: int = 1):
+    return database.get_dismissed(media_type, user_id)
 
 
 class DismissRequest(BaseModel):
     movie_id:   int
     media_type: str = "movie"
+    user_id:    int = 1
 
 
 @app.post("/dismiss")
@@ -541,27 +573,27 @@ async def dismiss_movie(req: DismissRequest):
             "cast_names":   cast_names,
             "country":      country,
             "studio_names": studio_names,
-        }, req.media_type)
+        }, req.media_type, req.user_id)
     except Exception:
-        database.dismiss_movie({"id": req.movie_id, "title": "", "genres": [], "cast_names": [], "country": None, "studio_names": []}, req.media_type)
+        database.dismiss_movie({"id": req.movie_id, "title": "", "genres": [], "cast_names": [], "country": None, "studio_names": []}, req.media_type, req.user_id)
     return {"message": "Скрыто"}
 
 
 @app.delete("/dismissed/{movie_id}")
-async def undismiss_movie(movie_id: int, media_type: str = "movie"):
-    database.remove_dismissed(movie_id, media_type)
+async def undismiss_movie(movie_id: int, media_type: str = "movie", user_id: int = 1):
+    database.remove_dismissed(movie_id, media_type, user_id)
     return {"message": "Возвращено"}
 
 
 # ─── Рекомендации ─────────────────────────────────────────────────────────────
 
 @app.get("/recommendations")
-async def get_recommendations(country: str = "", studio_id: int = 0, media_type: str = "movie"):
-    watched = database.get_watched(media_type)
+async def get_recommendations(country: str = "", studio_id: int = 0, media_type: str = "movie", user_id: int = 1):
+    watched = database.get_watched(media_type, user_id)
     if not watched:
         raise HTTPException(400, "Добавь хотя бы один фильм в просмотренное")
 
-    dismissed     = database.get_dismissed(media_type)
+    dismissed     = database.get_dismissed(media_type, user_id)
     dismissed_ids = {m["movie_id"] for m in dismissed}
 
     is_tv = media_type == "tv"
