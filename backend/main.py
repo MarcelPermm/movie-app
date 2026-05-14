@@ -1079,9 +1079,8 @@ Example output:
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
 
-    # Ищем все фильмы параллельно — один запрос на фильм с language=ru-RU
-    # TMDB ищет по оригинальному названию, возвращает русский перевод
-    async def tmdb_lookup(item):
+    # Ищем все фильмы параллельно через общий клиент (connection pool)
+    async def tmdb_lookup(h, item):
         title  = item.get("title", "").strip()
         year   = item.get("year")
         mtype  = item.get("type", "movie")
@@ -1089,46 +1088,45 @@ Example output:
         if not title:
             return None
         try:
-            async with httpx.AsyncClient(timeout=15) as h:
-                endpoint = "tv" if mtype == "tv" else "movie"
-                year_key = "first_air_date_year" if mtype == "tv" else "year"
-                name_key = "name" if mtype == "tv" else "title"
-                date_key = "first_air_date" if mtype == "tv" else "release_date"
+            endpoint = "tv" if mtype == "tv" else "movie"
+            year_key = "first_air_date_year" if mtype == "tv" else "year"
+            name_key = "name" if mtype == "tv" else "title"
+            date_key = "first_air_date" if mtype == "tv" else "release_date"
 
-                # Попытка 1: с годом
-                params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
-                if year:
-                    params[year_key] = year
+            params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+            if year:
+                params[year_key] = year
+            r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
+            items = r.json().get("results", [])
+
+            # Попытка 2: без года
+            if not items and year:
+                params.pop(year_key, None)
                 r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
                 items = r.json().get("results", [])
 
-                # Попытка 2: без года
-                if not items and year:
-                    params.pop(year_key, None)
-                    r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
-                    items = r.json().get("results", [])
+            if not items:
+                return None
 
-                if not items:
-                    return None
+            m = items[0]
+            tmdb_id = m["id"]
+            if tmdb_id in watched_ids:
+                return None
 
-                m = items[0]
-                tmdb_id = m["id"]
-                if tmdb_id in watched_ids:
-                    return None
-
-                return {
-                    "id":           tmdb_id,
-                    "title":        m.get(name_key, title),
-                    "poster_path":  m.get("poster_path"),
-                    "vote_average": m.get("vote_average"),
-                    date_key:       m.get(date_key, ""),
-                    "media_type":   mtype,
-                    "ai_reason":    reason,
-                }
+            return {
+                "id":           tmdb_id,
+                "title":        m.get(name_key, title),
+                "poster_path":  m.get("poster_path"),
+                "vote_average": m.get("vote_average"),
+                date_key:       m.get(date_key, ""),
+                "media_type":   mtype,
+                "ai_reason":    reason,
+            }
         except Exception:
             return None
 
-    found = await asyncio.gather(*[tmdb_lookup(item) for item in suggestions[:8]])
+    async with httpx.AsyncClient(timeout=60) as h:
+        found = await asyncio.gather(*[tmdb_lookup(h, item) for item in suggestions[:8]])
     results = [r for r in found if r is not None]
 
     return {"movies": results, "debug_ai": suggestions}
