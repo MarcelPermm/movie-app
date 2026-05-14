@@ -122,7 +122,7 @@ def _sync_load(content: bytes) -> int:
                         batch.append((parts[0], float(parts[1]), int(parts[2])))
                     except Exception:
                         pass
-                if len(batch) >= 10_000:
+                if len(batch) >= 100_000:
                     with conn.cursor() as cur:
                         psycopg2.extras.execute_values(
                             cur,
