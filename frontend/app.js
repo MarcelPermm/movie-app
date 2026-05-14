@@ -1599,14 +1599,20 @@ async function loadSuggest() {
   const btn   = $("suggest-ask-btn");
   const hint  = $("suggest-hint");
   const grid  = $("suggest-grid");
+  const query = ($("suggest-input")?.value || "").trim();
 
   btn.disabled = true;
   btn.textContent = "✦ Думаю…";
-  hint.textContent = "AI анализирует твой вкус, обычно 5–10 секунд";
+  hint.textContent = query
+    ? "AI читает твой запрос, обычно 5–10 секунд…"
+    : "AI анализирует твою историю просмотров, обычно 5–10 секунд…";
   grid.innerHTML = '<div class="loader">Подбираем для тебя…</div>';
 
   try {
-    const data = await apiFetch("/ai/suggest");
+    const url = query
+      ? `/ai/suggest?query=${encodeURIComponent(query)}`
+      : "/ai/suggest";
+    const data = await apiFetch(url);
     const movies = data.movies || [];
     hint.textContent = movies.length
       ? `Нашёл ${movies.length} рекомендаций специально для тебя`

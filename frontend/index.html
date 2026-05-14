@@ -179,13 +179,19 @@
     <section class="tab" id="tab-suggest">
       <div class="section-header">
         <h2 class="section-title">✦ Посоветуй фильм</h2>
-        <p class="section-sub">AI подберёт фильмы и сериалы специально под твой вкус</p>
+        <p class="section-sub">Опиши что хочешь посмотреть — или просто нажми кнопку и AI подберёт по твоей истории</p>
       </div>
       <div class="suggest-wrap">
-        <button class="btn-primary suggest-ask-btn" id="suggest-ask-btn" onclick="loadSuggest()">
-          ✦ Подобрать для меня
-        </button>
-        <p class="suggest-hint" id="suggest-hint"></p>
+        <textarea
+          id="suggest-input"
+          class="suggest-input"
+          placeholder="Необязательно, но чем больше напишешь — тем точнее подбор. Например: хочу что-то тяжёлое про войну без хэппи-энда. Или: смешное на вечер с друзьями, не длиннее 2 часов..."
+          rows="4"
+        ></textarea>
+        <div class="suggest-actions">
+          <button class="btn-primary" id="suggest-ask-btn" onclick="loadSuggest()">✦ Подобрать</button>
+          <p class="suggest-hint" id="suggest-hint"></p>
+        </div>
       </div>
       <div class="movies-grid" id="suggest-grid"></div>
     </section>

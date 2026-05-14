@@ -987,7 +987,7 @@ async def analyze_profile(user_id: int = 1):
 
 
 @app.get("/ai/suggest")
-async def ai_suggest(user_id: int = 1):
+async def ai_suggest(user_id: int = 1, query: str = ""):
     api_key = os.getenv("CEREBRAS_API_KEY")
     if not api_key:
         raise HTTPException(status_code=503, detail="AI недоступен")
@@ -1016,7 +1016,22 @@ async def ai_suggest(user_id: int = 1):
     top_genres  = [name for name, _ in genre_cnt.most_common(5)]
     top_titles  = [m["title"] for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:6]]
 
-    prompt = f"""Ты эксперт по кино. Порекомендуй 8 фильмов или сериалов на основе вкусов пользователя.
+    if query:
+        prompt = f"""Ты эксперт по кино. Пользователь хочет что-то посмотреть и описал что именно:
+
+«{query}»
+
+Также учти его вкусы:
+- Любимые жанры: {", ".join(top_genres) if top_genres else "разные"}
+- Высоко оценил: {", ".join(top_titles) if top_titles else "пока нет"}
+
+Порекомендуй 8 фильмов или сериалов которые максимально подойдут под его запрос.
+Верни ТОЛЬКО JSON массив, без лишнего текста, без markdown:
+[{{"title": "Название на английском", "year": 2010, "type": "movie", "reason": "Одна фраза почему это подходит под запрос"}}, ...]
+
+type = "movie" или "tv". Только реально существующие известные фильмы/сериалы."""
+    else:
+        prompt = f"""Ты эксперт по кино. Порекомендуй 8 фильмов или сериалов на основе вкусов пользователя.
 
 Вкусы:
 - Любимые жанры: {", ".join(top_genres) if top_genres else "разные"}
@@ -1026,7 +1041,7 @@ async def ai_suggest(user_id: int = 1):
 Верни ТОЛЬКО JSON массив, без лишнего текста, без markdown:
 [{{"title": "Название на английском", "year": 2010, "type": "movie", "reason": "Одна фраза почему"}}, ...]
 
-type = "movie" или "tv". Рекомендуй только хорошо известные фильмы/сериалы."""
+type = "movie" или "tv". Только реально существующие известные фильмы/сериалы."""
 
     client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
 
