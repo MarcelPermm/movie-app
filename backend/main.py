@@ -61,6 +61,7 @@ TV_NETWORKS = [
 @app.on_event("startup")
 async def startup():
     database.init_db()
+    database.init_imdb_map_table()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -89,6 +90,58 @@ async def tmdb_get(path: str, **params) -> dict:
 
 
 # ─── Утилиты ──────────────────────────────────────────────────────────────────
+
+async def enrich_with_imdb(items: list, media_type: str = "movie", fetch_unknown: bool = False) -> list:
+    """Добавляет imdb_rating / imdb_vote_count к каждому фильму из кэша.
+    Если fetch_unknown=True — дополнительно запрашивает external_ids у TMDB
+    для новых фильмов (используется только для коротких списков ~20 штук).
+    """
+    if not items or not imdb_loader.has_imdb_data():
+        return items
+
+    tmdb_ids = [m["id"] for m in items]
+
+    # 1. Известные маппинги из кэша
+    known_map = database.get_imdb_mappings_batch(tmdb_ids, media_type)
+
+    # 2. Загружаем external_ids для незнакомых (только для коротких списков)
+    if fetch_unknown:
+        unknown_ids = [mid for mid in tmdb_ids if mid not in known_map]
+        if unknown_ids:
+            prefix = "/tv" if media_type == "tv" else "/movie"
+
+            async def _fetch_ext(mid: int):
+                try:
+                    data = await tmdb_get(f"{prefix}/{mid}/external_ids")
+                    iid  = data.get("imdb_id")
+                    if iid:
+                        database.save_imdb_mapping(mid, iid, media_type)
+                        return (mid, iid)
+                except Exception:
+                    pass
+                return (mid, None)
+
+            results = await asyncio.gather(*[_fetch_ext(mid) for mid in unknown_ids])
+            for tmdb_id, imdb_id in results:
+                if imdb_id:
+                    known_map[tmdb_id] = imdb_id
+
+    # 3. Батч-поиск рейтингов IMDb
+    imdb_ids   = list(set(known_map.values()))
+    imdb_stats = imdb_loader.get_imdb_stats_batch(imdb_ids)
+
+    # 4. Добавляем поля к каждому фильму
+    enriched = []
+    for item in items:
+        imdb_id = known_map.get(item["id"])
+        if imdb_id and imdb_id in imdb_stats:
+            stats = imdb_stats[imdb_id]
+            item  = {**item,
+                     "imdb_rating":     round(stats["rating"], 1),
+                     "imdb_vote_count": stats["vote_count"]}
+        enriched.append(item)
+    return enriched
+
 
 def normalize_tv(item: dict) -> dict:
     """Приводит поля сериала к единому формату с фильмом."""
@@ -175,10 +228,12 @@ async def popular_movies(media_type: str = "movie", user_id: int = 1):
         items = [normalize_tv(m) for m in items]
     watched_map   = database.get_watched_map(media_type, user_id)
     watchlist_ids = database.get_watchlist_ids(media_type, user_id)
-    return [{**m,
-             "is_watched":   m["id"] in watched_map,
-             "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
-             "is_watchlist": m["id"] in watchlist_ids} for m in items]
+    items = [{**m,
+              "is_watched":   m["id"] in watched_map,
+              "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
+              "is_watchlist": m["id"] in watchlist_ids} for m in items]
+    items = await enrich_with_imdb(items, media_type, fetch_unknown=True)
+    return items
 
 
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
@@ -223,11 +278,13 @@ async def movie_details(movie_id: int, media_type: str = "movie", user_id: int =
         out["episodes_count"] = details.get("number_of_episodes")
 
     imdb_id = ext_ids.get("imdb_id")
-    if imdb_id and imdb_loader.has_imdb_data():
-        imdb_stats = imdb_loader.get_imdb_stats_by_id(imdb_id)
-        if imdb_stats:
-            out["imdb_vote_count"] = int(imdb_stats["vote_count"])
-            out["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
+    if imdb_id:
+        database.save_imdb_mapping(movie_id, imdb_id, media_type)  # кэшируем маппинг
+        if imdb_loader.has_imdb_data():
+            imdb_stats = imdb_loader.get_imdb_stats_by_id(imdb_id)
+            if imdb_stats:
+                out["imdb_vote_count"] = int(imdb_stats["vote_count"])
+                out["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
 
     return out
 
@@ -767,6 +824,7 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
         dismissed_ids = dismissed_ids,
     )
 
+    recs = await enrich_with_imdb(recs, media_type, fetch_unknown=False)
     return recs
 
 

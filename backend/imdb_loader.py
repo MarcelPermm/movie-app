@@ -81,6 +81,28 @@ def has_imdb_data() -> bool:
         return False
 
 
+def get_imdb_stats_batch(imdb_ids: list) -> dict:
+    """Батч-поиск: {imdb_id: {rating, vote_count}} для всех переданных ID."""
+    if not imdb_ids:
+        return {}
+    try:
+        conn = _get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT imdb_id, rating, vote_count FROM imdb_ratings WHERE imdb_id = ANY(%s)",
+                    (imdb_ids,)
+                )
+                return {
+                    row["imdb_id"]: {"rating": float(row["rating"]), "vote_count": int(row["vote_count"])}
+                    for row in cur.fetchall()
+                }
+        finally:
+            conn.close()
+    except Exception:
+        return {}
+
+
 def get_imdb_stats_by_id(imdb_id: str) -> dict | None:
     """Прямой поиск по IMDb ID — точный, быстрый."""
     if not imdb_id:

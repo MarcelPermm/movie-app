@@ -26,6 +26,56 @@ def _get_conn():
     return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
+def init_imdb_map_table():
+    """Таблица кэша tmdb_id → imdb_id, заполняется при первом открытии деталей."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tmdb_imdb_map (
+                tmdb_id    INTEGER  NOT NULL,
+                media_type TEXT     NOT NULL DEFAULT 'movie',
+                imdb_id    TEXT     NOT NULL,
+                PRIMARY KEY (tmdb_id, media_type)
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_imdb_mapping(tmdb_id: int, imdb_id: str, media_type: str = "movie"):
+    if not imdb_id:
+        return
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO tmdb_imdb_map (tmdb_id, media_type, imdb_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (tmdb_id, media_type) DO NOTHING
+        """, (tmdb_id, media_type, imdb_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_imdb_mappings_batch(tmdb_ids: list, media_type: str = "movie") -> dict:
+    """Возвращает {tmdb_id: imdb_id} для известных маппингов."""
+    if not tmdb_ids:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT tmdb_id, imdb_id FROM tmdb_imdb_map WHERE tmdb_id = ANY(%s) AND media_type = %s",
+            (tmdb_ids, media_type)
+        )
+        return {row["tmdb_id"]: row["imdb_id"] for row in cur.fetchall()}
+    finally:
+        conn.close()
+
+
 def init_db():
     conn = _get_conn()
     try:
