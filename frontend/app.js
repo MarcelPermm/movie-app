@@ -1907,19 +1907,29 @@ function renderProfile(s, actorsData) {
   if (!s.total) {
     wrap.innerHTML = `
       <div class="profile-wrap">
-        <div class="profile-header">
-          <div class="profile-avatar">${initial}</div>
-          <div class="profile-info">
-            <div class="profile-name">${user.display_name}</div>
-            <div class="profile-sub">Ещё нет просмотренных фильмов</div>
+        <div class="profile-banner">
+          <div class="profile-banner-overlay"></div>
+          <div class="profile-banner-content">
+            <div class="profile-avatar">${initial}</div>
+            <div class="profile-banner-info">
+              <div class="profile-name">${user.display_name}</div>
+              <div class="profile-sub">Участник FilmByMihaylov</div>
+            </div>
           </div>
         </div>
-        <div class="empty-state"><span class="empty-icon">🎬</span><p>Отметь фильмы просмотренными, чтобы увидеть статистику</p></div>
+        <div class="empty-state" style="margin-top:40px"><span class="empty-icon">🎬</span><p>Отметь фильмы просмотренными, чтобы увидеть статистику</p></div>
       </div>`;
     return;
   }
 
-  // Рейтинговый чарт — стэк movie+tv
+  // Постеры для баннера
+  const bannerPosters = s.top_rated.slice(0, 6).map(m =>
+    m.poster
+      ? `<div class="profile-banner-poster" style="background-image:url('${TMDB_IMG}${m.poster}')"></div>`
+      : ""
+  ).join("");
+
+  // Рейтинговый чарт
   const maxRatingCount = Math.max(
     ...Array.from({length: 10}, (_, i) => {
       const d = s.rating_distribution[String(i + 1)] || {};
@@ -1938,7 +1948,7 @@ function renderProfile(s, actorsData) {
     return `
       <div class="rating-bar-wrap" data-mc="${mc}" data-tc="${tc}" data-num="${num}">
         ${total ? `<div class="rating-bar-cnt">${total}</div>` : ""}
-        <div class="rating-bar-stack" style="height:${Math.max(pct, total ? 3 : 0)}%">
+        <div class="rating-bar-stack" style="height:${Math.max(pct, total ? 4 : 0)}%">
           <div class="rating-bar tv"    style="height:${tvPct}%"></div>
           <div class="rating-bar movie" style="height:${moviePct}%"></div>
         </div>
@@ -1946,17 +1956,17 @@ function renderProfile(s, actorsData) {
       </div>`;
   }).join("");
 
-  // Жанры — split movie/tv с раздельными счётчиками
+  // Жанры
   const maxGenre = Math.max(...s.top_genres.map(g => g.total || 0), 1);
   const genresHTML = s.top_genres.map(g => {
-    const total   = g.total || 0;
-    const mc      = g.movie_count || 0;
-    const tc      = g.tv_count    || 0;
-    const barPct  = Math.round(total / maxGenre * 100);
+    const total    = g.total || 0;
+    const mc       = g.movie_count || 0;
+    const tc       = g.tv_count    || 0;
+    const barPct   = Math.round(total / maxGenre * 100);
     const moviePct = total ? Math.round(mc / total * 100) : 50;
     const tvPct    = 100 - moviePct;
     const mcLabel  = mc ? `<span class="genre-bar-count-movie">🎬 ${mc}</span>` : "";
-    const tcLabel  = tc ? `<span class="genre-bar-count-tv">📺 ${tc}</span>`    : "";
+    const tcLabel  = tc ? `<span class="genre-bar-count-tv">📺 ${tc}</span>` : "";
     return `
     <div class="genre-bar-row">
       <div class="genre-bar-label">
@@ -1970,13 +1980,13 @@ function renderProfile(s, actorsData) {
     </div>`;
   }).join("");
 
-  // Актёры с бейджами — из top-actors
+  // Актёры
   const actorsHTML = actors.map(a => {
     const img = a.profile_path
-      ? `<img class="profile-actor-photo" src="https://image.tmdb.org/t/p/w92${a.profile_path}" loading="lazy" />`
+      ? `<img class="profile-actor-photo" src="https://image.tmdb.org/t/p/w185${a.profile_path}" loading="lazy" />`
       : `<div class="profile-actor-no-photo">👤</div>`;
     const movieBadge = a.movie_count ? `<span class="badge-movie">🎬 ${a.movie_count}</span>` : "";
-    const tvBadge    = a.tv_count    ? `<span class="badge-tv">📺 ${a.tv_count}</span>`    : "";
+    const tvBadge    = a.tv_count    ? `<span class="badge-tv">📺 ${a.tv_count}</span>` : "";
     return `
     <div class="profile-actor-item" data-actor-id="${a.id || ""}">
       ${img}
@@ -1987,20 +1997,23 @@ function renderProfile(s, actorsData) {
     </div>`;
   }).join("");
 
-  // Режиссёры
-  const directorsHTML = s.top_directors.map(d => `
+  // Режиссёры с порядковым номером
+  const directorsHTML = s.top_directors.map((d, i) => `
     <div class="profile-list-item">
-      <span class="profile-list-name">🎬 ${d.name}</span>
+      <span class="profile-list-rank">${i + 1}</span>
+      <span class="profile-list-name">${d.name}</span>
       <span class="profile-list-badge">${d.count}</span>
     </div>`).join("");
 
-  // Топ фильмы
+  // Топ фильмы — горизонтальный скролл с постерами
   const topRatedHTML = s.top_rated.map(m => `
     <div class="profile-top-movie">
-      ${m.poster
-        ? `<img class="profile-top-poster" src="${TMDB_IMG}${m.poster}" loading="lazy" />`
-        : `<div class="profile-top-no-poster">🎬</div>`}
-      <div class="profile-top-rating">★ ${m.rating}</div>
+      <div class="profile-top-poster-wrap">
+        ${m.poster
+          ? `<img class="profile-top-poster" src="${TMDB_IMG}${m.poster}" loading="lazy" />`
+          : `<div class="profile-top-no-poster">🎬</div>`}
+        <div class="profile-top-rating">★ ${m.rating}</div>
+      </div>
     </div>`).join("");
 
   const legendHTML = `
@@ -2012,29 +2025,37 @@ function renderProfile(s, actorsData) {
   wrap.innerHTML = `
     <div class="profile-wrap">
 
-      <div class="profile-header">
-        <div class="profile-avatar">${initial}</div>
-        <div class="profile-info">
-          <div class="profile-name">${user.display_name}</div>
-          <div class="profile-sub">Участник FilmByMihaylov</div>
+      <div class="profile-banner">
+        <div class="profile-banner-bg">${bannerPosters}</div>
+        <div class="profile-banner-overlay"></div>
+        <div class="profile-banner-content">
+          <div class="profile-avatar">${initial}</div>
+          <div class="profile-banner-info">
+            <div class="profile-name">${user.display_name}</div>
+            <div class="profile-sub">Участник FilmByMihaylov</div>
+          </div>
         </div>
-        <div class="profile-nums">
-          <div class="profile-num">
-            <span class="profile-num-val">${s.movies}</span>
-            <span class="profile-num-lbl">Фильмов</span>
-          </div>
-          <div class="profile-num">
-            <span class="profile-num-val">${s.tv}</span>
-            <span class="profile-num-lbl">Сериалов</span>
-          </div>
-          <div class="profile-num">
-            <span class="profile-num-val">${s.avg_rating ?? "—"}</span>
-            <span class="profile-num-lbl">Средняя оценка</span>
-          </div>
-          <div class="profile-num">
-            <span class="profile-num-val">${s.rated_count}</span>
-            <span class="profile-num-lbl">Оценено</span>
-          </div>
+      </div>
+
+      <div class="profile-stats">
+        <div class="profile-stat">
+          <div class="profile-stat-val">${s.movies}</div>
+          <div class="profile-stat-lbl">Фильмов</div>
+        </div>
+        <div class="profile-stat-divider"></div>
+        <div class="profile-stat">
+          <div class="profile-stat-val">${s.tv}</div>
+          <div class="profile-stat-lbl">Сериалов</div>
+        </div>
+        <div class="profile-stat-divider"></div>
+        <div class="profile-stat">
+          <div class="profile-stat-val">${s.avg_rating ?? "—"}</div>
+          <div class="profile-stat-lbl">Средняя оценка</div>
+        </div>
+        <div class="profile-stat-divider"></div>
+        <div class="profile-stat">
+          <div class="profile-stat-val">${s.rated_count}</div>
+          <div class="profile-stat-lbl">Оценено</div>
         </div>
       </div>
 
@@ -2042,20 +2063,38 @@ function renderProfile(s, actorsData) {
 
         ${s.rated_count ? `
         <div class="profile-card">
-          <div class="profile-card-title">Распределение оценок ${legendHTML}</div>
-          <div class="rating-bars">${ratingBarsHTML}</div>
+          <div class="profile-card-title">Оценки ${legendHTML}</div>
+          ${s.avg_rating ? `
+          <div class="profile-avg-badge">
+            <div class="profile-avg-val">${s.avg_rating}</div>
+            <div class="profile-avg-sub">средняя оценка</div>
+          </div>` : ""}
+          <div class="rating-bars">
+            <div class="rating-bars-grid">
+              <div class="rating-grid-line"></div>
+              <div class="rating-grid-line"></div>
+              <div class="rating-grid-line"></div>
+            </div>
+            ${ratingBarsHTML}
+          </div>
         </div>` : ""}
 
         ${s.top_genres.length ? `
         <div class="profile-card">
-          <div class="profile-card-title">Любимые жанры ${legendHTML}</div>
+          <div class="profile-card-title">Жанры ${legendHTML}</div>
           <div class="genre-bars">${genresHTML}</div>
         </div>` : ""}
 
         ${actors.length ? `
-        <div class="profile-card">
+        <div class="profile-card profile-card-full">
           <div class="profile-card-title">Часто встречаемые актёры</div>
           <div class="profile-actors-list" id="profile-actors-list">${actorsHTML}</div>
+        </div>` : ""}
+
+        ${s.top_rated.length ? `
+        <div class="profile-card profile-card-full">
+          <div class="profile-card-title">Лучшие по твоей оценке</div>
+          <div class="profile-top-scroll">${topRatedHTML}</div>
         </div>` : ""}
 
         ${s.top_directors.length ? `
@@ -2064,13 +2103,7 @@ function renderProfile(s, actorsData) {
           <div class="profile-list">${directorsHTML}</div>
         </div>` : ""}
 
-        ${s.top_rated.length ? `
-        <div class="profile-card profile-card-full">
-          <div class="profile-card-title">Лучшие по твоей оценке</div>
-          <div class="profile-top-movies">${topRatedHTML}</div>
-        </div>` : ""}
-
-        <div class="profile-card profile-card-full">
+        <div class="profile-card ${s.top_directors.length ? "" : "profile-card-full"}">
           <div class="profile-card-title">Анализ вкуса — AI</div>
           <button class="claude-btn" id="claude-analyze-btn" onclick="analyzeWithClaude()">
             ✦ Проанализировать мой вкус
@@ -2099,7 +2132,7 @@ function renderProfile(s, actorsData) {
       barTooltip.innerHTML = `
         <div class="bar-tooltip-num">Оценка ${num}</div>
         ${mc ? `<div class="bar-tooltip-movie">🎬 Фильмы: <b>${mc}</b></div>` : ""}
-        ${tc ? `<div class="bar-tooltip-tv">📺 Сериалы: <b>${tc}</b></div>`   : ""}
+        ${tc ? `<div class="bar-tooltip-tv">📺 Сериалы: <b>${tc}</b></div>` : ""}
         <div class="bar-tooltip-total">Итого: ${total}</div>`;
       barTooltip.classList.add("visible");
     });
@@ -2112,7 +2145,7 @@ function renderProfile(s, actorsData) {
     });
   });
 
-  // Клики по актёрам — открываем персональный модал
+  // Клики по актёрам
   document.querySelectorAll(".profile-actor-item[data-actor-id]").forEach(el => {
     const actorId = parseInt(el.dataset.actorId);
     if (!actorId) return;
