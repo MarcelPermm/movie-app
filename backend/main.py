@@ -908,3 +908,80 @@ async def get_profile_stats(user_id: int = 1):
         "top_directors":       [{"name": n, "count": c} for n, c in Counter(all_directors).most_common(6)],
         "top_rated":           [{"title": m["title"], "rating": m["user_rating"], "poster": m.get("poster_path")} for m in top_rated],
     }
+
+
+@app.get("/profile/analyze")
+async def analyze_profile(user_id: int = 1):
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI анализ временно недоступен")
+
+    from collections import Counter
+    from openai import AsyncOpenAI
+
+    movies = database.get_watched("movie", user_id)
+    tv     = database.get_watched("tv",    user_id)
+    all_watched = movies + tv
+
+    if len(all_watched) < 3:
+        raise HTTPException(status_code=400, detail="Отметь хотя бы 3 фильма, чтобы получить анализ")
+
+    # Собираем данные для промпта
+    all_rated = [m for m in all_watched if m.get("user_rating") is not None]
+    avg_rating = round(sum(m["user_rating"] for m in all_rated) / len(all_rated), 1) if all_rated else None
+
+    def genre_name(g):
+        if isinstance(g, str):  return g
+        if isinstance(g, dict): return g.get("name", "")
+        return ""
+
+    genre_cnt = Counter(genre_name(g) for m in all_watched for g in (m.get("genres") or []) if genre_name(g))
+    top_genres = [f"{name} ({cnt})" for name, cnt in genre_cnt.most_common(6)]
+
+    director_cnt = Counter(m["director"] for m in all_watched if m.get("director"))
+    top_directors = [f"{name} ({cnt})" for name, cnt in director_cnt.most_common(4)]
+
+    top_rated_titles = [
+        f"{m['title']} — {m['user_rating']}/10"
+        for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:8]
+    ]
+    low_rated_titles = [
+        f"{m['title']} — {m['user_rating']}/10"
+        for m in sorted(all_rated, key=lambda x: x["user_rating"])[:4]
+        if m["user_rating"] <= 5
+    ]
+
+    prompt = f"""Ты — кинокритик и аналитик вкусов. Проанализируй кинематографические предпочтения пользователя на основе его статистики.
+
+Статистика пользователя:
+- Просмотрено фильмов: {len(movies)}, сериалов: {len(tv)}
+- Оценено: {len(all_rated)} из {len(all_watched)}
+- Средняя оценка: {avg_rating or "нет оценок"}
+- Любимые жанры: {", ".join(top_genres) if top_genres else "нет данных"}
+- Любимые режиссёры: {", ".join(top_directors) if top_directors else "нет данных"}
+- Высокие оценки (топ): {", ".join(top_rated_titles) if top_rated_titles else "нет"}
+- Низкие оценки: {", ".join(low_rated_titles) if low_rated_titles else "нет"}
+
+Напиши персональный анализ вкуса на русском языке. 3-4 абзаца:
+1. Какой у пользователя кинематографический вкус — что он любит и ценит
+2. Какие паттерны прослеживаются в его оценках
+3. Что можно порекомендовать исходя из вкусов
+
+Пиши живо, как будто общаешься с человеком. Без списков — только текст."""
+
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://api.cerebras.ai/v1"
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model="llama-3.3-70b",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.8,
+        )
+        analysis = response.choices[0].message.content.strip()
+        return {"analysis": analysis}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
