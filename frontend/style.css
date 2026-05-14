@@ -436,8 +436,9 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 2px;
   transition: opacity var(--transition), transform var(--transition);
 }
-.auth-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.auth-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
 .auth-btn:active { transform: none; }
+.auth-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 .auth-error { font-size: 13px; color: var(--red); text-align: center; min-height: 16px; }
 
 /* ─── User badge (header) ─────────────────────────────────── */

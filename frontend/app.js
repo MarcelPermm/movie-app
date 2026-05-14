@@ -1321,17 +1321,38 @@ function switchAuthTab(tab) {
   $("auth-reg-error").textContent   = "";
 }
 
+async function authFetch(path, body) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 70_000); // 70 сек — ждём холодный старт Render
+  try {
+    const resp = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    return resp;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === "AbortError") throw new Error("timeout");
+    throw err;
+  }
+}
+
 async function authLogin() {
   const username = $("auth-username-input").value.trim();
   const errEl    = $("auth-login-error");
+  const btn      = document.querySelector("#auth-login-form .auth-btn");
   errEl.textContent = "";
   if (!username) { errEl.textContent = "Введи логин"; return; }
+
+  btn.disabled = true;
+  btn.textContent = "Подключаемся…";
+  errEl.textContent = "⏳ Сервер просыпается, подожди до 60 сек…";
+
   try {
-    const resp = await fetch(`${API}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username }),
-    });
+    const resp = await authFetch("/auth/login", { username });
     if (!resp.ok) {
       const e = await resp.json().catch(() => ({}));
       errEl.textContent = e.detail || "Пользователь не найден";
@@ -1342,8 +1363,13 @@ async function authLogin() {
     $("auth-overlay").classList.remove("visible");
     toast(`Привет, ${user.display_name}! 👋`, "success");
     init();
-  } catch {
-    errEl.textContent = "Ошибка подключения к серверу";
+  } catch (err) {
+    errEl.textContent = err.message === "timeout"
+      ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
+      : "Не удалось подключиться к серверу";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Войти";
   }
 }
 
@@ -1351,15 +1377,17 @@ async function authRegister() {
   const username = $("auth-reg-username").value.trim();
   const display  = $("auth-reg-display").value.trim();
   const errEl    = $("auth-reg-error");
+  const btn      = document.querySelector("#auth-register-form .auth-btn");
   errEl.textContent = "";
   if (!username) { errEl.textContent = "Введи логин"; return; }
   if (!display)  { errEl.textContent = "Введи своё имя"; return; }
+
+  btn.disabled = true;
+  btn.textContent = "Подключаемся…";
+  errEl.textContent = "⏳ Сервер просыпается, подожди до 60 сек…";
+
   try {
-    const resp = await fetch(`${API}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, display_name: display }),
-    });
+    const resp = await authFetch("/auth/register", { username, display_name: display });
     if (!resp.ok) {
       const e = await resp.json().catch(() => ({}));
       errEl.textContent = e.detail || "Ошибка регистрации";
@@ -1370,8 +1398,13 @@ async function authRegister() {
     $("auth-overlay").classList.remove("visible");
     toast(`Добро пожаловать, ${user.display_name}! 🎬`, "success");
     init();
-  } catch {
-    errEl.textContent = "Ошибка подключения к серверу";
+  } catch (err) {
+    errEl.textContent = err.message === "timeout"
+      ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
+      : "Не удалось подключиться к серверу";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Зарегистрироваться";
   }
 }
 
