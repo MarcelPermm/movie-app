@@ -88,6 +88,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (tab === "watchlist") loadWatchlist();
     if (tab === "dismissed") loadDismissed();
     if (tab === "actors")    loadActors();
+    if (tab === "profile")   loadProfile();
   });
 });
 
@@ -1572,6 +1573,181 @@ async function loadDismissed() {
     renderDismissed(items);
   } catch {
     $("dismissed-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
+}
+
+// ─── Профиль ───────────────────────────────────────────────────────────────
+
+async function loadProfile() {
+  const wrap = $("profile-content");
+  wrap.innerHTML = '<div class="loader">Загружаем профиль…</div>';
+  try {
+    const s = await apiFetch("/profile/stats");
+    renderProfile(s);
+  } catch {
+    wrap.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки профиля</p></div>`;
+  }
+}
+
+function renderProfile(s) {
+  const wrap = $("profile-content");
+  const user = state.user || { display_name: "Пользователь" };
+  const initial = user.display_name?.[0]?.toUpperCase() || "?";
+
+  if (!s.total) {
+    wrap.innerHTML = `
+      <div class="profile-wrap">
+        <div class="profile-header">
+          <div class="profile-avatar">${initial}</div>
+          <div class="profile-info">
+            <div class="profile-name">${user.display_name}</div>
+            <div class="profile-sub">Ещё нет просмотренных фильмов</div>
+          </div>
+        </div>
+        <div class="empty-state"><span class="empty-icon">🎬</span><p>Отметь фильмы просмотренными, чтобы увидеть статистику</p></div>
+      </div>`;
+    return;
+  }
+
+  // Рейтинговый чарт
+  const maxRatingCount = Math.max(...Object.values(s.rating_distribution).map(Number), 1);
+  const ratingBarsHTML = Array.from({length: 10}, (_, i) => {
+    const num = i + 1;
+    const cnt = s.rating_distribution[String(num)] || 0;
+    const pct = Math.round((cnt / maxRatingCount) * 100);
+    return `
+      <div class="rating-bar-wrap">
+        ${cnt ? `<div class="rating-bar-cnt">${cnt}</div>` : ""}
+        <div class="rating-bar" style="height:${Math.max(pct, cnt ? 4 : 0)}%"></div>
+        <div class="rating-bar-num">${num}</div>
+      </div>`;
+  }).join("");
+
+  // Жанры
+  const maxGenre = s.top_genres[0]?.count || 1;
+  const genresHTML = s.top_genres.map(g => `
+    <div class="genre-bar-row">
+      <div class="genre-bar-label">
+        <span>${g.name}</span>
+        <span class="genre-bar-count">${g.count}</span>
+      </div>
+      <div class="genre-bar-track">
+        <div class="genre-bar-fill" style="width:${Math.round(g.count/maxGenre*100)}%"></div>
+      </div>
+    </div>`).join("");
+
+  // Актёры
+  const actorsHTML = s.top_actors.map(a => `
+    <div class="profile-list-item">
+      <span class="profile-list-name">👤 ${a.name}</span>
+      <span class="profile-list-badge">${a.count}</span>
+    </div>`).join("");
+
+  // Режиссёры
+  const directorsHTML = s.top_directors.map(d => `
+    <div class="profile-list-item">
+      <span class="profile-list-name">🎬 ${d.name}</span>
+      <span class="profile-list-badge">${d.count}</span>
+    </div>`).join("");
+
+  // Топ фильмы
+  const topRatedHTML = s.top_rated.map(m => `
+    <div class="profile-top-movie">
+      ${m.poster
+        ? `<img class="profile-top-poster" src="${TMDB_IMG}${m.poster}" loading="lazy" />`
+        : `<div class="profile-top-no-poster">🎬</div>`}
+      <div class="profile-top-rating">★ ${m.rating}</div>
+    </div>`).join("");
+
+  wrap.innerHTML = `
+    <div class="profile-wrap">
+
+      <div class="profile-header">
+        <div class="profile-avatar">${initial}</div>
+        <div class="profile-info">
+          <div class="profile-name">${user.display_name}</div>
+          <div class="profile-sub">Участник FilmByMihaylov</div>
+        </div>
+        <div class="profile-nums">
+          <div class="profile-num">
+            <span class="profile-num-val">${s.movies}</span>
+            <span class="profile-num-lbl">Фильмов</span>
+          </div>
+          <div class="profile-num">
+            <span class="profile-num-val">${s.tv}</span>
+            <span class="profile-num-lbl">Сериалов</span>
+          </div>
+          <div class="profile-num">
+            <span class="profile-num-val">${s.avg_rating ?? "—"}</span>
+            <span class="profile-num-lbl">Средняя оценка</span>
+          </div>
+          <div class="profile-num">
+            <span class="profile-num-val">${s.rated_count}</span>
+            <span class="profile-num-lbl">Оценено</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-grid">
+
+        ${s.rated_count ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Распределение оценок</div>
+          <div class="rating-bars">${ratingBarsHTML}</div>
+        </div>` : ""}
+
+        ${s.top_genres.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Любимые жанры</div>
+          <div class="genre-bars">${genresHTML}</div>
+        </div>` : ""}
+
+        ${s.top_actors.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Часто встречаемые актёры</div>
+          <div class="profile-list">${actorsHTML}</div>
+        </div>` : ""}
+
+        ${s.top_directors.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Режиссёры</div>
+          <div class="profile-list">${directorsHTML}</div>
+        </div>` : ""}
+
+        ${s.top_rated.length ? `
+        <div class="profile-card profile-card-full">
+          <div class="profile-card-title">Лучшие по твоей оценке</div>
+          <div class="profile-top-movies">${topRatedHTML}</div>
+        </div>` : ""}
+
+        <div class="profile-card profile-card-full">
+          <div class="profile-card-title">Анализ вкуса — AI</div>
+          <button class="claude-btn" id="claude-analyze-btn" onclick="analyzeWithClaude()">
+            ✦ Проанализировать мой вкус
+          </button>
+          <div class="claude-result" id="claude-result" style="display:none"></div>
+        </div>
+
+      </div>
+    </div>`;
+}
+
+async function analyzeWithClaude() {
+  const btn = $("claude-analyze-btn");
+  const res = $("claude-result");
+  btn.disabled = true;
+  btn.textContent = "Анализируем…";
+  res.style.display = "none";
+  try {
+    const data = await apiFetch("/profile/analyze");
+    res.textContent = data.analysis;
+    res.style.display = "block";
+  } catch (err) {
+    res.textContent = err?.detail || "Функция временно недоступна";
+    res.style.display = "block";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✦ Проанализировать мой вкус";
   }
 }
 

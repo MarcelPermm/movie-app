@@ -831,3 +831,50 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"message": "Movie Recommender API работает!"}
+
+
+# ─── Профиль / статистика ─────────────────────────────────────────────────────
+
+@app.get("/profile/stats")
+async def get_profile_stats(user_id: int = 1):
+    from collections import Counter
+
+    movies = database.get_watched("movie", user_id)
+    tv     = database.get_watched("tv",    user_id)
+    all_watched = movies + tv
+
+    if not all_watched:
+        return {"total": 0, "movies": 0, "tv": 0}
+
+    def genre_name(g):
+        if isinstance(g, str):  return g
+        if isinstance(g, dict): return g.get("name", "")
+        return ""
+
+    all_genres    = [genre_name(g) for m in all_watched for g in (m.get("genres") or []) if genre_name(g)]
+    all_actors    = [a for m in all_watched for a in (m.get("cast_names") or []) if a]
+    all_directors = [m["director"] for m in all_watched if m.get("director")]
+
+    rated     = [m for m in all_watched if m.get("user_rating") is not None]
+    avg_rating = round(sum(m["user_rating"] for m in rated) / len(rated), 1) if rated else None
+
+    rating_dist = {str(i): sum(1 for m in rated if m["user_rating"] == i) for i in range(1, 11)}
+
+    # Топ просмотренных по оценке пользователя
+    top_rated = sorted(
+        [m for m in all_watched if m.get("user_rating") is not None],
+        key=lambda x: x["user_rating"], reverse=True
+    )[:6]
+
+    return {
+        "total":              len(all_watched),
+        "movies":             len(movies),
+        "tv":                 len(tv),
+        "rated_count":        len(rated),
+        "avg_rating":         avg_rating,
+        "rating_distribution": rating_dist,
+        "top_genres":    [{"name": n, "count": c} for n, c in Counter(all_genres).most_common(8)],
+        "top_actors":    [{"name": n, "count": c} for n, c in Counter(all_actors).most_common(10)],
+        "top_directors": [{"name": n, "count": c} for n, c in Counter(all_directors).most_common(6)],
+        "top_rated":     [{"title": m["title"], "rating": m["user_rating"], "poster": m.get("poster_path")} for m in top_rated],
+    }
