@@ -1054,10 +1054,10 @@ IMPORTANT RULES:
 Example output:
 {example}"""
 
-    client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+    ai_client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
 
     try:
-        response = await client.chat.completions.create(
+        response = await ai_client.chat.completions.create(
             model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=900,
@@ -1065,85 +1065,70 @@ Example output:
         )
         raw = response.choices[0].message.content.strip()
 
-        # Убираем markdown code blocks если модель их добавила
+        # Убираем markdown code blocks
         raw = re.sub(r'^```[a-z]*\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
         raw = raw.strip()
 
-        # Вытаскиваем JSON массив из ответа
         json_match = re.search(r'\[.*\]', raw, re.DOTALL)
         if not json_match:
-            raise ValueError(f"Нет JSON в ответе. Ответ модели: {raw[:200]}")
+            raise HTTPException(status_code=503, detail=f"AI не вернул JSON. Ответ: {raw[:300]}")
         suggestions = json.loads(json_match.group())
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
 
-    # Ищем каждый фильм в TMDB по оригинальному названию
-    results = []
-    async with httpx.AsyncClient(timeout=10) as client_http:
-        for item in suggestions[:8]:
-            title  = item.get("title", "").strip()
-            year   = item.get("year")
-            mtype  = item.get("type", "movie")
-            reason = item.get("reason", "")
-            if not title:
-                continue
-            try:
-                # Ищем без language чтобы матч шёл по оригинальному названию,
-                # но возвращаем данные с русскими названиями отдельным запросом
-                if mtype == "tv":
-                    # Попытка 1: с годом
-                    params = {"api_key": TMDB_KEY, "query": title}
-                    if year: params["first_air_date_year"] = year
-                    r = await client_http.get(f"{TMDB_BASE}/search/tv", params=params)
-                    items = r.json().get("results", [])
-                    # Попытка 2: без года если не нашли
-                    if not items and year:
-                        params.pop("first_air_date_year", None)
-                        r = await client_http.get(f"{TMDB_BASE}/search/tv", params=params)
-                        items = r.json().get("results", [])
-                    if items:
-                        m = items[0]
-                        # Получаем русское название
-                        ru = await client_http.get(f"{TMDB_BASE}/tv/{m['id']}", params={"api_key": TMDB_KEY, "language": "ru-RU"})
-                        ru_data = ru.json()
-                        tmdb_id = m["id"]
-                        if tmdb_id not in watched_ids:
-                            results.append({
-                                "id": tmdb_id,
-                                "title": ru_data.get("name") or m.get("name", title),
-                                "poster_path": m.get("poster_path"),
-                                "vote_average": m.get("vote_average"),
-                                "first_air_date": m.get("first_air_date", ""),
-                                "media_type": "tv", "ai_reason": reason,
-                            })
-                else:
-                    # Попытка 1: с годом
-                    params = {"api_key": TMDB_KEY, "query": title}
-                    if year: params["year"] = year
-                    r = await client_http.get(f"{TMDB_BASE}/search/movie", params=params)
-                    items = r.json().get("results", [])
-                    # Попытка 2: без года если не нашли
-                    if not items and year:
-                        params.pop("year", None)
-                        r = await client_http.get(f"{TMDB_BASE}/search/movie", params=params)
-                        items = r.json().get("results", [])
-                    if items:
-                        m = items[0]
-                        # Получаем русское название
-                        ru = await client_http.get(f"{TMDB_BASE}/movie/{m['id']}", params={"api_key": TMDB_KEY, "language": "ru-RU"})
-                        ru_data = ru.json()
-                        tmdb_id = m["id"]
-                        if tmdb_id not in watched_ids:
-                            results.append({
-                                "id": tmdb_id,
-                                "title": ru_data.get("title") or m.get("title", title),
-                                "poster_path": m.get("poster_path"),
-                                "vote_average": m.get("vote_average"),
-                                "release_date": m.get("release_date", ""),
-                                "media_type": "movie", "ai_reason": reason,
-                            })
-            except Exception:
-                continue
+    # Ищем все фильмы параллельно — один запрос на фильм с language=ru-RU
+    # TMDB ищет по оригинальному названию, возвращает русский перевод
+    async def tmdb_lookup(item):
+        title  = item.get("title", "").strip()
+        year   = item.get("year")
+        mtype  = item.get("type", "movie")
+        reason = item.get("reason", "")
+        if not title:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=15) as h:
+                endpoint = "tv" if mtype == "tv" else "movie"
+                year_key = "first_air_date_year" if mtype == "tv" else "year"
+                name_key = "name" if mtype == "tv" else "title"
+                date_key = "first_air_date" if mtype == "tv" else "release_date"
 
-    return {"movies": results}
+                # Попытка 1: с годом
+                params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+                if year:
+                    params[year_key] = year
+                r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
+                items = r.json().get("results", [])
+
+                # Попытка 2: без года
+                if not items and year:
+                    params.pop(year_key, None)
+                    r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
+                    items = r.json().get("results", [])
+
+                if not items:
+                    return None
+
+                m = items[0]
+                tmdb_id = m["id"]
+                if tmdb_id in watched_ids:
+                    return None
+
+                return {
+                    "id":           tmdb_id,
+                    "title":        m.get(name_key, title),
+                    "poster_path":  m.get("poster_path"),
+                    "vote_average": m.get("vote_average"),
+                    date_key:       m.get(date_key, ""),
+                    "media_type":   mtype,
+                    "ai_reason":    reason,
+                }
+        except Exception:
+            return None
+
+    found = await asyncio.gather(*[tmdb_lookup(item) for item in suggestions[:8]])
+    results = [r for r in found if r is not None]
+
+    return {"movies": results, "debug_ai": suggestions}

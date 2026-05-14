@@ -1614,14 +1614,15 @@ async function loadSuggest() {
       : "/ai/suggest";
     const data = await apiFetch(url);
     const movies = data.movies || [];
-    hint.textContent = movies.length
-      ? `Нашёл ${movies.length} рекомендаций специально для тебя`
-      : "Не удалось подобрать — попробуй позже";
-
     if (!movies.length) {
-      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Ничего не нашлось, попробуй ещё раз</p></div>`;
+      const aiTitles = (data.debug_ai || []).map(x => x.title).join(", ");
+      hint.textContent = aiTitles
+        ? `AI предложил: ${aiTitles} — но TMDB не нашёл эти фильмы`
+        : "AI не вернул рекомендации, попробуй ещё раз";
+      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Ничего не нашлось в базе TMDB. Попробуй ещё раз — AI иногда предлагает разное</p></div>`;
       return;
     }
+    hint.textContent = `Нашёл ${movies.length} рекомендаций специально для тебя`;
 
     grid.innerHTML = "";
     movies.forEach((movie, i) => {
