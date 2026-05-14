@@ -14,10 +14,6 @@
   <header class="header">
     <div class="header-top">
       <div class="logo"><span class="logo-icon">◈</span><span class="logo-text" id="logo-text">FilmByMihaylov</span></div>
-      <div class="mode-switcher">
-        <button class="mode-btn active" data-mode="movie">🎬 Фильмы</button>
-        <button class="mode-btn" data-mode="tv">📺 Сериалы</button>
-      </div>
       <div class="user-badge" id="user-badge">
         <span class="user-name" id="user-name"></span>
         <button class="user-logout-btn" onclick="authLogout()">Выйти</button>
@@ -90,8 +86,14 @@
 
     <section class="tab" id="tab-watched">
       <div class="section-header">
-        <h2 class="section-title">Просмотренное</h2>
-        <p class="section-sub">Фильмы которые ты уже посмотрел</p>
+        <div class="section-title-row">
+          <h2 class="section-title">Просмотренное</h2>
+          <div class="tab-mode-toggle" data-toggle="watched">
+            <button class="tab-mode-btn active" data-mode="movie">🎬 Фильмы</button>
+            <button class="tab-mode-btn" data-mode="tv">📺 Сериалы</button>
+          </div>
+        </div>
+        <p class="section-sub" id="watched-sub">Фильмы которые ты уже посмотрел</p>
         <div class="watched-filters">
           <input type="text" id="watched-search" class="filter-input" placeholder="🔍 Поиск по названию…" />
           <select class="filter-select" id="watched-rating-filter">
@@ -117,8 +119,14 @@
 
     <section class="tab" id="tab-watchlist">
       <div class="section-header">
-        <h2 class="section-title">К просмотру</h2>
-        <p class="section-sub">Фильмы которые хочешь посмотреть позже</p>
+        <div class="section-title-row">
+          <h2 class="section-title">К просмотру</h2>
+          <div class="tab-mode-toggle" data-toggle="watchlist">
+            <button class="tab-mode-btn active" data-mode="movie">🎬 Фильмы</button>
+            <button class="tab-mode-btn" data-mode="tv">📺 Сериалы</button>
+          </div>
+        </div>
+        <p class="section-sub" id="watchlist-sub">Фильмы которые хочешь посмотреть позже</p>
       </div>
       <div class="movies-grid" id="watchlist-grid">
         <div class="empty-state"><span class="empty-icon">🕐</span><p>Список пуст</p></div>
@@ -127,7 +135,13 @@
 
     <section class="tab" id="tab-dismissed">
       <div class="section-header">
-        <h2 class="section-title">Отклонённые</h2>
+        <div class="section-title-row">
+          <h2 class="section-title">Отклонённые</h2>
+          <div class="tab-mode-toggle" data-toggle="dismissed">
+            <button class="tab-mode-btn active" data-mode="movie">🎬 Фильмы</button>
+            <button class="tab-mode-btn" data-mode="tv">📺 Сериалы</button>
+          </div>
+        </div>
         <p class="section-sub">Фильмы которые ты скрыл из рекомендаций. Нажми ↩ чтобы вернуть.</p>
       </div>
       <div class="movies-grid" id="dismissed-grid">
@@ -147,8 +161,14 @@
 
     <section class="tab" id="tab-recommendations">
       <div class="section-header">
-        <h2 class="section-title">Для тебя</h2>
-        <p class="section-sub">Подобрано на основе твоих оценок · до 2000 фильмов</p>
+        <div class="section-title-row">
+          <h2 class="section-title">Для тебя</h2>
+          <div class="tab-mode-toggle" data-toggle="recs">
+            <button class="tab-mode-btn active" data-mode="movie">🎬 Фильмы</button>
+            <button class="tab-mode-btn" data-mode="tv">📺 Сериалы</button>
+          </div>
+        </div>
+        <p class="section-sub" id="recs-sub">Подобрано на основе твоих оценок · до 2000 фильмов</p>
         <div class="recs-controls">
           <div class="recs-top-row">
             <button class="btn-primary" id="get-recs-btn">✦ Подобрать фильмы</button>
