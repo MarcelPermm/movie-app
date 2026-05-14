@@ -665,8 +665,11 @@ async function openMovieModal(movie, isBack = false) {
   $("similar-section").style.display = "none";
   $("modal-content").innerHTML = `<div style="height:400px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
 
+  // Приоритет: явный _mediaType (из pushModal), потом media_type объекта, потом текущая вкладка
+  const mediaType = movie._mediaType || movie.media_type || state.mediaType;
+
   try {
-    const details = await apiFetch(`/movie/${movie.id || movie.movie_id}/details?media_type=${state.mediaType}`);
+    const details = await apiFetch(`/movie/${movie.id || movie.movie_id}/details?media_type=${mediaType}`);
     renderMovieContent(details);
     if (isBack) $("modal").scrollTop = state.modalStack[state.modalStack.length - 1]?.scrollTop || 0;
   } catch {
@@ -1134,18 +1137,22 @@ function renderMoviesInline(container, movies) {
         ${cardRatingsHTML(movie)}
       </div>
     `;
+    const itemMediaType = movie.media_type || state.mediaType;
+
     card.addEventListener("click", e => {
       if (e.target.closest(".watched-btn,.watch-btn")) return;
-      pushModal({ type: "movie", data: movie });
-      openMovieModal(movie);
+      // Сохраняем media_type в объекте для корректного открытия (сериал vs фильм)
+      const movieWithType = { ...movie, _mediaType: itemMediaType };
+      pushModal({ type: "movie", data: movieWithType });
+      openMovieModal(movieWithType);
     });
     card.querySelector(".watched-btn").addEventListener("click", e => {
       e.stopPropagation();
-      toggleWatched(movieId, card.querySelector(".watched-btn"));
+      toggleWatched(movieId, card.querySelector(".watched-btn"), null, itemMediaType);
     });
     card.querySelector(".watch-btn").addEventListener("click", e => {
       e.stopPropagation();
-      toggleWatchlist(movieId, card.querySelector(".watch-btn"));
+      toggleWatchlist(movieId, card.querySelector(".watch-btn"), null, itemMediaType);
     });
     container.appendChild(card);
   });
@@ -1166,17 +1173,18 @@ $("modal-overlay").addEventListener("click", e => { if (e.target === $("modal-ov
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 
 // ─── Просмотрено ───────────────────────────────────────────────────────────
-async function toggleWatched(movieId, btn, containerToRefresh = null) {
+async function toggleWatched(movieId, btn, containerToRefresh = null, mediaType = null) {
+  const mt = mediaType || state.mediaType;
   const isWatched = state.watched.has(movieId);
   try {
     if (isWatched) {
-      await apiFetch(`/watched/${movieId}?media_type=${state.mediaType}`, { method: "DELETE" });
+      await apiFetch(`/watched/${movieId}?media_type=${mt}`, { method: "DELETE" });
       state.watched.delete(movieId);
       btn.classList.remove("is-watched");
       toast("Убрано из просмотренного");
       if (containerToRefresh) animateRemove(btn.closest(".movie-card"), () => loadWatched());
     } else {
-      await apiFetch("/watched", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: state.mediaType }) });
+      await apiFetch("/watched", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: mt }) });
       state.watched.set(movieId, null);
       btn.classList.add("is-watched");
       toast("Добавлено в просмотренное ✓", "success");
@@ -1186,16 +1194,17 @@ async function toggleWatched(movieId, btn, containerToRefresh = null) {
 }
 
 // ─── К просмотру ───────────────────────────────────────────────────────────
-async function toggleWatchlist(movieId, btn, containerToRefresh = null) {
+async function toggleWatchlist(movieId, btn, containerToRefresh = null, mediaType = null) {
+  const mt = mediaType || state.mediaType;
   const isWatch = state.watchlist.has(movieId);
   try {
     if (isWatch) {
-      await apiFetch(`/watchlist/${movieId}?media_type=${state.mediaType}`, { method: "DELETE" });
+      await apiFetch(`/watchlist/${movieId}?media_type=${mt}`, { method: "DELETE" });
       state.watchlist.delete(movieId); btn.classList.remove("is-watch");
       toast("Удалено из списка");
       if (containerToRefresh) animateRemove(btn.closest(".movie-card"), () => loadWatchlist());
     } else {
-      await apiFetch("/watchlist", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: state.mediaType }) });
+      await apiFetch("/watchlist", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: mt }) });
       state.watchlist.add(movieId); btn.classList.add("is-watch");
       toast("Добавлено в список 🕐", "success");
     }
