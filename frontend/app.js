@@ -84,6 +84,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     btn.classList.add("active");
     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
     $(`tab-${tab}`).classList.add("active");
+    if (tab === "discover")  { $("home-content").style.display = ""; $("search-content").style.display = "none"; }
     if (tab === "watched")   loadWatched();
     if (tab === "watchlist") loadWatchlist();
     if (tab === "dismissed") loadDismissed();
@@ -122,7 +123,8 @@ document.querySelectorAll(".mode-btn").forEach(btn => {
 
     // Перезагружаем данные для нового режима
     reloadAllCounts();
-    loadPopular();
+    $("search-input").value = "";
+    loadHomepage();
 
     // Перегружаем жанры для нового режима
     apiFetch(`/genres?media_type=${mode}`).then(list => {
@@ -169,12 +171,28 @@ async function reloadAllCounts() {
 
 // ─── Поиск ─────────────────────────────────────────────────────────────────
 $("search-btn").addEventListener("click", doSearch);
-$("search-input").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+$("search-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") doSearch();
+  if (e.key === "Escape") {
+    e.currentTarget.value = "";
+    $("home-content").style.display = "";
+    $("search-content").style.display = "none";
+    e.currentTarget.blur();
+  }
+});
 
 async function doSearch() {
   const query = $("search-input").value.trim();
-  if (!query) return;
+  if (!query) {
+    // Если запрос пустой — возвращаемся на главную
+    $("home-content").style.display = "";
+    $("search-content").style.display = "none";
+    return;
+  }
   document.querySelector('[data-tab="discover"]').click();
+  // Показываем поиск, скрываем главную
+  $("home-content").style.display = "none";
+  $("search-content").style.display = "";
   $("discover-title").textContent = `Результаты: «${query}»`;
   $("movies-grid").innerHTML = '<div class="loader">Ищем…</div>';
   try {
@@ -247,17 +265,206 @@ function renderSearchResults(container, movies, people) {
   }
 }
 
-// ─── Популярные ────────────────────────────────────────────────────────────
-async function loadPopular() {
-  const label = state.mediaType === "tv" ? "сериалы" : "фильмы";
-  $("movies-grid").innerHTML = `<div class="loader">Загружаем ${label}…</div>`;
-  $("discover-title").textContent = state.mediaType === "tv" ? "Популярные сериалы" : "Популярные фильмы";
+// ─── Главная страница ──────────────────────────────────────────────────────
+async function loadHomepage() {
+  // Убедимся что показываем home-content
+  $("home-content").style.display = "";
+  $("search-content").style.display = "none";
+
+  // Показываем скелетон
+  $("home-hero").innerHTML = `<div style="height:480px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
+  $("scroll-movies").innerHTML = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+  $("scroll-tv").innerHTML     = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+
   try {
-    const movies = await apiFetch(mtq("/popular"));
-    renderMovies($("movies-grid"), movies, "discover");
+    const [movies, tvShows] = await Promise.all([
+      apiFetch("/popular?media_type=movie"),
+      apiFetch("/popular?media_type=tv"),
+    ]);
+
+    // Герой — первый фильм из популярных
+    if (movies?.length) renderHero(movies[0]);
+    else $("home-hero").innerHTML = "";
+
+    // Ряды
+    renderScrollRow("scroll-movies", movies || [], "movie");
+    renderScrollRow("scroll-tv",     tvShows || [], "tv");
+
+    // Стрелки
+    attachScrollArrows("movies");
+    attachScrollArrows("tv");
+
+    // Ряд рекомендаций — показываем только если есть просмотренные
+    if (state.watched.size > 0) {
+      $("home-row-recs").style.display = "";
+      try {
+        const recs = await apiFetch("/recommendations?media_type=movie");
+        if (recs?.length) {
+          renderScrollRow("scroll-recs", recs.slice(0, 20), "movie");
+          attachScrollArrows("recs");
+        } else {
+          $("home-row-recs").style.display = "none";
+        }
+      } catch {
+        $("home-row-recs").style.display = "none";
+      }
+    }
   } catch {
-    $("movies-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить. Проверь сервер.</p></div>`;
+    $("home-hero").innerHTML = "";
+    $("scroll-movies").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+    $("scroll-tv").innerHTML     = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
   }
+}
+
+function renderHero(movie) {
+  const backdropUrl = movie.backdrop_path
+    ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+    : null;
+  const posterUrl = movie.poster_path ? `${TMDB_IMG}${movie.poster_path}` : null;
+  const year      = (movie.release_date || movie.first_air_date || "").slice(0, 4) || "";
+  const rating    = movie.vote_average ? `★ ${Number(movie.vote_average).toFixed(1)}` : "";
+  const overview  = movie.overview
+    ? (movie.overview.length > 200 ? movie.overview.slice(0, 200) + "…" : movie.overview)
+    : "";
+  const isWatched  = state.watched.has(movie.id);
+  const isWatchlist = state.watchlist.has(movie.id);
+
+  $("home-hero").innerHTML = `
+    ${backdropUrl ? `<div class="hero-backdrop" style="background-image:url('${backdropUrl}')"></div>` : `<div class="hero-backdrop" style="background:var(--card-bg)"></div>`}
+    <div class="hero-gradient"></div>
+    <div class="hero-content">
+      ${posterUrl ? `
+        <div class="hero-poster-wrap">
+          <img class="hero-poster" src="${posterUrl}" alt="${movie.title}" loading="eager" />
+        </div>` : ""}
+      <div class="hero-info">
+        <div class="hero-meta">
+          ${year ? `<span class="hero-meta-item">${year}</span>` : ""}
+          ${rating ? `<span class="hero-meta-item hero-rating">${rating}</span>` : ""}
+        </div>
+        <div class="hero-title">${movie.title}</div>
+        ${overview ? `<div class="hero-overview">${overview}</div>` : ""}
+        <div class="hero-actions">
+          <button class="hero-btn hero-btn-primary" id="hero-open-btn">Подробнее</button>
+          <button class="hero-btn hero-btn-watched ${isWatched ? "active" : ""}" id="hero-watched-btn">
+            ${isWatched ? "✓ Просмотрено" : "✓ Отметить"}
+          </button>
+          <button class="hero-btn hero-btn-watchlist ${isWatchlist ? "active" : ""}" id="hero-watchlist-btn">
+            ${isWatchlist ? "🕐 В списке" : "🕐 Позже"}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $("hero-open-btn").addEventListener("click", () => {
+    pushModal({ type: "movie", data: { ...movie, _mediaType: "movie" } });
+    openMovieModal({ ...movie, _mediaType: "movie" });
+  });
+  $("hero-watched-btn").addEventListener("click", e => {
+    toggleWatched(movie.id, e.currentTarget, null, "movie");
+    const active = e.currentTarget.classList.toggle("active");
+    e.currentTarget.textContent = active ? "✓ Просмотрено" : "✓ Отметить";
+  });
+  $("hero-watchlist-btn").addEventListener("click", e => {
+    toggleWatchlist(movie.id, e.currentTarget, null, "movie");
+    const active = e.currentTarget.classList.toggle("active");
+    e.currentTarget.textContent = active ? "🕐 В списке" : "🕐 Позже";
+  });
+}
+
+function renderScrollRow(rowId, movies, mediaType) {
+  const row = $(rowId);
+  if (!row) return;
+  if (!movies?.length) {
+    row.innerHTML = `<div class="empty-state" style="padding:20px">Нет данных</div>`;
+    return;
+  }
+  row.innerHTML = "";
+  movies.slice(0, 30).forEach(movie => {
+    const posterUrl  = movie.poster_path ? `${TMDB_IMG}${movie.poster_path}` : null;
+    const year       = (movie.release_date || movie.first_air_date || "").slice(0, 4) || "";
+    const rating     = movie.vote_average ? Number(movie.vote_average).toFixed(1) : null;
+    const isWatched  = state.watched.has(movie.id);
+    const isWatchlist = state.watchlist.has(movie.id);
+
+    const card = document.createElement("div");
+    card.className = "scroll-card";
+    card.innerHTML = `
+      <div class="scroll-card-poster-wrap">
+        ${posterUrl
+          ? `<img class="scroll-card-poster" src="${posterUrl}" alt="${movie.title}" loading="lazy" />`
+          : `<div class="scroll-card-no-poster">✦</div>`}
+        <div class="scroll-card-overlay">
+          <button class="scroll-card-action watch ${isWatched ? "is-watched" : ""}" data-action="watched" title="Просмотрено">✓</button>
+          <button class="scroll-card-action list ${isWatchlist ? "is-watch" : ""}" data-action="watchlist" title="Смотреть позже">🕐</button>
+        </div>
+        ${rating ? `<div class="scroll-card-rating">★ ${rating}</div>` : ""}
+      </div>
+      <div class="scroll-card-title">${movie.title}</div>
+      ${year ? `<div class="scroll-card-year">${year}</div>` : ""}
+    `;
+
+    card.addEventListener("click", e => {
+      if (e.target.closest(".scroll-card-action")) return;
+      pushModal({ type: "movie", data: { ...movie, _mediaType: mediaType } });
+      openMovieModal({ ...movie, _mediaType: mediaType });
+    });
+    card.querySelector('[data-action="watched"]').addEventListener("click", e => {
+      e.stopPropagation();
+      toggleWatched(movie.id, e.currentTarget, null, mediaType);
+      e.currentTarget.classList.toggle("is-watched");
+    });
+    card.querySelector('[data-action="watchlist"]').addEventListener("click", e => {
+      e.stopPropagation();
+      toggleWatchlist(movie.id, e.currentTarget, null, mediaType);
+      e.currentTarget.classList.toggle("is-watch");
+    });
+
+    row.appendChild(card);
+  });
+}
+
+function attachScrollArrows(key) {
+  const row   = $(`scroll-${key}`);
+  const left  = $(`arrow-${key}-left`);
+  const right = $(`arrow-${key}-right`);
+  if (!row || !left || !right) return;
+
+  const scroll = dir => {
+    row.scrollBy({ left: dir * 600, behavior: "smooth" });
+  };
+  left.onclick  = () => scroll(-1);
+  right.onclick = () => scroll(1);
+}
+
+function showAllMovies() {
+  $("home-content").style.display = "none";
+  $("search-content").style.display = "";
+  $("discover-title").textContent = "Популярные фильмы";
+  $("movies-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  apiFetch("/popular?media_type=movie").then(movies => {
+    renderMovies($("movies-grid"), movies, "discover");
+  }).catch(() => {
+    $("movies-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+  });
+}
+
+function showAllTV() {
+  $("home-content").style.display = "none";
+  $("search-content").style.display = "";
+  $("discover-title").textContent = "Популярные сериалы";
+  $("movies-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  apiFetch("/popular?media_type=tv").then(shows => {
+    renderMovies($("movies-grid"), shows, "discover");
+  }).catch(() => {
+    $("movies-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+  });
+}
+
+// ─── Популярные (устарело, оставлено для совместимости) ────────────────────
+async function loadPopular() {
+  loadHomepage();
 }
 
 // ─── Просмотренное ─────────────────────────────────────────────────────────
@@ -1320,7 +1527,7 @@ async function init() {
   // Инициализируем панели фильтров (статические списки)
   buildMfPanel("country");
   buildMfPanel("genre");
-  loadPopular();
+  loadHomepage();
 }
 
 // ─── Аутентификация ────────────────────────────────────────────────────────
@@ -1622,7 +1829,7 @@ async function loadSuggest() {
       grid.innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Ничего не нашлось в базе TMDB. Попробуй ещё раз — AI иногда предлагает разное</p></div>`;
       return;
     }
-    hint.textContent = `Нашёл ${movies.length} рекомендаций специально для тебя`;
+    hint.textContent = `Нашёл ${movies.length} ${movies.length === 1 ? "рекомендацию" : movies.length < 5 ? "рекомендации" : "рекомендаций"} специально для тебя`;
 
     grid.innerHTML = "";
     movies.forEach((movie, i) => {

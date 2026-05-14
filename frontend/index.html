@@ -42,11 +42,50 @@
   <main class="main">
 
     <section class="tab active" id="tab-discover">
-      <div class="section-header">
-        <h2 class="section-title" id="discover-title">Популярные фильмы</h2>
-        <p class="section-sub">Отмечай просмотренные фильмы и ставь оценки — и мы подберём похожие</p>
+      <!-- Главная страница -->
+      <div id="home-content">
+        <div id="home-hero" class="hero-section"><div class="loader" style="height:420px;display:flex;align-items:center;justify-content:center">Загружаем…</div></div>
+        <div class="home-row" id="home-row-movies">
+          <div class="home-row-header">
+            <h2 class="home-row-title">Популярные фильмы</h2>
+            <button class="home-row-more" onclick="showAllMovies()">Все фильмы →</button>
+          </div>
+          <div class="scroll-wrap">
+            <button class="scroll-arrow left" id="arrow-movies-left">‹</button>
+            <div class="scroll-row" id="scroll-movies"></div>
+            <button class="scroll-arrow right" id="arrow-movies-right">›</button>
+          </div>
+        </div>
+        <div class="home-row" id="home-row-tv">
+          <div class="home-row-header">
+            <h2 class="home-row-title">Популярные сериалы</h2>
+            <button class="home-row-more" onclick="showAllTV()">Все сериалы →</button>
+          </div>
+          <div class="scroll-wrap">
+            <button class="scroll-arrow left" id="arrow-tv-left">‹</button>
+            <div class="scroll-row" id="scroll-tv"></div>
+            <button class="scroll-arrow right" id="arrow-tv-right">›</button>
+          </div>
+        </div>
+        <div class="home-row" id="home-row-recs" style="display:none">
+          <div class="home-row-header">
+            <h2 class="home-row-title">✦ Для тебя</h2>
+            <button class="home-row-more" onclick="document.querySelector('[data-tab=recommendations]').click()">Все рекомендации →</button>
+          </div>
+          <div class="scroll-wrap">
+            <button class="scroll-arrow left" id="arrow-recs-left">‹</button>
+            <div class="scroll-row" id="scroll-recs"></div>
+            <button class="scroll-arrow right" id="arrow-recs-right">›</button>
+          </div>
+        </div>
       </div>
-      <div class="movies-grid" id="movies-grid"><div class="loader">Загружаем фильмы…</div></div>
+      <!-- Поиск / старый грид -->
+      <div id="search-content" style="display:none">
+        <div class="section-header">
+          <h2 class="section-title" id="discover-title">Результаты поиска</h2>
+        </div>
+        <div class="movies-grid" id="movies-grid"></div>
+      </div>
     </section>
 
     <section class="tab" id="tab-watched">

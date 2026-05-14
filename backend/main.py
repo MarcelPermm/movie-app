@@ -1014,9 +1014,13 @@ async def ai_suggest(user_id: int = 1, query: str = ""):
     avg_rating  = round(sum(m["user_rating"] for m in all_rated) / len(all_rated), 1) if all_rated else None
     genre_cnt   = Counter(genre_name(g) for m in all_watched for g in (m.get("genres") or []) if genre_name(g))
     top_genres  = [name for name, _ in genre_cnt.most_common(5)]
-    top_titles  = [m["title"] for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:6]]
+    top_titles  = [m["title"] for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:8]]
+    # Все просмотренные названия — AI должен их исключить
+    all_watched_titles = [m["title"] for m in all_watched if m.get("title")]
 
     example = '[{"title": "The Dark Knight", "year": 2008, "type": "movie", "reason": "Одна фраза"}, {"title": "Breaking Bad", "year": 2008, "type": "tv", "reason": "Одна фраза"}]'
+
+    already_seen = ", ".join(all_watched_titles[:40]) if all_watched_titles else "none"
 
     if query:
         prompt = f"""You are a movie expert. A user wants to watch something and described it:
@@ -1027,28 +1031,36 @@ Also consider their taste:
 - Favorite genres: {", ".join(top_genres) if top_genres else "various"}
 - Highly rated by user: {", ".join(top_titles) if top_titles else "none yet"}
 
-Recommend exactly 8 movies or TV shows that best match the request.
+ALREADY WATCHED (DO NOT recommend these): {already_seen}
+
+Recommend exactly 15 movies or TV shows that best match the request and that the user has NOT seen yet.
 
 IMPORTANT RULES:
 - Output ONLY a raw JSON array, no markdown, no code blocks, no explanation
 - Use the ORIGINAL English title (as it appears on IMDb/TMDB), not translated
-- Only recommend well-known titles that definitely exist
+- Only recommend titles that definitely exist on IMDb/TMDB
+- Do NOT recommend anything from the "ALREADY WATCHED" list
 - reason must be in Russian, one short sentence
 
 Example output:
 {example}"""
     else:
-        prompt = f"""You are a movie expert. Recommend exactly 8 movies or TV shows based on user taste.
+        prompt = f"""You are a movie expert. Recommend movies or TV shows based on user taste.
 
 User taste:
 - Favorite genres: {", ".join(top_genres) if top_genres else "various"}
 - Highly rated: {", ".join(top_titles) if top_titles else "none yet"}
 - Average rating: {avg_rating or "unknown"}
 
+ALREADY WATCHED (DO NOT recommend these): {already_seen}
+
+Recommend exactly 15 movies or TV shows the user has NOT seen yet and would enjoy based on their taste.
+
 IMPORTANT RULES:
 - Output ONLY a raw JSON array, no markdown, no code blocks, no explanation
 - Use the ORIGINAL English title (as it appears on IMDb/TMDB), not translated
-- Only recommend well-known titles that definitely exist
+- Only recommend titles that definitely exist on IMDb/TMDB
+- Do NOT recommend anything from the "ALREADY WATCHED" list
 - reason must be in Russian, one short sentence
 
 Example output:
@@ -1060,8 +1072,8 @@ Example output:
         response = await ai_client.chat.completions.create(
             model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=900,
-            temperature=0.7,
+            max_tokens=1600,
+            temperature=0.8,
         )
         raw = response.choices[0].message.content.strip()
 
@@ -1105,6 +1117,12 @@ Example output:
                 r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
                 items = r.json().get("results", [])
 
+            # Попытка 3: без language (иногда TMDB лучше ищет без локали)
+            if not items:
+                p2 = {"api_key": TMDB_KEY, "query": title}
+                r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=p2)
+                items = r.json().get("results", [])
+
             if not items:
                 return None
 
@@ -1113,9 +1131,22 @@ Example output:
             if tmdb_id in watched_ids:
                 return None
 
+            # Если название не кириллическое — подтягиваем русский перевод
+            ru_title = m.get(name_key, title)
+            if ru_title and not any('Ѐ' <= c <= 'ӿ' for c in ru_title):
+                try:
+                    det = await h.get(
+                        f"{TMDB_BASE}/{endpoint}/{tmdb_id}",
+                        params={"api_key": TMDB_KEY, "language": "ru-RU"}
+                    )
+                    det_data = det.json()
+                    ru_title = det_data.get(name_key) or ru_title
+                except Exception:
+                    pass
+
             return {
                 "id":           tmdb_id,
-                "title":        m.get(name_key, title),
+                "title":        ru_title,
                 "poster_path":  m.get("poster_path"),
                 "vote_average": m.get("vote_average"),
                 date_key:       m.get(date_key, ""),
@@ -1126,7 +1157,7 @@ Example output:
             return None
 
     async with httpx.AsyncClient(timeout=60) as h:
-        found = await asyncio.gather(*[tmdb_lookup(h, item) for item in suggestions[:8]])
-    results = [r for r in found if r is not None]
+        found = await asyncio.gather(*[tmdb_lookup(h, item) for item in suggestions[:15]])
+    results = [r for r in found if r is not None][:12]
 
     return {"movies": results, "debug_ai": suggestions}
