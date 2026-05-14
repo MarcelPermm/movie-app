@@ -88,6 +88,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (tab === "watchlist") loadWatchlist();
     if (tab === "dismissed") loadDismissed();
     if (tab === "actors")    loadActors();
+    if (tab === "suggest")   initSuggestTab();
     if (tab === "profile")   loadProfile();
     // Скрываем тултип рейтинговых баров при смене вкладки
     const bt = document.getElementById("bar-tooltip");
@@ -1585,6 +1586,85 @@ async function loadDismissed() {
     renderDismissed(items);
   } catch {
     $("dismissed-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
+}
+
+// ─── AI: Посоветуй фильм ───────────────────────────────────────────────────
+
+function initSuggestTab() {
+  // Ничего не грузим автоматически — ждём клика
+}
+
+async function loadSuggest() {
+  const btn   = $("suggest-ask-btn");
+  const hint  = $("suggest-hint");
+  const grid  = $("suggest-grid");
+
+  btn.disabled = true;
+  btn.textContent = "✦ Думаю…";
+  hint.textContent = "AI анализирует твой вкус, обычно 5–10 секунд";
+  grid.innerHTML = '<div class="loader">Подбираем для тебя…</div>';
+
+  try {
+    const data = await apiFetch("/ai/suggest");
+    const movies = data.movies || [];
+    hint.textContent = movies.length
+      ? `Нашёл ${movies.length} рекомендаций специально для тебя`
+      : "Не удалось подобрать — попробуй позже";
+
+    if (!movies.length) {
+      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Ничего не нашлось, попробуй ещё раз</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = "";
+    movies.forEach((movie, i) => {
+      const card = document.createElement("div");
+      card.className = "movie-card";
+      card.style.animationDelay = `${i * 60}ms`;
+      const posterUrl  = movie.poster_path ? `${TMDB_IMG}${movie.poster_path}` : null;
+      const year       = (movie.release_date || movie.first_air_date || "").slice(0, 4) || "—";
+      const movieId    = movie.id;
+      const isWatched  = state.watched.has(movieId);
+      const isWatch    = state.watchlist.has(movieId);
+      const mt         = movie.media_type || "movie";
+
+      card.innerHTML = `
+        ${posterUrl
+          ? `<img class="movie-poster" src="${posterUrl}" alt="${movie.title}" loading="lazy" />`
+          : `<div class="no-poster"><span class="no-poster-icon">✦</span>${movie.title}</div>`}
+        <button class="watched-btn ${isWatched ? "is-watched" : ""}">✓</button>
+        <button class="watch-btn ${isWatch ? "is-watch" : ""}">🕐</button>
+        <div class="movie-info">
+          <div class="movie-title">${movie.title}</div>
+          <div class="movie-meta"><span class="movie-year">${year}</span></div>
+          ${movie.vote_average ? `<div class="movie-ratings"><span class="rating-badge tmdb-badge">★ ${movie.vote_average.toFixed(1)}</span></div>` : ""}
+          ${movie.ai_reason ? `<div class="suggest-reason">✦ ${movie.ai_reason}</div>` : ""}
+        </div>
+      `;
+
+      card.addEventListener("click", e => {
+        if (e.target.closest(".watched-btn,.watch-btn")) return;
+        pushModal({ type: "movie", data: { ...movie, _mediaType: mt } });
+        openMovieModal({ ...movie, _mediaType: mt });
+      });
+      card.querySelector(".watched-btn").addEventListener("click", e => {
+        e.stopPropagation();
+        toggleWatched(movieId, card.querySelector(".watched-btn"), null, mt);
+      });
+      card.querySelector(".watch-btn").addEventListener("click", e => {
+        e.stopPropagation();
+        toggleWatchlist(movieId, card.querySelector(".watch-btn"), null, mt);
+      });
+
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    hint.textContent = "";
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>${err?.detail || "Ошибка AI, попробуй позже"}</p></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✦ Подобрать ещё раз";
   }
 }
 

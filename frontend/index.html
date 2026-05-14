@@ -34,6 +34,7 @@
       <button class="nav-btn" data-tab="dismissed">Отклонённые <span class="fav-count" id="dismissed-count">0</span></button>
       <button class="nav-btn" data-tab="actors">Актёры</button>
       <button class="nav-btn" data-tab="recommendations">Рекомендации</button>
+      <button class="nav-btn" data-tab="suggest">✦ Посоветуй</button>
       <button class="nav-btn" data-tab="profile">Профиль</button>
     </nav>
   </header>
@@ -173,6 +174,20 @@
       <div class="movies-grid" id="recs-grid">
         <div class="empty-state"><span class="empty-icon">✦</span><p>Нажми кнопку выше, чтобы получить рекомендации</p></div>
       </div>
+    </section>
+
+    <section class="tab" id="tab-suggest">
+      <div class="section-header">
+        <h2 class="section-title">✦ Посоветуй фильм</h2>
+        <p class="section-sub">AI подберёт фильмы и сериалы специально под твой вкус</p>
+      </div>
+      <div class="suggest-wrap">
+        <button class="btn-primary suggest-ask-btn" id="suggest-ask-btn" onclick="loadSuggest()">
+          ✦ Подобрать для меня
+        </button>
+        <p class="suggest-hint" id="suggest-hint"></p>
+      </div>
+      <div class="movies-grid" id="suggest-grid"></div>
     </section>
 
     <section class="tab" id="tab-profile">

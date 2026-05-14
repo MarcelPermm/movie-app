@@ -951,23 +951,22 @@ async def analyze_profile(user_id: int = 1):
         if m["user_rating"] <= 5
     ]
 
-    prompt = f"""Ты — кинокритик и аналитик вкусов. Проанализируй кинематографические предпочтения пользователя на основе его статистики.
+    prompt = f"""Ты мой друг-киноман, который знает всё о кино. Посмотри что я смотрел и расскажи мне о моём вкусе — как другу, неформально, на "ты". Без воды и канцелярщины.
 
-Статистика пользователя:
-- Просмотрено фильмов: {len(movies)}, сериалов: {len(tv)}
-- Оценено: {len(all_rated)} из {len(all_watched)}
-- Средняя оценка: {avg_rating or "нет оценок"}
-- Любимые жанры: {", ".join(top_genres) if top_genres else "нет данных"}
-- Любимые режиссёры: {", ".join(top_directors) if top_directors else "нет данных"}
-- Высокие оценки (топ): {", ".join(top_rated_titles) if top_rated_titles else "нет"}
-- Низкие оценки: {", ".join(low_rated_titles) if low_rated_titles else "нет"}
+Вот что я смотрел:
+- Фильмов: {len(movies)}, сериалов: {len(tv)}
+- Оценил {len(all_rated)} из {len(all_watched)}, средняя оценка: {avg_rating or "пока нет"}
+- Жанры которые чаще всего смотрю: {", ".join(top_genres) if top_genres else "разные"}
+- Режиссёры: {", ".join(top_directors) if top_directors else "разные"}
+- Что поставил высокие оценки: {", ".join(top_rated_titles) if top_rated_titles else "пока нет"}
+- Что не понравилось: {", ".join(low_rated_titles) if low_rated_titles else "ничего"}
 
-Напиши персональный анализ вкуса на русском языке. 3-4 абзаца:
-1. Какой у пользователя кинематографический вкус — что он любит и ценит
-2. Какие паттерны прослеживаются в его оценках
-3. Что можно порекомендовать исходя из вкусов
+Напиши 3 коротких абзаца на русском:
+1. Какой у меня вкус — что я люблю, в чём моя фишка
+2. Что интересного ты заметил в моих оценках — может какая-то закономерность
+3. Что конкретно посоветуешь посмотреть — 2-3 названия с коротким объяснением почему
 
-Пиши живо, как будто общаешься с человеком. Без списков — только текст."""
+Пиши как живой человек, с характером. Можно с лёгкой иронией если уместно."""
 
     client = AsyncOpenAI(
         api_key=api_key,
@@ -985,3 +984,113 @@ async def analyze_profile(user_id: int = 1):
         return {"analysis": analysis}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
+
+
+@app.get("/ai/suggest")
+async def ai_suggest(user_id: int = 1):
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI недоступен")
+
+    from collections import Counter
+    from openai import AsyncOpenAI
+    import json, re
+
+    movies  = database.get_watched("movie", user_id)
+    tv      = database.get_watched("tv",    user_id)
+    all_watched = movies + tv
+
+    if len(all_watched) < 3:
+        raise HTTPException(status_code=400, detail="Отметь хотя бы 3 фильма чтобы получить советы")
+
+    watched_ids = {m.get("movie_id") or m.get("id") for m in all_watched}
+
+    def genre_name(g):
+        if isinstance(g, str):  return g
+        if isinstance(g, dict): return g.get("name", "")
+        return ""
+
+    all_rated   = [m for m in all_watched if m.get("user_rating") is not None]
+    avg_rating  = round(sum(m["user_rating"] for m in all_rated) / len(all_rated), 1) if all_rated else None
+    genre_cnt   = Counter(genre_name(g) for m in all_watched for g in (m.get("genres") or []) if genre_name(g))
+    top_genres  = [name for name, _ in genre_cnt.most_common(5)]
+    top_titles  = [m["title"] for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:6]]
+
+    prompt = f"""Ты эксперт по кино. Порекомендуй 8 фильмов или сериалов на основе вкусов пользователя.
+
+Вкусы:
+- Любимые жанры: {", ".join(top_genres) if top_genres else "разные"}
+- Высоко оценил: {", ".join(top_titles) if top_titles else "пока нет"}
+- Средняя оценка: {avg_rating or "нет"}
+
+Верни ТОЛЬКО JSON массив, без лишнего текста, без markdown:
+[{{"title": "Название на английском", "year": 2010, "type": "movie", "reason": "Одна фраза почему"}}, ...]
+
+type = "movie" или "tv". Рекомендуй только хорошо известные фильмы/сериалы."""
+
+    client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+
+    try:
+        response = await client.chat.completions.create(
+            model="llama3.1-8b",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.7,
+        )
+        raw = response.choices[0].message.content.strip()
+
+        # Вытаскиваем JSON из ответа
+        json_match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if not json_match:
+            raise ValueError("Нет JSON в ответе")
+        suggestions = json.loads(json_match.group())
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
+
+    # Ищем каждый фильм в TMDB
+    results = []
+    async with httpx.AsyncClient(timeout=10) as client_http:
+        for item in suggestions[:8]:
+            title = item.get("title", "")
+            year  = item.get("year")
+            mtype = item.get("type", "movie")
+            reason = item.get("reason", "")
+            if not title:
+                continue
+            try:
+                if mtype == "tv":
+                    params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+                    if year: params["first_air_date_year"] = year
+                    r = await client_http.get(f"{TMDB_BASE}/search/tv", params=params)
+                    items = r.json().get("results", [])
+                    if items:
+                        m = items[0]
+                        tmdb_id = m["id"]
+                        if tmdb_id not in watched_ids:
+                            results.append({
+                                "id": tmdb_id, "title": m.get("name", title),
+                                "poster_path": m.get("poster_path"),
+                                "vote_average": m.get("vote_average"),
+                                "first_air_date": m.get("first_air_date", ""),
+                                "media_type": "tv", "ai_reason": reason,
+                            })
+                else:
+                    params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+                    if year: params["year"] = year
+                    r = await client_http.get(f"{TMDB_BASE}/search/movie", params=params)
+                    items = r.json().get("results", [])
+                    if items:
+                        m = items[0]
+                        tmdb_id = m["id"]
+                        if tmdb_id not in watched_ids:
+                            results.append({
+                                "id": tmdb_id, "title": m.get("title", title),
+                                "poster_path": m.get("poster_path"),
+                                "vote_average": m.get("vote_average"),
+                                "release_date": m.get("release_date", ""),
+                                "media_type": "movie", "ai_reason": reason,
+                            })
+            except Exception:
+                continue
+
+    return {"movies": results}

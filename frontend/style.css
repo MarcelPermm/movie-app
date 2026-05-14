@@ -486,6 +486,15 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .profile-num-val  { font-size: 26px; font-weight: 900; color: var(--gold); font-family: 'Playfair Display', serif; }
 .profile-num-lbl  { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.07em; }
 
+/* ─── AI: Посоветуй ─────────────────────────────────────────────────────── */
+.suggest-wrap { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+.suggest-ask-btn { font-size: 15px; padding: 12px 28px; }
+.suggest-hint { font-size: 13px; color: var(--text-dim); }
+.suggest-reason {
+  font-size: 11px; color: var(--gold); margin-top: 4px;
+  line-height: 1.4; opacity: 0.85;
+}
+
 /* ─── Профиль: сетка карточек ────────────────────────────────────────────── */
 .profile-grid { display: flex; flex-direction: column; gap: 20px; }
 .profile-card {
