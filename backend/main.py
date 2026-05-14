@@ -108,7 +108,7 @@ class LoginRequest(BaseModel):
 
 @app.post("/auth/register")
 async def register(req: RegisterRequest):
-    username = req.username.strip()
+    username     = req.username.strip().lower()
     display_name = req.display_name.strip()
     if not username or not display_name:
         raise HTTPException(400, "Логин и имя не могут быть пустыми")
@@ -119,7 +119,7 @@ async def register(req: RegisterRequest):
 
 @app.post("/auth/login")
 async def login(req: LoginRequest):
-    user = database.get_user_by_username(req.username.strip())
+    user = database.get_user_by_username(req.username.strip().lower())
     if not user:
         raise HTTPException(404, "Пользователь не найден")
     return user
