@@ -1582,17 +1582,21 @@ async function loadProfile() {
   const wrap = $("profile-content");
   wrap.innerHTML = '<div class="loader">Загружаем профиль…</div>';
   try {
-    const s = await apiFetch("/profile/stats");
-    renderProfile(s);
+    const [s, actorsData] = await Promise.all([
+      apiFetch("/profile/stats"),
+      apiFetch("/watched/top-actors?limit=10")
+    ]);
+    renderProfile(s, actorsData);
   } catch {
     wrap.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки профиля</p></div>`;
   }
 }
 
-function renderProfile(s) {
+function renderProfile(s, actorsData) {
   const wrap = $("profile-content");
   const user = state.user || { display_name: "Пользователь" };
   const initial = user.display_name?.[0]?.toUpperCase() || "?";
+  const actors = actorsData?.actors || [];
 
   if (!s.total) {
     wrap.innerHTML = `
@@ -1609,39 +1613,68 @@ function renderProfile(s) {
     return;
   }
 
-  // Рейтинговый чарт
-  const maxRatingCount = Math.max(...Object.values(s.rating_distribution).map(Number), 1);
+  // Рейтинговый чарт — стэк movie+tv
+  const maxRatingCount = Math.max(
+    ...Array.from({length: 10}, (_, i) => {
+      const d = s.rating_distribution[String(i + 1)] || {};
+      return (d.movie || 0) + (d.tv || 0);
+    }), 1
+  );
   const ratingBarsHTML = Array.from({length: 10}, (_, i) => {
     const num = i + 1;
-    const cnt = s.rating_distribution[String(num)] || 0;
-    const pct = Math.round((cnt / maxRatingCount) * 100);
+    const d   = s.rating_distribution[String(num)] || {};
+    const mc  = d.movie || 0;
+    const tc  = d.tv    || 0;
+    const total = mc + tc;
+    const pct = Math.round((total / maxRatingCount) * 100);
+    const moviePct = total ? Math.round((mc / total) * 100) : 50;
+    const tvPct    = 100 - moviePct;
     return `
       <div class="rating-bar-wrap">
-        ${cnt ? `<div class="rating-bar-cnt">${cnt}</div>` : ""}
-        <div class="rating-bar" style="height:${Math.max(pct, cnt ? 4 : 0)}%"></div>
+        ${total ? `<div class="rating-bar-cnt">${total}</div>` : ""}
+        <div class="rating-bar-stack" style="height:${Math.max(pct, total ? 4 : 0)}%">
+          <div class="rating-bar tv"    style="height:${tvPct}%"></div>
+          <div class="rating-bar movie" style="height:${moviePct}%"></div>
+        </div>
         <div class="rating-bar-num">${num}</div>
       </div>`;
   }).join("");
 
-  // Жанры
-  const maxGenre = s.top_genres[0]?.count || 1;
-  const genresHTML = s.top_genres.map(g => `
+  // Жанры — split movie/tv
+  const maxGenre = Math.max(...s.top_genres.map(g => g.total || 0), 1);
+  const genresHTML = s.top_genres.map(g => {
+    const total = g.total || 0;
+    const moviePct = total ? Math.round((g.movie_count / total) * 100) : 50;
+    const tvPct    = 100 - moviePct;
+    return `
     <div class="genre-bar-row">
       <div class="genre-bar-label">
         <span>${g.name}</span>
-        <span class="genre-bar-count">${g.count}</span>
+        <span class="genre-bar-count">${total}</span>
       </div>
       <div class="genre-bar-track">
-        <div class="genre-bar-fill" style="width:${Math.round(g.count/maxGenre*100)}%"></div>
+        <div class="genre-bar-fill movie" style="width:${Math.round(total/maxGenre*100)*moviePct/100}%"></div>
+        <div class="genre-bar-fill tv"    style="width:${Math.round(total/maxGenre*100)*tvPct/100}%"></div>
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 
-  // Актёры
-  const actorsHTML = s.top_actors.map(a => `
-    <div class="profile-list-item">
-      <span class="profile-list-name">👤 ${a.name}</span>
-      <span class="profile-list-badge">${a.count}</span>
-    </div>`).join("");
+  // Актёры с бейджами — из top-actors
+  const actorsHTML = actors.map(a => {
+    const img = a.profile_path
+      ? `<img class="profile-actor-photo" src="https://image.tmdb.org/t/p/w92${a.profile_path}" loading="lazy" />`
+      : `<div class="profile-actor-no-photo">👤</div>`;
+    const movieBadge = a.movie_count ? `<span class="badge-movie">🎬 ${a.movie_count}</span>` : "";
+    const tvBadge    = a.tv_count    ? `<span class="badge-tv">📺 ${a.tv_count}</span>`    : "";
+    return `
+    <div class="profile-actor-item" data-actor-id="${a.id || ""}">
+      ${img}
+      <div class="profile-actor-info">
+        <div class="profile-actor-name">${a.name}</div>
+        <div class="profile-actor-badges">${movieBadge}${tvBadge}</div>
+      </div>
+    </div>`;
+  }).join("");
 
   // Режиссёры
   const directorsHTML = s.top_directors.map(d => `
@@ -1658,6 +1691,12 @@ function renderProfile(s) {
         : `<div class="profile-top-no-poster">🎬</div>`}
       <div class="profile-top-rating">★ ${m.rating}</div>
     </div>`).join("");
+
+  const legendHTML = `
+    <div class="profile-legend">
+      <span class="legend-dot movie"></span><span class="legend-lbl">Фильмы</span>
+      <span class="legend-dot tv"></span><span class="legend-lbl">Сериалы</span>
+    </div>`;
 
   wrap.innerHTML = `
     <div class="profile-wrap">
@@ -1692,20 +1731,20 @@ function renderProfile(s) {
 
         ${s.rated_count ? `
         <div class="profile-card">
-          <div class="profile-card-title">Распределение оценок</div>
+          <div class="profile-card-title">Распределение оценок ${legendHTML}</div>
           <div class="rating-bars">${ratingBarsHTML}</div>
         </div>` : ""}
 
         ${s.top_genres.length ? `
         <div class="profile-card">
-          <div class="profile-card-title">Любимые жанры</div>
+          <div class="profile-card-title">Любимые жанры ${legendHTML}</div>
           <div class="genre-bars">${genresHTML}</div>
         </div>` : ""}
 
-        ${s.top_actors.length ? `
+        ${actors.length ? `
         <div class="profile-card">
           <div class="profile-card-title">Часто встречаемые актёры</div>
-          <div class="profile-list">${actorsHTML}</div>
+          <div class="profile-actors-list" id="profile-actors-list">${actorsHTML}</div>
         </div>` : ""}
 
         ${s.top_directors.length ? `
@@ -1730,6 +1769,19 @@ function renderProfile(s) {
 
       </div>
     </div>`;
+
+  // Клики по актёрам — открываем персональный модал
+  document.querySelectorAll(".profile-actor-item[data-actor-id]").forEach(el => {
+    const actorId = parseInt(el.dataset.actorId);
+    if (!actorId) return;
+    el.addEventListener("click", () => {
+      state.modalStack = [];
+      pushModal({ type: "person", data: { id: actorId } });
+      $("modal-overlay").classList.add("open");
+      document.body.style.overflow = "hidden";
+      openPersonModal({ id: actorId });
+    });
+  });
 }
 
 async function analyzeWithClaude() {

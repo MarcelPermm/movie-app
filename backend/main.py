@@ -390,18 +390,28 @@ async def tv_season_episodes(show_id: int, season_number: int):
 async def watched_top_actors(limit: int = 30, user_id: int = 1):
     from collections import Counter
     all_watched = database.get_watched("movie", user_id) + database.get_watched("tv", user_id)
-    actor_entries: dict[str, list] = {}
+    actor_entries:     dict[str, list] = {}
+    actor_movie_count: dict[str, int]  = {}
+    actor_tv_count:    dict[str, int]  = {}
     for m in all_watched:
+        mt = m.get("media_type", "movie")
         for name in (m.get("cast_names") or []):
             if name not in actor_entries:
-                actor_entries[name] = []
+                actor_entries[name]     = []
+                actor_movie_count[name] = 0
+                actor_tv_count[name]    = 0
             actor_entries[name].append({
                 "movie_id":    m["movie_id"],
                 "title":       m.get("title", ""),
                 "user_rating": m.get("user_rating"),
                 "poster_path": m.get("poster_path", ""),
-                "media_type":  m.get("media_type", "movie"),
+                "media_type":  mt,
             })
+            if mt == "tv":
+                actor_tv_count[name]    += 1
+            else:
+                actor_movie_count[name] += 1
+
     sorted_actors = sorted(actor_entries.items(), key=lambda x: len(x[1]), reverse=True)[:limit]
     if not sorted_actors:
         return []
@@ -411,7 +421,7 @@ async def watched_top_actors(limit: int = 30, user_id: int = 1):
         return_exceptions=True,
     )
     actors = []
-    for (name, movies), result in zip(sorted_actors, search_results):
+    for (name, movies_list), result in zip(sorted_actors, search_results):
         person_id = profile_path = None
         if not isinstance(result, Exception) and result.get("results"):
             p = result["results"][0]
@@ -421,9 +431,10 @@ async def watched_top_actors(limit: int = 30, user_id: int = 1):
             "name":         name,
             "id":           person_id,
             "profile_path": profile_path,
-            "movie_count":  len(movies),
+            "movie_count":  actor_movie_count.get(name, 0),
+            "tv_count":     actor_tv_count.get(name, 0),
             "is_favorite":  person_id in fav_ids if person_id else False,
-            "movies":       sorted(movies, key=lambda x: x.get("user_rating") or 0, reverse=True),
+            "movies":       sorted(movies_list, key=lambda x: x.get("user_rating") or 0, reverse=True),
         })
     return actors
 
@@ -851,30 +862,49 @@ async def get_profile_stats(user_id: int = 1):
         if isinstance(g, dict): return g.get("name", "")
         return ""
 
-    all_genres    = [genre_name(g) for m in all_watched for g in (m.get("genres") or []) if genre_name(g)]
-    all_actors    = [a for m in all_watched for a in (m.get("cast_names") or []) if a]
+    # Рейтинги — раздельно по типу
+    movie_rated = [m for m in movies if m.get("user_rating") is not None]
+    tv_rated    = [m for m in tv     if m.get("user_rating") is not None]
+    all_rated   = movie_rated + tv_rated
+    avg_rating  = round(sum(m["user_rating"] for m in all_rated) / len(all_rated), 1) if all_rated else None
+
+    rating_dist = {
+        str(i): {
+            "movie": sum(1 for m in movie_rated if m["user_rating"] == i),
+            "tv":    sum(1 for m in tv_rated    if m["user_rating"] == i),
+        } for i in range(1, 11)
+    }
+
+    # Жанры — раздельно по типу
+    movie_genre_cnt = Counter(genre_name(g) for m in movies for g in (m.get("genres") or []) if genre_name(g))
+    tv_genre_cnt    = Counter(genre_name(g) for m in tv     for g in (m.get("genres") or []) if genre_name(g))
+    all_genre_names = set(list(movie_genre_cnt.keys()) + list(tv_genre_cnt.keys()))
+    top_genres = sorted(
+        [{"name": n,
+          "movie_count": movie_genre_cnt.get(n, 0),
+          "tv_count":    tv_genre_cnt.get(n, 0),
+          "total":       movie_genre_cnt.get(n, 0) + tv_genre_cnt.get(n, 0)}
+         for n in all_genre_names],
+        key=lambda x: x["total"], reverse=True
+    )[:8]
+
+    # Режиссёры
     all_directors = [m["director"] for m in all_watched if m.get("director")]
 
-    rated     = [m for m in all_watched if m.get("user_rating") is not None]
-    avg_rating = round(sum(m["user_rating"] for m in rated) / len(rated), 1) if rated else None
-
-    rating_dist = {str(i): sum(1 for m in rated if m["user_rating"] == i) for i in range(1, 11)}
-
-    # Топ просмотренных по оценке пользователя
+    # Топ по оценке пользователя
     top_rated = sorted(
         [m for m in all_watched if m.get("user_rating") is not None],
         key=lambda x: x["user_rating"], reverse=True
     )[:6]
 
     return {
-        "total":              len(all_watched),
-        "movies":             len(movies),
-        "tv":                 len(tv),
-        "rated_count":        len(rated),
-        "avg_rating":         avg_rating,
+        "total":               len(all_watched),
+        "movies":              len(movies),
+        "tv":                  len(tv),
+        "rated_count":         len(all_rated),
+        "avg_rating":          avg_rating,
         "rating_distribution": rating_dist,
-        "top_genres":    [{"name": n, "count": c} for n, c in Counter(all_genres).most_common(8)],
-        "top_actors":    [{"name": n, "count": c} for n, c in Counter(all_actors).most_common(10)],
-        "top_directors": [{"name": n, "count": c} for n, c in Counter(all_directors).most_common(6)],
-        "top_rated":     [{"title": m["title"], "rating": m["user_rating"], "poster": m.get("poster_path")} for m in top_rated],
+        "top_genres":          top_genres,
+        "top_directors":       [{"name": n, "count": c} for n, c in Counter(all_directors).most_common(6)],
+        "top_rated":           [{"title": m["title"], "rating": m["user_rating"], "poster": m.get("poster_path")} for m in top_rated],
     }
