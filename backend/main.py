@@ -1091,73 +1091,92 @@ Example output:
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
 
-    # Ищем все фильмы параллельно через общий клиент (connection pool)
+    # Нормализация названия для сравнения (убираем артикли, lowercase)
+    def norm_title(t: str) -> str:
+        t = t.lower().strip()
+        for prefix in ("the ", "a ", "an "):
+            if t.startswith(prefix):
+                t = t[len(prefix):]
+        return t
+
+    # Набор нормализованных названий просмотренного — для предварительной фильтрации
+    watched_titles_norm = {norm_title(m["title"]) for m in all_watched if m.get("title")}
+
+    # Убираем из предложений AI всё что уже смотрели (по названию, не только по TMDB ID)
+    suggestions_filtered = [
+        s for s in suggestions
+        if norm_title(s.get("title", "")) not in watched_titles_norm
+    ]
+
+    # Если AI всё равно дал мало нового — используем всё что есть
+    candidates = suggestions_filtered if len(suggestions_filtered) >= 6 else suggestions
+
+    # Ищем все фильмы параллельно через /search/multi (ищет и фильмы и сериалы сразу)
     async def tmdb_lookup(h, item):
         title  = item.get("title", "").strip()
         year   = item.get("year")
-        mtype  = item.get("type", "movie")
         reason = item.get("reason", "")
         if not title:
             return None
         try:
-            endpoint = "tv" if mtype == "tv" else "movie"
-            year_key = "first_air_date_year" if mtype == "tv" else "year"
-            name_key = "name" if mtype == "tv" else "title"
-            date_key = "first_air_date" if mtype == "tv" else "release_date"
-
+            # /search/multi — обходит проблему угадывания типа (movie vs tv)
             params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
             if year:
-                params[year_key] = year
-            r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
-            items = r.json().get("results", [])
+                params["year"] = year
+            r = await h.get(f"{TMDB_BASE}/search/multi", params=params)
+            items = [x for x in r.json().get("results", []) if x.get("media_type") in ("movie", "tv")]
 
             # Попытка 2: без года
             if not items and year:
-                params.pop(year_key, None)
-                r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=params)
-                items = r.json().get("results", [])
+                params.pop("year", None)
+                r = await h.get(f"{TMDB_BASE}/search/multi", params=params)
+                items = [x for x in r.json().get("results", []) if x.get("media_type") in ("movie", "tv")]
 
-            # Попытка 3: без language (иногда TMDB лучше ищет без локали)
+            # Попытка 3: без language
             if not items:
-                p2 = {"api_key": TMDB_KEY, "query": title}
-                r = await h.get(f"{TMDB_BASE}/search/{endpoint}", params=p2)
-                items = r.json().get("results", [])
+                r = await h.get(f"{TMDB_BASE}/search/multi", params={"api_key": TMDB_KEY, "query": title})
+                items = [x for x in r.json().get("results", []) if x.get("media_type") in ("movie", "tv")]
 
             if not items:
                 return None
 
-            m = items[0]
-            tmdb_id = m["id"]
+            m          = items[0]
+            tmdb_id    = m["id"]
+            media_type = m.get("media_type", "movie")
+
             if tmdb_id in watched_ids:
                 return None
 
-            # Если название не кириллическое — подтягиваем русский перевод
-            ru_title = m.get(name_key, title)
-            if ru_title and not any('Ѐ' <= c <= 'ӿ' for c in ru_title):
+            name_key = "name" if media_type == "tv" else "title"
+            date_key = "first_air_date" if media_type == "tv" else "release_date"
+
+            # Если вернулось не кириллическое название — тянем русский перевод
+            ru_title = m.get(name_key) or title
+            if not any('Ѐ' <= c <= 'ӿ' for c in ru_title):
                 try:
                     det = await h.get(
-                        f"{TMDB_BASE}/{endpoint}/{tmdb_id}",
+                        f"{TMDB_BASE}/{media_type}/{tmdb_id}",
                         params={"api_key": TMDB_KEY, "language": "ru-RU"}
                     )
-                    det_data = det.json()
-                    ru_title = det_data.get(name_key) or ru_title
+                    ru_title = det.json().get(name_key) or ru_title
                 except Exception:
                     pass
 
             return {
-                "id":           tmdb_id,
-                "title":        ru_title,
-                "poster_path":  m.get("poster_path"),
+                "id":          tmdb_id,
+                "title":       ru_title,
+                "poster_path": m.get("poster_path"),
                 "vote_average": m.get("vote_average"),
-                date_key:       m.get(date_key, ""),
-                "media_type":   mtype,
-                "ai_reason":    reason,
+                date_key:      m.get(date_key, ""),
+                "media_type":  media_type,
+                "ai_reason":   reason,
             }
-        except Exception:
+        except Exception as e:
+            print(f"[tmdb_lookup] '{title}': {e}")
             return None
 
     async with httpx.AsyncClient(timeout=60) as h:
-        found = await asyncio.gather(*[tmdb_lookup(h, item) for item in suggestions[:15]])
+        found = await asyncio.gather(*[tmdb_lookup(h, item) for item in candidates[:15]])
     results = [r for r in found if r is not None][:12]
 
     return {"movies": results, "debug_ai": suggestions}

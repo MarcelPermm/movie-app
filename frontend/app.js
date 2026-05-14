@@ -1902,7 +1902,7 @@ function renderProfile(s, actorsData) {
   const wrap = $("profile-content");
   const user = state.user || { display_name: "Пользователь" };
   const initial = user.display_name?.[0]?.toUpperCase() || "?";
-  const actors = actorsData?.actors || [];
+  const actors = Array.isArray(actorsData) ? actorsData : (actorsData?.actors || []);
 
   if (!s.total) {
     wrap.innerHTML = `
