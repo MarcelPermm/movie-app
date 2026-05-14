@@ -5,6 +5,21 @@ import psycopg2.extras
 import psycopg2.errors as pg_errors
 
 
+def _parse_list(val) -> list:
+    """Парсит список из JSON строки, PostgreSQL массива {a,b} или уже готового списка."""
+    if not val:
+        return []
+    if isinstance(val, list):
+        return val
+    try:
+        return json.loads(val)
+    except (json.JSONDecodeError, TypeError):
+        if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+            inner = val[1:-1]
+            return [x.strip().strip('"') for x in inner.split(",") if x.strip()]
+        return []
+
+
 def _get_conn():
     url = os.getenv("DATABASE_URL", "")
     # Render/Heroku могут вернуть "postgres://..." — psycopg2 требует "postgresql://"
@@ -150,8 +165,8 @@ def get_watched(media_type: str = "movie") -> list[dict]:
         result = []
         for row in rows:
             m = dict(row)
-            m["genres"]     = json.loads(m["genres"]) if m.get("genres") else []
-            m["cast_names"] = json.loads(m["cast_names"]) if m.get("cast_names") else []
+            m["genres"]     = _parse_list(m.get("genres"))
+            m["cast_names"] = _parse_list(m.get("cast_names"))
             result.append(m)
         return result
     finally:
@@ -236,7 +251,7 @@ def get_watchlist(media_type: str = "movie") -> list[dict]:
         result = []
         for row in rows:
             m = dict(row)
-            m["genres"] = json.loads(m["genres"]) if m.get("genres") else []
+            m["genres"] = _parse_list(m.get("genres"))
             result.append(m)
         return result
     finally:
@@ -313,9 +328,9 @@ def get_dismissed(media_type: str = "movie") -> list[dict]:
         result = []
         for row in rows:
             m = dict(row)
-            m["genres"]       = json.loads(m["genres"]) if m.get("genres") else []
-            m["cast_names"]   = json.loads(m["cast_names"]) if m.get("cast_names") else []
-            m["studio_names"] = json.loads(m["studio_names"]) if m.get("studio_names") else []
+            m["genres"]       = _parse_list(m.get("genres"))
+            m["cast_names"]   = _parse_list(m.get("cast_names"))
+            m["studio_names"] = _parse_list(m.get("studio_names"))
             result.append(m)
         return result
     finally:
