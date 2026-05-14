@@ -976,7 +976,7 @@ async def analyze_profile(user_id: int = 1):
 
     try:
         response = await client.chat.completions.create(
-            model="llama3.1-70b",
+            model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=600,
             temperature=0.8,
