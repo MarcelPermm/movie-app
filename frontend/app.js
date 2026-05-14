@@ -89,6 +89,9 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (tab === "dismissed") loadDismissed();
     if (tab === "actors")    loadActors();
     if (tab === "profile")   loadProfile();
+    // Скрываем тултип рейтинговых баров при смене вкладки
+    const bt = document.getElementById("bar-tooltip");
+    if (bt) bt.classList.remove("visible");
   });
 });
 
@@ -1639,9 +1642,9 @@ function renderProfile(s, actorsData) {
     const moviePct = total ? Math.round((mc / total) * 100) : 50;
     const tvPct    = 100 - moviePct;
     return `
-      <div class="rating-bar-wrap">
+      <div class="rating-bar-wrap" data-mc="${mc}" data-tc="${tc}" data-num="${num}">
         ${total ? `<div class="rating-bar-cnt">${total}</div>` : ""}
-        <div class="rating-bar-stack" style="height:${Math.max(pct, total ? 4 : 0)}%">
+        <div class="rating-bar-stack" style="height:${Math.max(pct, total ? 3 : 0)}%">
           <div class="rating-bar tv"    style="height:${tvPct}%"></div>
           <div class="rating-bar movie" style="height:${moviePct}%"></div>
         </div>
@@ -1649,21 +1652,26 @@ function renderProfile(s, actorsData) {
       </div>`;
   }).join("");
 
-  // Жанры — split movie/tv
+  // Жанры — split movie/tv с раздельными счётчиками
   const maxGenre = Math.max(...s.top_genres.map(g => g.total || 0), 1);
   const genresHTML = s.top_genres.map(g => {
-    const total = g.total || 0;
-    const moviePct = total ? Math.round((g.movie_count / total) * 100) : 50;
+    const total   = g.total || 0;
+    const mc      = g.movie_count || 0;
+    const tc      = g.tv_count    || 0;
+    const barPct  = Math.round(total / maxGenre * 100);
+    const moviePct = total ? Math.round(mc / total * 100) : 50;
     const tvPct    = 100 - moviePct;
+    const mcLabel  = mc ? `<span class="genre-bar-count-movie">🎬 ${mc}</span>` : "";
+    const tcLabel  = tc ? `<span class="genre-bar-count-tv">📺 ${tc}</span>`    : "";
     return `
     <div class="genre-bar-row">
       <div class="genre-bar-label">
         <span>${g.name}</span>
-        <span class="genre-bar-count">${total}</span>
+        <span class="genre-bar-counts">${mcLabel}${tcLabel}</span>
       </div>
       <div class="genre-bar-track">
-        <div class="genre-bar-fill movie" style="width:${Math.round(total/maxGenre*100)*moviePct/100}%"></div>
-        <div class="genre-bar-fill tv"    style="width:${Math.round(total/maxGenre*100)*tvPct/100}%"></div>
+        <div class="genre-bar-fill movie" style="width:${barPct * moviePct / 100}%"></div>
+        <div class="genre-bar-fill tv"    style="width:${barPct * tvPct    / 100}%"></div>
       </div>
     </div>`;
   }).join("");
@@ -1778,6 +1786,37 @@ function renderProfile(s, actorsData) {
 
       </div>
     </div>`;
+
+  // Тултип для рейтинговых баров
+  let barTooltip = document.getElementById("bar-tooltip");
+  if (!barTooltip) {
+    barTooltip = document.createElement("div");
+    barTooltip.className = "bar-tooltip";
+    barTooltip.id = "bar-tooltip";
+    document.body.appendChild(barTooltip);
+  }
+  document.querySelectorAll(".rating-bar-wrap[data-num]").forEach(el => {
+    el.addEventListener("mouseenter", () => {
+      const mc    = parseInt(el.dataset.mc) || 0;
+      const tc    = parseInt(el.dataset.tc) || 0;
+      const total = mc + tc;
+      const num   = el.dataset.num;
+      if (!total) return;
+      barTooltip.innerHTML = `
+        <div class="bar-tooltip-num">Оценка ${num}</div>
+        ${mc ? `<div class="bar-tooltip-movie">🎬 Фильмы: <b>${mc}</b></div>` : ""}
+        ${tc ? `<div class="bar-tooltip-tv">📺 Сериалы: <b>${tc}</b></div>`   : ""}
+        <div class="bar-tooltip-total">Итого: ${total}</div>`;
+      barTooltip.classList.add("visible");
+    });
+    el.addEventListener("mousemove", e => {
+      barTooltip.style.left = `${e.clientX + 14}px`;
+      barTooltip.style.top  = `${e.clientY - 10}px`;
+    });
+    el.addEventListener("mouseleave", () => {
+      barTooltip.classList.remove("visible");
+    });
+  });
 
   // Клики по актёрам — открываем персональный модал
   document.querySelectorAll(".profile-actor-item[data-actor-id]").forEach(el => {

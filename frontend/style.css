@@ -486,15 +486,17 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .profile-num-val  { font-size: 26px; font-weight: 900; color: var(--gold); font-family: 'Playfair Display', serif; }
 .profile-num-lbl  { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.07em; }
 
-.profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+/* ─── Профиль: сетка карточек ────────────────────────────────────────────── */
+.profile-grid { display: flex; flex-direction: column; gap: 20px; }
 .profile-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; padding: 22px 24px;
+  border-radius: 14px; padding: 24px 28px;
 }
-.profile-card-full { grid-column: 1 / -1; }
+.profile-card-full { /* оставляем для совместимости, теперь все full */ }
 .profile-card-title {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--gold); margin-bottom: 18px;
+  letter-spacing: 0.1em; color: var(--gold); margin-bottom: 20px;
+  display: flex; align-items: center; gap: 0;
 }
 
 /* Легенда фильм / сериал */
@@ -503,64 +505,88 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .legend-dot.movie { background: var(--gold); }
 .legend-dot.tv    { background: #4c7ac9; }
+.profile-legend { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; vertical-align: middle; }
+.legend-lbl     { font-size: 11px; color: var(--text-dim); font-weight: 400; text-transform: none; letter-spacing: 0; }
 
 /* Рейтинги — стэкованные бары */
-.rating-bars { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
-.rating-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
-.rating-bar-stack { width: 100%; display: flex; flex-direction: column; border-radius: 4px 4px 0 0; overflow: hidden; }
+.rating-bars { display: flex; align-items: flex-end; gap: 8px; height: 200px; padding-bottom: 2px; }
+.rating-bar-wrap {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+  height: 100%; justify-content: flex-end; cursor: pointer; position: relative;
+}
+.rating-bar-stack {
+  width: 100%; display: flex; flex-direction: column;
+  border-radius: 5px 5px 0 0; overflow: hidden;
+  transition: filter 0.15s;
+}
+.rating-bar-wrap:hover .rating-bar-stack { filter: brightness(1.25); }
 .rating-bar {
-  width: 100%;
-  min-height: 2px; transition: height 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  width: 100%; min-height: 2px;
+  transition: height 0.6s cubic-bezier(0.34,1.56,0.64,1);
 }
 .rating-bar.movie { background: linear-gradient(to top, var(--gold-dim), var(--gold)); }
 .rating-bar.tv    { background: linear-gradient(to top, #2a4a80, #4c7ac9); }
-.rating-bar-num { font-size: 10px; color: var(--text-dim); font-weight: 600; }
-.rating-bar-cnt { font-size: 9px; color: var(--text-dim); font-weight: 700; }
+.rating-bar-num { font-size: 11px; color: var(--text-dim); font-weight: 600; }
+.rating-bar-cnt { font-size: 11px; color: var(--text); font-weight: 700; }
+
+/* Тултип для баров */
+.bar-tooltip {
+  position: fixed; pointer-events: none; z-index: 9999;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; font-size: 12px;
+  color: var(--text); line-height: 1.7; opacity: 0;
+  transition: opacity 0.12s; white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.bar-tooltip.visible { opacity: 1; }
+.bar-tooltip-num { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.bar-tooltip-movie { color: var(--gold); }
+.bar-tooltip-tv    { color: #4c7ac9; }
+.bar-tooltip-total { color: var(--text-dim); font-size: 11px; margin-top: 2px; }
 
 /* Жанры — разделённый бар */
-.genre-bars { display: flex; flex-direction: column; gap: 10px; }
-.genre-bar-row { display: flex; flex-direction: column; gap: 4px; }
-.genre-bar-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text); }
+.genre-bars { display: flex; flex-direction: column; gap: 14px; }
+.genre-bar-row { display: flex; flex-direction: column; gap: 5px; }
+.genre-bar-label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--text); }
 .genre-bar-counts { display: flex; gap: 8px; }
-.genre-bar-count-movie { font-size: 11px; color: var(--gold); font-weight: 600; }
-.genre-bar-count-tv    { font-size: 11px; color: #4c7ac9; font-weight: 600; }
-.genre-bar-track { height: 7px; background: var(--border); border-radius: 3px; overflow: hidden; display: flex; }
+.genre-bar-count-movie { font-size: 11px; color: var(--gold); font-weight: 700; }
+.genre-bar-count-tv    { font-size: 11px; color: #4c7ac9; font-weight: 700; }
+.genre-bar-track { height: 9px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; }
 .genre-bar-fill.movie { height: 100%; background: linear-gradient(to right, var(--gold-dim), var(--gold)); transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); }
 .genre-bar-fill.tv    { height: 100%; background: linear-gradient(to right, #2a4a80, #4c7ac9); transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); }
 
 /* Актёры в профиле */
-.profile-actors { display: flex; flex-direction: column; gap: 8px; }
+.profile-actors-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
 .profile-actor-item {
   display: flex; align-items: center; gap: 12px;
-  padding: 8px 10px; background: var(--bg); border-radius: 10px;
+  padding: 10px 12px; background: var(--bg); border-radius: 12px;
   cursor: pointer; transition: background var(--transition);
 }
 .profile-actor-item:hover { background: rgba(201,168,76,0.07); }
 .profile-actor-photo {
-  width: 38px; height: 38px; border-radius: 50%; object-fit: cover;
+  width: 42px; height: 42px; border-radius: 50%; object-fit: cover;
   background: var(--border); flex-shrink: 0;
 }
 .profile-actor-no-photo {
-  width: 38px; height: 38px; border-radius: 50%; background: var(--border);
+  width: 42px; height: 42px; border-radius: 50%; background: var(--border);
   display: flex; align-items: center; justify-content: center;
-  font-size: 18px; flex-shrink: 0;
+  font-size: 20px; flex-shrink: 0;
 }
-.profile-actor-name { font-size: 13px; color: var(--text); font-weight: 600; flex: 1; }
-.profile-actor-badges { display: flex; gap: 5px; }
+.profile-actor-info  { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.profile-actor-name  { font-size: 13px; color: var(--text); font-weight: 600; }
+.profile-actor-badges { display: flex; gap: 5px; flex-wrap: wrap; }
 .badge-movie {
   font-size: 11px; font-weight: 700; color: var(--bg);
-  background: var(--gold); padding: 2px 7px; border-radius: 10px;
-  white-space: nowrap;
+  background: var(--gold); padding: 2px 7px; border-radius: 10px; white-space: nowrap;
 }
 .badge-tv {
   font-size: 11px; font-weight: 700; color: #fff;
-  background: #4c7ac9; padding: 2px 7px; border-radius: 10px;
-  white-space: nowrap;
+  background: #4c7ac9; padding: 2px 7px; border-radius: 10px; white-space: nowrap;
 }
-.profile-actors-list { display: flex; flex-direction: column; gap: 8px; }
-.profile-actor-info  { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.profile-legend      { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
-.legend-lbl          { font-size: 11px; color: var(--text-dim); }
 
 /* Режиссёры */
 .profile-list { display: flex; flex-direction: column; gap: 8px; }
