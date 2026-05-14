@@ -1016,32 +1016,43 @@ async def ai_suggest(user_id: int = 1, query: str = ""):
     top_genres  = [name for name, _ in genre_cnt.most_common(5)]
     top_titles  = [m["title"] for m in sorted(all_rated, key=lambda x: x["user_rating"], reverse=True)[:6]]
 
+    example = '[{"title": "The Dark Knight", "year": 2008, "type": "movie", "reason": "Одна фраза"}, {"title": "Breaking Bad", "year": 2008, "type": "tv", "reason": "Одна фраза"}]'
+
     if query:
-        prompt = f"""Ты эксперт по кино. Пользователь хочет что-то посмотреть и описал что именно:
+        prompt = f"""You are a movie expert. A user wants to watch something and described it:
 
-«{query}»
+"{query}"
 
-Также учти его вкусы:
-- Любимые жанры: {", ".join(top_genres) if top_genres else "разные"}
-- Высоко оценил: {", ".join(top_titles) if top_titles else "пока нет"}
+Also consider their taste:
+- Favorite genres: {", ".join(top_genres) if top_genres else "various"}
+- Highly rated by user: {", ".join(top_titles) if top_titles else "none yet"}
 
-Порекомендуй 8 фильмов или сериалов которые максимально подойдут под его запрос.
-Верни ТОЛЬКО JSON массив, без лишнего текста, без markdown:
-[{{"title": "Название на английском", "year": 2010, "type": "movie", "reason": "Одна фраза почему это подходит под запрос"}}, ...]
+Recommend exactly 8 movies or TV shows that best match the request.
 
-type = "movie" или "tv". Только реально существующие известные фильмы/сериалы."""
+IMPORTANT RULES:
+- Output ONLY a raw JSON array, no markdown, no code blocks, no explanation
+- Use the ORIGINAL English title (as it appears on IMDb/TMDB), not translated
+- Only recommend well-known titles that definitely exist
+- reason must be in Russian, one short sentence
+
+Example output:
+{example}"""
     else:
-        prompt = f"""Ты эксперт по кино. Порекомендуй 8 фильмов или сериалов на основе вкусов пользователя.
+        prompt = f"""You are a movie expert. Recommend exactly 8 movies or TV shows based on user taste.
 
-Вкусы:
-- Любимые жанры: {", ".join(top_genres) if top_genres else "разные"}
-- Высоко оценил: {", ".join(top_titles) if top_titles else "пока нет"}
-- Средняя оценка: {avg_rating or "нет"}
+User taste:
+- Favorite genres: {", ".join(top_genres) if top_genres else "various"}
+- Highly rated: {", ".join(top_titles) if top_titles else "none yet"}
+- Average rating: {avg_rating or "unknown"}
 
-Верни ТОЛЬКО JSON массив, без лишнего текста, без markdown:
-[{{"title": "Название на английском", "year": 2010, "type": "movie", "reason": "Одна фраза почему"}}, ...]
+IMPORTANT RULES:
+- Output ONLY a raw JSON array, no markdown, no code blocks, no explanation
+- Use the ORIGINAL English title (as it appears on IMDb/TMDB), not translated
+- Only recommend well-known titles that definitely exist
+- reason must be in Russian, one short sentence
 
-type = "movie" или "tv". Только реально существующие известные фильмы/сериалы."""
+Example output:
+{example}"""
 
     client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
 
@@ -1049,57 +1060,84 @@ type = "movie" или "tv". Только реально существующие
         response = await client.chat.completions.create(
             model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=800,
+            max_tokens=900,
             temperature=0.7,
         )
         raw = response.choices[0].message.content.strip()
 
-        # Вытаскиваем JSON из ответа
+        # Убираем markdown code blocks если модель их добавила
+        raw = re.sub(r'^```[a-z]*\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+        raw = raw.strip()
+
+        # Вытаскиваем JSON массив из ответа
         json_match = re.search(r'\[.*\]', raw, re.DOTALL)
         if not json_match:
-            raise ValueError("Нет JSON в ответе")
+            raise ValueError(f"Нет JSON в ответе. Ответ модели: {raw[:200]}")
         suggestions = json.loads(json_match.group())
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
 
-    # Ищем каждый фильм в TMDB
+    # Ищем каждый фильм в TMDB по оригинальному названию
     results = []
     async with httpx.AsyncClient(timeout=10) as client_http:
         for item in suggestions[:8]:
-            title = item.get("title", "")
-            year  = item.get("year")
-            mtype = item.get("type", "movie")
+            title  = item.get("title", "").strip()
+            year   = item.get("year")
+            mtype  = item.get("type", "movie")
             reason = item.get("reason", "")
             if not title:
                 continue
             try:
+                # Ищем без language чтобы матч шёл по оригинальному названию,
+                # но возвращаем данные с русскими названиями отдельным запросом
                 if mtype == "tv":
-                    params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+                    # Попытка 1: с годом
+                    params = {"api_key": TMDB_KEY, "query": title}
                     if year: params["first_air_date_year"] = year
                     r = await client_http.get(f"{TMDB_BASE}/search/tv", params=params)
                     items = r.json().get("results", [])
+                    # Попытка 2: без года если не нашли
+                    if not items and year:
+                        params.pop("first_air_date_year", None)
+                        r = await client_http.get(f"{TMDB_BASE}/search/tv", params=params)
+                        items = r.json().get("results", [])
                     if items:
                         m = items[0]
+                        # Получаем русское название
+                        ru = await client_http.get(f"{TMDB_BASE}/tv/{m['id']}", params={"api_key": TMDB_KEY, "language": "ru-RU"})
+                        ru_data = ru.json()
                         tmdb_id = m["id"]
                         if tmdb_id not in watched_ids:
                             results.append({
-                                "id": tmdb_id, "title": m.get("name", title),
+                                "id": tmdb_id,
+                                "title": ru_data.get("name") or m.get("name", title),
                                 "poster_path": m.get("poster_path"),
                                 "vote_average": m.get("vote_average"),
                                 "first_air_date": m.get("first_air_date", ""),
                                 "media_type": "tv", "ai_reason": reason,
                             })
                 else:
-                    params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+                    # Попытка 1: с годом
+                    params = {"api_key": TMDB_KEY, "query": title}
                     if year: params["year"] = year
                     r = await client_http.get(f"{TMDB_BASE}/search/movie", params=params)
                     items = r.json().get("results", [])
+                    # Попытка 2: без года если не нашли
+                    if not items and year:
+                        params.pop("year", None)
+                        r = await client_http.get(f"{TMDB_BASE}/search/movie", params=params)
+                        items = r.json().get("results", [])
                     if items:
                         m = items[0]
+                        # Получаем русское название
+                        ru = await client_http.get(f"{TMDB_BASE}/movie/{m['id']}", params={"api_key": TMDB_KEY, "language": "ru-RU"})
+                        ru_data = ru.json()
                         tmdb_id = m["id"]
                         if tmdb_id not in watched_ids:
                             results.append({
-                                "id": tmdb_id, "title": m.get("title", title),
+                                "id": tmdb_id,
+                                "title": ru_data.get("title") or m.get("title", title),
                                 "poster_path": m.get("poster_path"),
                                 "vote_average": m.get("vote_average"),
                                 "release_date": m.get("release_date", ""),
