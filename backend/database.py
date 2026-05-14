@@ -131,7 +131,7 @@ def get_user_by_username(username: str) -> dict | None:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, username, display_name FROM users WHERE username = %s", (username,))
+        cur.execute("SELECT id, username, display_name FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
         row = cur.fetchone()
         return dict(row) if row else None
     finally:
