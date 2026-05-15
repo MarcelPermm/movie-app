@@ -4,7 +4,15 @@ const TMDB_SM   = "https://image.tmdb.org/t/p/w185";
 const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
 
 const state = {
-  mediaType:   "movie",   // "movie" | "tv"
+  // Глобальный mediaType больше не управляется тоггом в шапке.
+  // Используется как fallback для модалок (когда нет _mediaType в данных).
+  mediaType:   "movie",
+  // Локальные режимы для каждой "личной" вкладки
+  watchedMode:   "movie",
+  watchlistMode: "movie",
+  dismissedMode: "movie",
+  recsMode:      "movie",
+  // Combined множества — содержат обе типа сразу (фильмы И сериалы)
   watched:     new Map(),
   watchlist:   new Set(),
   currentSort: "similarity",
@@ -19,13 +27,15 @@ const state = {
   user: null,  // { id, username, display_name }
 };
 
-// Хелпер — добавляет media_type к fetch-параметрам
-function mt(params = {}) {
-  return { ...params, media_type: state.mediaType };
+// Хелпер — добавляет media_type к URL. По умолчанию берёт state.mediaType,
+// но можно передать явный тип (для per-tab переключателей).
+function mt(params = {}, mediaType = null) {
+  return { ...params, media_type: mediaType || state.mediaType };
 }
-function mtq(base = "") {
+function mtq(base = "", mediaType = null) {
+  const type = mediaType || state.mediaType;
   const sep = base.includes("?") ? "&" : "?";
-  return `${base}${sep}media_type=${state.mediaType}`;
+  return `${base}${sep}media_type=${type}`;
 }
 
 const COUNTRY_OPTIONS = [
@@ -97,45 +107,48 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
   });
 });
 
-// ─── Переключатель режимов (фильмы / сериалы) ──────────────────────────────
-document.querySelectorAll(".mode-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const mode = btn.dataset.mode;
-    if (mode === state.mediaType) return;
-    document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    state.mediaType = mode;
+// ─── Локальные переключатели типа во вкладках ──────────────────────────────
+// Каждая из 4 вкладок (watched / watchlist / dismissed / recs) имеет свой pill-toggle.
+document.querySelectorAll(".tab-mode-toggle").forEach(toggle => {
+  const key = toggle.dataset.toggle;  // "watched" | "watchlist" | "dismissed" | "recs"
+  toggle.querySelectorAll(".tab-mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mode;
+      const stateKey = `${key}Mode`;
+      if (state[stateKey] === mode) return;
+      state[stateKey] = mode;
+      toggle.querySelectorAll(".tab-mode-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
 
-    const isTV = mode === "tv";
-    $("logo-text").textContent = isTV ? "SerialByMihaylov" : "FilmByMihaylov";
-    $("search-input").placeholder = isTV ? "Найти сериал..." : "Найти фильм...";
-
-    // Сбрасываем состояние
-    state.allRecs = [];
-    state.filterState.genre   = { inc: new Set(), exc: new Set() };
-    state.filterState.country = { inc: new Set(), exc: new Set() };
-    mfItems.genre = [];
-    renderActiveTags();
-    updateMfCount("genre");
-    updateMfCount("country");
-    $("sort-wrap").style.display = "none";
-    $("recs-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Нажми кнопку выше, чтобы получить рекомендации</p></div>`;
-
-    // Перезагружаем данные для нового режима
-    reloadAllCounts();
-    $("search-input").value = "";
-    loadHomepage();
-
-    // Перегружаем жанры для нового режима
-    apiFetch(`/genres?media_type=${mode}`).then(list => {
-      if (list?.length) {
-        mfItems.genre = list.map(g => ({ value: g.name, label: g.name }));
-        buildMfPanel("genre");
+      // Перезагружаем соответствующую вкладку
+      if (key === "watched")   loadWatched();
+      if (key === "watchlist") loadWatchlist();
+      if (key === "dismissed") loadDismissed();
+      if (key === "recs") {
+        // Для рекомендаций обновляем подпись, сбрасываем пул и перезагружаем фильтры жанров
+        const subEl = $("recs-sub");
+        if (subEl) subEl.textContent = mode === "tv"
+          ? "Подобрано на основе твоих оценок · до 2000 сериалов"
+          : "Подобрано на основе твоих оценок · до 2000 фильмов";
+        state.allRecs = [];
+        state.filterState.genre   = { inc: new Set(), exc: new Set() };
+        state.filterState.country = { inc: new Set(), exc: new Set() };
+        mfItems.genre = [];
+        renderActiveTags();
+        updateMfCount("genre");
+        updateMfCount("country");
+        $("sort-wrap").style.display = "none";
+        $("recs-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">✦</span><p>Нажми кнопку выше, чтобы получить рекомендации</p></div>`;
+        // Перегружаем жанры и студии под новый тип
+        apiFetch(`/genres?media_type=${mode}`).then(list => {
+          if (list?.length) {
+            mfItems.genre = list.map(g => ({ value: g.name, label: g.name }));
+            buildMfPanel("genre");
+          }
+        }).catch(() => {});
+        reloadStudios(mode);
       }
-    }).catch(() => {});
-
-    // Перезагружаем список студий/сетей для нового режима
-    reloadStudios(mode);
+    });
   });
 });
 
@@ -155,17 +168,30 @@ function reloadStudios(mediaType) {
 
 async function reloadAllCounts() {
   try {
-    const [watchedList, watchlistItems, dismissedList] = await Promise.all([
-      apiFetch(mtq("/watched")),
-      apiFetch(mtq("/watchlist")),
-      apiFetch(mtq("/dismissed")),
+    // Загружаем оба типа параллельно (6 запросов) и объединяем в общие сеты.
+    // Это нужно чтобы кнопки "Просмотрено / Позже / Скрыто" на карточках работали
+    // одинаково независимо от того, какой тип сейчас выбран на вкладке.
+    const [
+      watchedMv, watchedTv,
+      watchlistMv, watchlistTv,
+      dismissedMv, dismissedTv,
+    ] = await Promise.all([
+      apiFetch(mtq("/watched",   "movie")),
+      apiFetch(mtq("/watched",   "tv")),
+      apiFetch(mtq("/watchlist", "movie")),
+      apiFetch(mtq("/watchlist", "tv")),
+      apiFetch(mtq("/dismissed", "movie")),
+      apiFetch(mtq("/dismissed", "tv")),
     ]);
-    state.watched   = new Map(watchedList.map(m => [m.movie_id, m.user_rating]));
-    state.watchlist = new Set(watchlistItems.map(m => m.movie_id));
-    state.dismissed = new Set(dismissedList.map(m => m.movie_id));
-    $("watch-count").textContent     = watchedList.length;
-    $("watchlist-count").textContent = watchlistItems.length;
-    $("dismissed-count").textContent = dismissedList.length;
+    const allWatched   = [...watchedMv, ...watchedTv];
+    const allWatchlist = [...watchlistMv, ...watchlistTv];
+    const allDismissed = [...dismissedMv, ...dismissedTv];
+    state.watched   = new Map(allWatched.map(m => [m.movie_id, m.user_rating]));
+    state.watchlist = new Set(allWatchlist.map(m => m.movie_id));
+    state.dismissed = new Set(allDismissed.map(m => m.movie_id));
+    $("watch-count").textContent     = allWatched.length;
+    $("watchlist-count").textContent = allWatchlist.length;
+    $("dismissed-count").textContent = allDismissed.length;
   } catch {}
 }
 
@@ -196,10 +222,19 @@ async function doSearch() {
   $("discover-title").textContent = `Результаты: «${query}»`;
   $("movies-grid").innerHTML = '<div class="loader">Ищем…</div>';
   try {
-    const [movies, people] = await Promise.all([
-      apiFetch(`/search?q=${encodeURIComponent(query)}&media_type=${state.mediaType}`),
+    // Параллельный поиск фильмов И сериалов, плюс актёры
+    const [movieResults, tvResults, people] = await Promise.all([
+      apiFetch(`/search?q=${encodeURIComponent(query)}&media_type=movie`).catch(() => []),
+      apiFetch(`/search?q=${encodeURIComponent(query)}&media_type=tv`).catch(() => []),
       apiFetch(`/search/person?q=${encodeURIComponent(query)}`).catch(() => []),
     ]);
+    // Помечаем каждый результат своим media_type
+    const movies = [
+      ...(movieResults || []).map(m => ({ ...m, media_type: "movie" })),
+      ...(tvResults    || []).map(m => ({ ...m, media_type: "tv"    })),
+    ];
+    // Сортировка по популярности (если есть), иначе по vote_count
+    movies.sort((a, b) => (b.popularity || b.vote_count || 0) - (a.popularity || a.vote_count || 0));
     renderSearchResults($("movies-grid"), movies, people);
   } catch {
     $("movies-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">✕</span><p>Ошибка поиска</p></div>`;
@@ -469,11 +504,14 @@ async function loadPopular() {
 
 // ─── Просмотренное ─────────────────────────────────────────────────────────
 async function loadWatched(filterRating = null, filterTitle = "") {
+  const mode = state.watchedMode;
   $("watched-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  const subEl = $("watched-sub");
+  if (subEl) subEl.textContent = mode === "tv"
+    ? "Сериалы которые ты уже посмотрел"
+    : "Фильмы которые ты уже посмотрел";
   try {
-    let items = await apiFetch(mtq("/watched"));
-    state.watched = new Map(items.map(m => [m.movie_id, m.user_rating]));
-    $("watch-count").textContent = items.length;
+    let items = await apiFetch(mtq("/watched", mode));
 
     // Фильтр по оценке
     if (filterRating !== null) {
@@ -517,11 +555,14 @@ function debounce(fn, ms) {
 
 // ─── К просмотру ───────────────────────────────────────────────────────────
 async function loadWatchlist() {
+  const mode = state.watchlistMode;
   $("watchlist-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  const subEl = $("watchlist-sub");
+  if (subEl) subEl.textContent = mode === "tv"
+    ? "Сериалы которые хочешь посмотреть позже"
+    : "Фильмы которые хочешь посмотреть позже";
   try {
-    const items = await apiFetch(mtq("/watchlist"));
-    state.watchlist = new Set(items.map(m => m.movie_id));
-    $("watchlist-count").textContent = items.length;
+    const items = await apiFetch(mtq("/watchlist", mode));
     if (!items.length) {
       $("watchlist-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">🕐</span><p>Список пуст</p></div>`;
       return;
@@ -596,14 +637,15 @@ function renderRecsPage(recs, showCount) {
 async function loadRecommendations() {
   const btn      = $("get-recs-btn");
   btn.disabled   = true; btn.textContent = "Анализируем…";
+  const mode     = state.recsMode;
   const studioId = $("filter-studio")?.value || "0";
   const incCountries = [...state.filterState.country.inc].join(",");
-  const label = state.mediaType === "tv" ? "сериалы" : "фильмы";
+  const label = mode === "tv" ? "сериалы" : "фильмы";
 
   $("recs-grid").innerHTML = `<div class="loader">Подбираем ${label}…</div>`;
 
   try {
-    const params = new URLSearchParams({ studio_id: studioId, media_type: state.mediaType });
+    const params = new URLSearchParams({ studio_id: studioId, media_type: mode });
     if (incCountries) params.set("country", incCountries);
     const recs   = await apiFetch(`/recommendations?${params}`);
     state.allRecs = recs;
@@ -822,24 +864,33 @@ function renderMovies(container, movies, mode = "discover") {
       </div>
     `;
 
+    // Определяем тип карточки: из movie или из контекста вкладки
+    const cardMediaType =
+      movie.media_type ||
+      (mode === "watched"         ? state.watchedMode
+      : mode === "watchlist"       ? state.watchlistMode
+      : mode === "dismissed"       ? state.dismissedMode
+      : mode === "recommendations" ? state.recsMode
+      : "movie");
+
     card.addEventListener("click", e => {
       if (e.target.closest(".watched-btn,.watch-btn,.dismiss-btn")) return;
-      pushModal({ type: "movie", data: movie });
-      openMovieModal(movie);
+      pushModal({ type: "movie", data: { ...movie, _mediaType: cardMediaType } });
+      openMovieModal({ ...movie, _mediaType: cardMediaType });
     });
 
     card.querySelector(".watched-btn").addEventListener("click", e => {
       e.stopPropagation();
-      toggleWatched(movieId, card.querySelector(".watched-btn"), mode === "watched" ? container : null);
+      toggleWatched(movieId, card.querySelector(".watched-btn"), mode === "watched" ? container : null, cardMediaType);
     });
     card.querySelector(".watch-btn").addEventListener("click", e => {
       e.stopPropagation();
-      toggleWatchlist(movieId, card.querySelector(".watch-btn"), mode === "watchlist" ? container : null);
+      toggleWatchlist(movieId, card.querySelector(".watch-btn"), mode === "watchlist" ? container : null, cardMediaType);
     });
     if (showDismiss) {
       card.querySelector(".dismiss-btn").addEventListener("click", e => {
         e.stopPropagation();
-        dismissMovie(movieId, card, mode === "recommendations");
+        dismissMovie(movieId, card, mode === "recommendations", cardMediaType);
       });
     }
     container.appendChild(card);
@@ -881,9 +932,12 @@ async function openMovieModal(movie, isBack = false) {
 
   try {
     const details = await apiFetch(`/movie/${movie.id || movie.movie_id}/details?media_type=${mediaType}`);
+    // Гарантируем что media_type в данных — все внутренние ссылки на него внутри модалки идут отсюда
+    details.media_type = details.media_type || mediaType;
     renderMovieContent(details);
     if (isBack) $("modal").scrollTop = state.modalStack[state.modalStack.length - 1]?.scrollTop || 0;
   } catch {
+    movie.media_type = movie.media_type || mediaType;
     renderMovieContent(movie);
   }
 }
@@ -954,6 +1008,7 @@ function formatDate(iso) {
 
 function renderMovieContent(movie) {
   const movieId     = movie.id || movie.movie_id;
+  const mediaType   = movie.media_type || "movie";  // тип конкретно этой модалки
   const isWatched   = state.watched.has(movieId) || movie.is_watched;
   const isWatch     = state.watchlist.has(movieId) || movie.is_watchlist;
   const userRating  = state.watched.get(movieId) ?? movie.watched_info?.user_rating;
@@ -1036,19 +1091,19 @@ function renderMovieContent(movie) {
       </div>
       ${ratingHTML}
       ${castHTML ? `<div class="cast-section"><h3 class="cast-title">В ролях</h3><div class="cast-grid">${castHTML}</div></div>` : ""}
-      ${state.mediaType === "tv" && movie.seasons?.length ? renderSeasonsHTML(movie) : ""}
+      ${mediaType === "tv" && movie.seasons?.length ? renderSeasonsHTML(movie) : ""}
     </div>
   `;
 
   // Сезоны
-  if (state.mediaType === "tv") bindSeasonsEvents(movieId);
+  if (mediaType === "tv") bindSeasonsEvents(movieId);
 
   // Трейлер
   $("trailer-play-btn").addEventListener("click", async () => {
     const btn = $("trailer-play-btn");
     btn.innerHTML = `<span>⏳</span><span>Загружаем…</span>`; btn.disabled = true;
     try {
-      const data = await apiFetch(`/trailer/${movieId}?media_type=${state.mediaType}`);
+      const data = await apiFetch(`/trailer/${movieId}?media_type=${mediaType}`);
       $("modal-hero").style.display = "none";
       $("trailer-player").style.display = "block";
       $("trailer-iframe").src = `https://www.youtube.com/embed/${data.key}?autoplay=1&rel=0`;
@@ -1067,7 +1122,7 @@ function renderMovieContent(movie) {
 
   // Просмотрено
   $("modal-watched-btn").addEventListener("click", async () => {
-    await toggleWatched(movieId, $("modal-watched-btn"));
+    await toggleWatched(movieId, $("modal-watched-btn"), null, mediaType);
     const now = state.watched.has(movieId);
     $("modal-watched-btn").className = `modal-watched-btn ${now ? "remove" : ""}`;
     $("modal-watched-btn").textContent = now ? "✓ Просмотрено" : "✓ Отметить просмотренным";
@@ -1075,7 +1130,7 @@ function renderMovieContent(movie) {
 
   // К просмотру
   $("modal-watch-btn").addEventListener("click", async () => {
-    await toggleWatchlist(movieId, $("modal-watch-btn"));
+    await toggleWatchlist(movieId, $("modal-watch-btn"), null, mediaType);
     const now = state.watchlist.has(movieId);
     $("modal-watch-btn").className = `modal-watch-btn ${now ? "remove" : ""}`;
     $("modal-watch-btn").textContent = now ? "✕ Убрать из списка" : "🕐 К просмотру";
@@ -1098,7 +1153,7 @@ function renderMovieContent(movie) {
     try {
       await apiFetch("/watched/rate", {
         method: "POST",
-        body: JSON.stringify({ movie_id: movieId, rating: selectedRating, review: review || null, media_type: state.mediaType }),
+        body: JSON.stringify({ movie_id: movieId, rating: selectedRating, review: review || null, media_type: mediaType }),
       });
       state.watched.set(movieId, selectedRating);
       $("watch-count").textContent = state.watched.size;
@@ -1129,7 +1184,7 @@ function renderMovieContent(movie) {
   // Студии
   document.querySelectorAll(".studio-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      const studio = { id: parseInt(btn.dataset.studioId), name: btn.dataset.studioName };
+      const studio = { id: parseInt(btn.dataset.studioId), name: btn.dataset.studioName, _mediaType: mediaType };
       pushModal({ type: "studio", data: studio });
       openStudioModal(studio);
     });
@@ -1140,7 +1195,7 @@ function renderMovieContent(movie) {
   const simGrid = $("similar-grid");
   simSec.style.display = "block";
   simGrid.innerHTML = '<div class="loader">Загружаем похожие…</div>';
-  apiFetch(`/similar/${movieId}?media_type=${state.mediaType}`).then(similar => {
+  apiFetch(`/similar/${movieId}?media_type=${mediaType}`).then(similar => {
     if (!similar?.length) { simSec.style.display = "none"; return; }
     renderMoviesInline(simGrid, similar);
   }).catch(() => simSec.style.display = "none");
@@ -1260,9 +1315,7 @@ function renderPersonWatched(container, items) {
       const id   = parseInt(el.dataset.id);
       const type = el.dataset.type;
       pushModal({ type: "movie", data: { id, _mediaType: type } });
-      const prev = state.mediaType;
-      state.mediaType = type;
-      openMovieModal({ id }).finally(() => { state.mediaType = prev; });
+      openMovieModal({ id, _mediaType: type });
     });
   });
 }
@@ -1272,7 +1325,8 @@ async function openStudioModal(studio, isBack = false) {
   $("similar-section").style.display = "none";
   $("modal-content").innerHTML = `<div style="height:400px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем фильмы ${studio.name}…</div>`;
   try {
-    const movies = await apiFetch(`/studio/${studio.id}/movies?media_type=${state.mediaType}`);
+    const studioMediaType = studio._mediaType || "movie";
+    const movies = await apiFetch(`/studio/${studio.id}/movies?media_type=${studioMediaType}`);
     $("modal-content").innerHTML = `
       <div class="modal-body" style="padding-top:32px">
         <h2 class="modal-title">${studio.name}</h2>
@@ -1424,9 +1478,9 @@ async function toggleWatchlist(movieId, btn, containerToRefresh = null, mediaTyp
 }
 
 // ─── Отклонить ─────────────────────────────────────────────────────────────
-async function dismissMovie(movieId, card, removeFromList = false) {
+async function dismissMovie(movieId, card, removeFromList = false, mediaType = "movie") {
   try {
-    await apiFetch("/dismiss", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: state.mediaType }) });
+    await apiFetch("/dismiss", { method: "POST", body: JSON.stringify({ movie_id: movieId, media_type: mediaType }) });
     if (state.dismissed) state.dismissed.add(movieId);
     if (removeFromList) {
       state.allRecs = state.allRecs.filter(m => m.id !== movieId);
@@ -1497,20 +1551,34 @@ function toast(message, type = "") {
 // ─── Инициализация ─────────────────────────────────────────────────────────
 async function init() {
   try {
-    const [watchedList, watchlistItems, studios, dismissedList, genreList, favActorList] = await Promise.all([
-      apiFetch(mtq("/watched")), apiFetch(mtq("/watchlist")),
-      apiFetch(mtq("/studios")), apiFetch(mtq("/dismissed")),
-      apiFetch(mtq("/genres")).catch(() => []),
+    // Параллельно: обе типа списков + студии/жанры по дефолтному типу (movie) для recs
+    const [
+      watchedMv, watchedTv,
+      watchlistMv, watchlistTv,
+      dismissedMv, dismissedTv,
+      studios, genreList, favActorList,
+    ] = await Promise.all([
+      apiFetch(mtq("/watched",   "movie")),
+      apiFetch(mtq("/watched",   "tv")),
+      apiFetch(mtq("/watchlist", "movie")),
+      apiFetch(mtq("/watchlist", "tv")),
+      apiFetch(mtq("/dismissed", "movie")),
+      apiFetch(mtq("/dismissed", "tv")),
+      apiFetch(mtq("/studios",   state.recsMode)),
+      apiFetch(mtq("/genres",    state.recsMode)).catch(() => []),
       apiFetch("/favorite-actors").catch(() => []),
     ]);
+    const allWatched   = [...watchedMv,   ...watchedTv];
+    const allWatchlist = [...watchlistMv, ...watchlistTv];
+    const allDismissed = [...dismissedMv, ...dismissedTv];
     state.favActors = new Set((favActorList || []).map(a => a.actor_id));
-    state.dismissed = new Set(dismissedList.map(m => m.movie_id));
+    state.watched   = new Map(allWatched.map(m => [m.movie_id, m.user_rating]));
+    state.watchlist = new Set(allWatchlist.map(m => m.movie_id));
+    state.dismissed = new Set(allDismissed.map(m => m.movie_id));
+    $("watch-count").textContent     = allWatched.length;
+    $("watchlist-count").textContent = allWatchlist.length;
     const dc = document.getElementById("dismissed-count");
-    if (dc) dc.textContent = dismissedList.length;
-    state.watched   = new Map(watchedList.map(m => [m.movie_id, m.user_rating]));
-    state.watchlist = new Set(watchlistItems.map(m => m.movie_id));
-    $("watch-count").textContent     = watchedList.length;
-    $("watchlist-count").textContent = watchlistItems.length;
+    if (dc) dc.textContent = allDismissed.length;
 
     const studioSelect = $("filter-studio");
     studios?.forEach(s => {
@@ -1782,10 +1850,10 @@ async function toggleFavActor(actorId, actorName, profilePath, cardBtn = null) {
 // ─── Отклонённые фильмы ────────────────────────────────────────────────────
 
 async function loadDismissed() {
+  const mode = state.dismissedMode;
   $("dismissed-grid").innerHTML = '<div class="loader">Загружаем…</div>';
   try {
-    const items = await apiFetch(mtq("/dismissed"));
-    $("dismissed-count").textContent = items.length;
+    const items = await apiFetch(mtq("/dismissed", mode));
     if (!items.length) {
       $("dismissed-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">✕</span><p>Нет отклонённых фильмов</p></div>`;
       return;
@@ -2206,9 +2274,10 @@ function renderDismissed(items) {
     card.querySelector(".restore-btn").addEventListener("click", async e => {
       e.stopPropagation();
       try {
-        await apiFetch(`/dismissed/${movie.movie_id}?media_type=${state.mediaType}`, { method: "DELETE" });
+        const dismissedType = movie.media_type || state.dismissedMode;
+        await apiFetch(`/dismissed/${movie.movie_id}?media_type=${dismissedType}`, { method: "DELETE" });
         animateRemove(card, () => loadDismissed());
-        const word = state.mediaType === "tv" ? "Сериал" : "Фильм";
+        const word = dismissedType === "tv" ? "Сериал" : "Фильм";
         toast(`${word} возвращён в рекомендации`, "success");
       } catch { toast("Ошибка", "error"); }
     });
