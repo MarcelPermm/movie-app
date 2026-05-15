@@ -31,6 +31,9 @@ const state = {
     watched:   { movie: null, tv: null },
     watchlist: { movie: null, tv: null },
     dismissed: { movie: null, tv: null },
+    // Кэш главной страницы — возврат на вкладку Обзор мгновенный.
+    // TTL 60с: после возвращаем кэш и параллельно обновляем в фоне.
+    homepage:  { ts: 0, movies: null, tv: null, recs: null },
   },
   user: null,  // { id, username, display_name }
 };
@@ -316,53 +319,92 @@ function renderSearchResults(container, movies, people) {
 }
 
 // ─── Главная страница ──────────────────────────────────────────────────────
+const HOMEPAGE_TTL = 60_000;   // 60s — после возвращаем кэш + обновляем в фоне
+
+function renderHomepageData(movies, tvShows, recs) {
+  if (movies?.length) renderHero(movies[0]);
+  else $("home-hero").innerHTML = "";
+  renderScrollRow("scroll-movies", movies || [], "movie");
+  renderScrollRow("scroll-tv",     tvShows || [], "tv");
+  attachScrollArrows("movies");
+  attachScrollArrows("tv");
+  if (recs?.length) {
+    $("home-row-recs").style.display = "";
+    renderScrollRow("scroll-recs", recs.slice(0, 20), "movie");
+    attachScrollArrows("recs");
+  } else {
+    $("home-row-recs").style.display = "none";
+  }
+}
+
 async function loadHomepage() {
   // Убедимся что показываем home-content
   $("home-content").style.display = "";
   $("search-content").style.display = "none";
 
-  // Показываем скелетон
-  $("home-hero").innerHTML = `<div style="height:480px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
-  $("scroll-movies").innerHTML = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
-  $("scroll-tv").innerHTML     = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+  const hp = state.cache.homepage;
+  const fresh = (Date.now() - hp.ts) < HOMEPAGE_TTL;
+
+  // ─── Если есть свежий кэш — рендерим мгновенно и не дёргаем сеть ─────────
+  if (fresh && hp.movies && hp.tv) {
+    renderHomepageData(hp.movies, hp.tv, hp.recs);
+    return;
+  }
+
+  // ─── Если кэш есть но протух — показываем его пока грузим свежее ─────────
+  if (hp.movies && hp.tv) {
+    renderHomepageData(hp.movies, hp.tv, hp.recs);
+    // продолжаем — обновим в фоне ниже
+  } else {
+    // Полностью пусто — показываем скелетон
+    $("home-hero").innerHTML = `<div style="height:480px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
+    $("scroll-movies").innerHTML = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+    $("scroll-tv").innerHTML     = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+  }
 
   try {
+    // Параллельно: popular movies + tv. Recs стартует одновременно, но рендерится отдельно
+    // чтобы не блокировать первые два ряда (recs может тянуться ~5-10 сек).
     const [movies, tvShows] = await Promise.all([
       apiFetch("/popular?media_type=movie"),
       apiFetch("/popular?media_type=tv"),
     ]);
+    hp.movies = movies;
+    hp.tv     = tvShows;
+    hp.ts     = Date.now();
 
-    // Герой — первый фильм из популярных
+    // Рендерим оба ряда сразу — рекомендации догрузятся позже
     if (movies?.length) renderHero(movies[0]);
     else $("home-hero").innerHTML = "";
-
-    // Ряды
     renderScrollRow("scroll-movies", movies || [], "movie");
     renderScrollRow("scroll-tv",     tvShows || [], "tv");
-
-    // Стрелки
     attachScrollArrows("movies");
     attachScrollArrows("tv");
 
-    // Ряд рекомендаций — показываем только если есть просмотренные
+    // Lazy: рекомендации в фоне, не блокируют popular ряды
     if (state.watched.size > 0) {
       $("home-row-recs").style.display = "";
-      try {
-        const recs = await apiFetch("/recommendations?media_type=movie");
+      $("scroll-recs").innerHTML = `<div class="loader" style="padding:40px 20px">Подбираем для тебя…</div>`;
+      apiFetch("/recommendations?media_type=movie").then(recs => {
+        hp.recs = recs;
         if (recs?.length) {
           renderScrollRow("scroll-recs", recs.slice(0, 20), "movie");
           attachScrollArrows("recs");
         } else {
           $("home-row-recs").style.display = "none";
         }
-      } catch {
+      }).catch(() => {
         $("home-row-recs").style.display = "none";
-      }
+      });
+    } else {
+      $("home-row-recs").style.display = "none";
     }
   } catch {
-    $("home-hero").innerHTML = "";
-    $("scroll-movies").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
-    $("scroll-tv").innerHTML     = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+    if (!hp.movies) {  // только если не было кэша
+      $("home-hero").innerHTML = "";
+      $("scroll-movies").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+      $("scroll-tv").innerHTML     = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+    }
   }
 }
 
@@ -1776,6 +1818,7 @@ function authLogout() {
     watched:   { movie: null, tv: null },
     watchlist: { movie: null, tv: null },
     dismissed: { movie: null, tv: null },
+    homepage:  { ts: 0, movies: null, tv: null, recs: null },
   };
   localStorage.removeItem("film_user");
   const badge = $("user-badge");

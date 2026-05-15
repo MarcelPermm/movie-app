@@ -219,21 +219,36 @@ async def search_movies(q: str, media_type: str = "movie", user_id: int = 1):
              "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
+# In-memory кэш популярного без user-specific полей.
+# Раз в 10 мин обновляется фоном; обычно делает 1 TMDB + до 20 параллельных
+# /external_ids для IMDb mapping — это самая дорогая часть homepage.
+import time as _time
+_popular_cache = {}   # {media_type: (timestamp, list[item_without_user_fields])}
+_POPULAR_TTL = 600    # 10 минут
+
+
 @app.get("/popular")
 async def popular_movies(media_type: str = "movie", user_id: int = 1):
-    path = "/tv/popular" if media_type == "tv" else "/movie/popular"
-    data = await tmdb_get(path)
-    items = data.get("results", [])
-    if media_type == "tv":
-        items = [normalize_tv(m) for m in items]
+    now = _time.time()
+    cached = _popular_cache.get(media_type)
+    if cached and now - cached[0] < _POPULAR_TTL:
+        items = cached[1]
+    else:
+        path = "/tv/popular" if media_type == "tv" else "/movie/popular"
+        data = await tmdb_get(path)
+        items = data.get("results", [])
+        if media_type == "tv":
+            items = [normalize_tv(m) for m in items]
+        items = await enrich_with_imdb(items, media_type, fetch_unknown=True)
+        _popular_cache[media_type] = (now, items)
+
+    # User-specific аннотации добавляем на каждый запрос (это дёшево с пулом+индексами)
     watched_map   = database.get_watched_map(media_type, user_id)
     watchlist_ids = database.get_watchlist_ids(media_type, user_id)
-    items = [{**m,
-              "is_watched":   m["id"] in watched_map,
-              "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
-              "is_watchlist": m["id"] in watchlist_ids} for m in items]
-    items = await enrich_with_imdb(items, media_type, fetch_unknown=True)
-    return items
+    return [{**m,
+             "is_watched":   m["id"] in watched_map,
+             "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
+             "is_watchlist": m["id"] in watchlist_ids} for m in items]
 
 
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
