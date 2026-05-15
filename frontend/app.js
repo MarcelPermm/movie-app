@@ -48,6 +48,10 @@ function applyTheme(theme) {
     b.classList.toggle("active", b.dataset.theme === theme);
   });
   try { localStorage.setItem("film_theme", theme); } catch {}
+  // Перерендериваем активную вкладку Обзор т.к. layout кардинально другой
+  if (document.getElementById("tab-discover")?.classList.contains("active") && typeof loadHomepage === "function") {
+    loadHomepage();
+  }
 }
 
 (function initTheme() {
@@ -369,12 +373,51 @@ function renderHomepageData(movies, tvShows, recs) {
 }
 
 async function loadHomepage() {
-  // Убедимся что показываем home-content
-  $("home-content").style.display = "";
   $("search-content").style.display = "none";
+  const isMono = document.body.classList.contains("theme-mono");
+
+  if (isMono) {
+    $("home-content").style.display = "none";
+    $("home-content-mono").style.display = "";
+  } else {
+    $("home-content").style.display = "";
+    $("home-content-mono").style.display = "none";
+  }
 
   const hp = state.cache.homepage;
   const fresh = (Date.now() - hp.ts) < HOMEPAGE_TTL;
+
+  // ─── MONO путь ──────────────────────────────────────────────────────────
+  if (isMono) {
+    if (fresh && hp.movies && hp.tv) {
+      renderMonoHomepage(hp.movies, hp.tv, hp.recs);
+      return;
+    }
+    if (hp.movies && hp.tv) {
+      renderMonoHomepage(hp.movies, hp.tv, hp.recs);
+    } else {
+      $("home-content-mono").innerHTML = `<div class="mono-loader">ЗАГРУЖАЕМ ИНДЕКС…</div>`;
+    }
+    try {
+      const [movies, tvShows] = await Promise.all([
+        apiFetch("/popular?media_type=movie"),
+        apiFetch("/popular?media_type=tv"),
+      ]);
+      hp.movies = movies; hp.tv = tvShows; hp.ts = Date.now();
+      renderMonoHomepage(movies, tvShows, hp.recs);
+      if (state.watched.size > 0) {
+        apiFetch("/recommendations?media_type=movie").then(recs => {
+          hp.recs = recs;
+          renderMonoHomepage(hp.movies, hp.tv, recs);
+        }).catch(() => {});
+      }
+    } catch {
+      if (!hp.movies) $("home-content-mono").innerHTML = `<div class="empty-state"><p>Не удалось загрузить</p></div>`;
+    }
+    return;
+  }
+
+  // ─── CINEMA путь (оригинальный) ─────────────────────────────────────────
 
   // ─── Если есть свежий кэш — рендерим мгновенно и не дёргаем сеть ─────────
   if (fresh && hp.movies && hp.tv) {
@@ -437,6 +480,239 @@ async function loadHomepage() {
       $("scroll-tv").innerHTML     = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
     }
   }
+}
+
+// ─── Главная: MONO редакторский индекс ──────────────────────────────────────
+function renderMonoHomepage(movies, tvShows, recs) {
+  const wrap = $("home-content-mono");
+  if (!wrap) return;
+
+  const allItems = [
+    ...(movies || []).map(m => ({...m, media_type: "movie"})),
+    ...(tvShows || []).map(m => ({...m, media_type: "tv"})),
+  ];
+
+  // Подсчёт жанров и десятилетий для боковой панели
+  const genreCount = new Map();
+  const decadeCount = new Map();
+  allItems.forEach(m => {
+    (m.genres || []).forEach(g => {
+      const name = (typeof g === "string") ? g : g.name;
+      if (name) genreCount.set(name, (genreCount.get(name) || 0) + 1);
+    });
+    const yr = parseInt((m.release_date || m.first_air_date || "0000").slice(0, 4));
+    if (yr) {
+      const d = `${Math.floor(yr / 10) * 10}s`;
+      decadeCount.set(d, (decadeCount.get(d) || 0) + 1);
+    }
+  });
+  const topGenres = [...genreCount.entries()].sort((a,b) => b[1]-a[1]).slice(0, 10);
+  const decades   = [...decadeCount.entries()].sort((a,b) => parseInt(b[0]) - parseInt(a[0]));
+
+  // Грид: фильмы + сериалы, перемешаны по популярности (топ 20)
+  const gridItems = allItems
+    .sort((a,b) => (b.popularity || b.vote_average || 0) - (a.popularity || a.vote_average || 0))
+    .slice(0, 20);
+
+  // Featured — первый item для большой карточки
+  const featured = gridItems[0];
+
+  // Для правой колонки — топ recs
+  const railRecs = (recs || []).slice(0, 5);
+
+  // Дата/время для coords
+  const now  = new Date();
+  const hh   = String(now.getHours()).padStart(2, "0");
+  const mm   = String(now.getMinutes()).padStart(2, "0");
+  const date = now.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }).toUpperCase();
+
+  // Карточка для main grid
+  const cardHTML = (m, idx) => {
+    const poster = m.poster_path ? `${TMDB_CARD}${m.poster_path}` : null;
+    const year   = (m.release_date || m.first_air_date || "").slice(2, 4);
+    const rating = m.vote_average ? Number(m.vote_average).toFixed(1) : "—";
+    const num    = String(idx + 1).padStart(3, "0");
+    const isWatched  = state.watched.has(m.id);
+    const isWatchlist = state.watchlist.has(m.id);
+    const typeBadge = m.media_type === "tv" ? "TV" : "FILM";
+    return `
+      <article class="mono-card" data-id="${m.id}" data-type="${m.media_type}">
+        <div class="mono-poster" ${poster ? `style="background-image:url('${poster}')"` : ""}>
+          <div class="mono-poster-top">
+            <span class="mono-num">Nº ${num}</span>
+            <span class="mono-type">${typeBadge}</span>
+          </div>
+          <div class="mono-poster-bot">
+            <span class="mono-poster-title">${(m.title || m.name || "").toUpperCase()}</span>
+          </div>
+          <div class="mono-card-actions">
+            <button class="mono-act watched ${isWatched ? "active" : ""}" data-act="watched" title="Просмотрено">✓</button>
+            <button class="mono-act watchlist ${isWatchlist ? "active" : ""}" data-act="watchlist" title="Позже">🕐</button>
+          </div>
+        </div>
+        <div class="mono-meta">
+          <span class="mono-year">'${year}</span>
+          <span class="mono-rating">★ ${rating}</span>
+        </div>
+      </article>`;
+  };
+
+  // Featured большая карточка
+  const featuredPoster = featured?.backdrop_path
+    ? `https://image.tmdb.org/t/p/w780${featured.backdrop_path}`
+    : (featured?.poster_path ? `${TMDB_IMG}${featured.poster_path}` : null);
+  const featuredTitle  = (featured?.title || featured?.name || "").toUpperCase();
+  const featuredOverview = featured?.overview
+    ? (featured.overview.length > 220 ? featured.overview.slice(0, 220) + "…" : featured.overview)
+    : "";
+  const featuredRating = featured?.vote_average ? Number(featured.vote_average).toFixed(1) : "—";
+  const featuredYear   = (featured?.release_date || featured?.first_air_date || "").slice(0, 4);
+
+  wrap.innerHTML = `
+    <header class="mono-page-head">
+      <div class="mono-eyebrow">INDEX Nº 47 · ${date} · ${hh}:${mm}</div>
+      <h1 class="mono-hero-title">ЧТО СМОТРИШЬ<br/><span>СЕГОДНЯ?</span></h1>
+      <div class="mono-stamp">NOW SHOWING</div>
+    </header>
+
+    ${featured ? `
+    <section class="mono-feature" data-id="${featured.id}" data-type="${featured.media_type || 'movie'}">
+      ${featuredPoster ? `<div class="mono-feature-bg" style="background-image:url('${featuredPoster}')"></div>` : ""}
+      <div class="mono-feature-overlay"></div>
+      <div class="mono-feature-content">
+        <div class="mono-feature-eyebrow">★ В ФОКУСЕ · ${featured.media_type === "tv" ? "СЕРИАЛ" : "ФИЛЬМ"} · ${featuredYear}</div>
+        <h2 class="mono-feature-title">${featuredTitle}</h2>
+        <p class="mono-feature-overview">${featuredOverview}</p>
+        <div class="mono-feature-meta">
+          <span class="mono-feature-rating">★ ${featuredRating}</span>
+          <span class="mono-feature-sep">/</span>
+          <span>${(featured.genres || []).slice(0,3).map(g => (typeof g === "string" ? g : g.name)).join(" · ").toUpperCase()}</span>
+        </div>
+        <button class="mono-feature-btn">ОТКРЫТЬ КАРТОЧКУ →</button>
+      </div>
+    </section>` : ""}
+
+    <div class="mono-body">
+      <aside class="mono-sidebar">
+        <div class="mono-side-block">
+          <div class="mono-side-head">FILTER / ЖАНР</div>
+          <div class="mono-side-item active"><span>Все</span><span class="mono-side-c">${allItems.length}</span></div>
+          ${topGenres.map(([g, c]) => `<div class="mono-side-item" data-genre="${g}"><span>${g}</span><span class="mono-side-c">${c}</span></div>`).join("")}
+        </div>
+        <div class="mono-side-block">
+          <div class="mono-side-head">DECADE</div>
+          ${decades.map(([d, c]) => `<div class="mono-side-item" data-decade="${d}"><span>${d}</span><span class="mono-side-c">${c}</span></div>`).join("")}
+        </div>
+        <div class="mono-side-block">
+          <div class="mono-side-head">QUICK</div>
+          <div class="mono-side-item" data-jump="watched"><span>Просмотренное</span><span class="mono-side-c">${state.watched.size}</span></div>
+          <div class="mono-side-item" data-jump="watchlist"><span>К просмотру</span><span class="mono-side-c">${state.watchlist.size}</span></div>
+          <div class="mono-side-item" data-jump="recommendations"><span>Рекомендации</span><span class="mono-side-c">→</span></div>
+        </div>
+      </aside>
+
+      <div class="mono-grid">${gridItems.map(cardHTML).join("")}</div>
+
+      <aside class="mono-rail">
+        <div class="mono-rail-block">
+          <div class="mono-rail-head">КОНТЕКСТ</div>
+          <div class="mono-rail-stat">
+            <span class="mono-rail-num">${allItems.length}</span>
+            <span class="mono-rail-lbl">единиц в индексе</span>
+          </div>
+          <div class="mono-rail-stat">
+            <span class="mono-rail-num">${state.watched.size}</span>
+            <span class="mono-rail-lbl">просмотрено тобой</span>
+          </div>
+          <div class="mono-rail-stat">
+            <span class="mono-rail-num">${state.watchlist.size}</span>
+            <span class="mono-rail-lbl">в списке к просмотру</span>
+          </div>
+        </div>
+
+        ${railRecs.length ? `
+        <div class="mono-rail-block">
+          <div class="mono-rail-head">✦ ДЛЯ ТЕБЯ</div>
+          <div class="mono-rail-list">
+            ${railRecs.map((r, i) => {
+              const yr = (r.release_date || r.first_air_date || "").slice(0, 4);
+              const rt = r.vote_average ? Number(r.vote_average).toFixed(1) : "—";
+              return `<div class="mono-rail-row" data-id="${r.id}" data-type="${r.media_type || 'movie'}">
+                <span class="mono-rail-rank">${String(i+1).padStart(2,"0")}</span>
+                <span class="mono-rail-title">${r.title || r.name}</span>
+                <span class="mono-rail-meta">${yr} · ${rt}</span>
+              </div>`;
+            }).join("")}
+          </div>
+          <button class="mono-rail-more" onclick="document.querySelector('[data-tab=recommendations]').click()">ВСЕ РЕКОМЕНДАЦИИ →</button>
+        </div>` : `
+        <div class="mono-rail-block">
+          <div class="mono-rail-head">DECADE LENS · 2020s</div>
+          <div class="mono-rail-text">
+            ${decadeCount.get("2020s") || 0} единиц в индексе ·
+            <span style="color:var(--mono-red);font-weight:700">
+              ${Math.round(((decadeCount.get("2020s") || 0) / Math.max(allItems.length, 1)) * 100)}%
+            </span>
+            от общего количества
+          </div>
+        </div>
+        `}
+      </aside>
+    </div>
+
+    <footer class="mono-page-foot">
+      <span>END OF INDEX Nº 47</span>
+      <span>FILMBYMIHAYLOV · ${new Date().getFullYear()}</span>
+      <span>← / →  NAV · CLICK CARD TO OPEN</span>
+    </footer>
+  `;
+
+  // ── Биндинги кликов ──────────────────────────────────────────────────────
+  wrap.querySelectorAll(".mono-card").forEach(card => {
+    const id   = parseInt(card.dataset.id);
+    const type = card.dataset.type;
+    const movie = allItems.find(m => m.id === id);
+    card.addEventListener("click", e => {
+      if (e.target.closest(".mono-card-actions")) return;
+      pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
+      openMovieModal({ ...movie, _mediaType: type });
+    });
+    card.querySelectorAll(".mono-act").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const act = btn.dataset.act;
+        if (act === "watched") toggleWatched(id, btn, null, type);
+        if (act === "watchlist") toggleWatchlist(id, btn, null, type);
+        btn.classList.toggle("active");
+      });
+    });
+  });
+
+  const feature = wrap.querySelector(".mono-feature");
+  if (feature && featured) {
+    feature.addEventListener("click", () => {
+      pushModal({ type: "movie", data: { ...featured, _mediaType: featured.media_type || "movie" } });
+      openMovieModal({ ...featured, _mediaType: featured.media_type || "movie" });
+    });
+  }
+
+  wrap.querySelectorAll(".mono-rail-row").forEach(row => {
+    const id   = parseInt(row.dataset.id);
+    const type = row.dataset.type;
+    const movie = (recs || []).find(m => m.id === id);
+    if (!movie) return;
+    row.addEventListener("click", () => {
+      pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
+      openMovieModal({ ...movie, _mediaType: type });
+    });
+  });
+
+  wrap.querySelectorAll(".mono-side-item[data-jump]").forEach(item => {
+    item.addEventListener("click", () => {
+      const tab = item.dataset.jump;
+      document.querySelector(`[data-tab="${tab}"]`)?.click();
+    });
+  });
 }
 
 function renderHero(movie) {

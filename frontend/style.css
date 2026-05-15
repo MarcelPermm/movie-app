@@ -1613,3 +1613,446 @@ body.theme-mono .main { padding-top: 32px; }
   body.theme-mono .home-row-title { font-size: 18px; }
   body.theme-mono .movies-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   MONO LAYOUT — редакторская сетка для главной (тёмная не трогается)
+   ═══════════════════════════════════════════════════════════ */
+.mono-loader {
+  padding: 80px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.18em;
+  text-align: center;
+  color: var(--mono-ink-mid);
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+/* Шапка раздела с гигантским заголовком */
+body.theme-mono .mono-page-head {
+  position: relative;
+  border-bottom: 2px solid var(--mono-ink);
+  padding: 28px 0 36px;
+  margin-bottom: 28px;
+}
+body.theme-mono .mono-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--mono-red);
+  margin-bottom: 22px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--mono-ink);
+}
+body.theme-mono .mono-hero-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: clamp(56px, 12vw, 132px);
+  line-height: 0.85;
+  letter-spacing: -0.05em;
+  text-transform: uppercase;
+  color: var(--mono-ink);
+  margin: 0;
+}
+body.theme-mono .mono-hero-title span { color: var(--mono-red); }
+body.theme-mono .mono-stamp {
+  position: absolute;
+  top: 60px; right: 0;
+  padding: 12px 18px;
+  border: 2.5px solid var(--mono-red);
+  color: var(--mono-red);
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transform: rotate(-3deg);
+  background: var(--mono-paper);
+}
+
+/* Featured card — большая горизонтальная карточка над сеткой */
+body.theme-mono .mono-feature {
+  position: relative;
+  border: 1px solid var(--mono-ink);
+  margin-bottom: 28px;
+  min-height: 280px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+body.theme-mono .mono-feature:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 7px 7px 0 0 var(--mono-red);
+}
+body.theme-mono .mono-feature-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  filter: grayscale(1) contrast(1.1) brightness(0.55);
+}
+body.theme-mono .mono-feature-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, rgba(245,243,237,0.96) 0%, rgba(245,243,237,0.75) 50%, rgba(245,243,237,0.2) 100%);
+}
+body.theme-mono .mono-feature-content {
+  position: relative; z-index: 1;
+  padding: 32px 36px;
+  max-width: 60%;
+}
+body.theme-mono .mono-feature-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mono-red);
+  margin-bottom: 14px;
+}
+body.theme-mono .mono-feature-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: clamp(36px, 6vw, 64px);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  text-transform: uppercase;
+  color: var(--mono-ink);
+  margin: 0 0 16px;
+}
+body.theme-mono .mono-feature-overview {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--mono-ink);
+  margin: 0 0 18px;
+  max-width: 540px;
+}
+body.theme-mono .mono-feature-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mono-ink-mid);
+  margin-bottom: 20px;
+}
+body.theme-mono .mono-feature-rating { color: var(--mono-red); font-weight: 700; }
+body.theme-mono .mono-feature-sep { opacity: 0.4; }
+body.theme-mono .mono-feature-btn {
+  padding: 12px 22px;
+  background: var(--mono-ink);
+  color: var(--mono-paper);
+  border: none;
+  border-radius: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+body.theme-mono .mono-feature-btn:hover { background: var(--mono-red); }
+
+/* Основное тело — 3 колонки */
+body.theme-mono .mono-body {
+  display: grid;
+  grid-template-columns: 200px 1fr 240px;
+  gap: 0;
+  border-top: 1px solid var(--mono-ink);
+  border-bottom: 1px solid var(--mono-ink);
+}
+
+/* Боковая панель */
+body.theme-mono .mono-sidebar {
+  padding: 22px 22px 22px 0;
+  border-right: 1px solid var(--mono-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+body.theme-mono .mono-side-block { display: flex; flex-direction: column; gap: 1px; }
+body.theme-mono .mono-side-head {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mono-ink-mid);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--mono-ink);
+}
+body.theme-mono .mono-side-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--mono-ink);
+  border-bottom: 1px dashed rgba(10,10,8,0.18);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+body.theme-mono .mono-side-item:hover {
+  color: var(--mono-red);
+  border-bottom-color: var(--mono-red);
+}
+body.theme-mono .mono-side-item.active {
+  color: var(--mono-red);
+  font-weight: 700;
+  border-bottom-color: var(--mono-red);
+}
+body.theme-mono .mono-side-c {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--mono-ink-mid);
+}
+
+/* Основная сетка карточек */
+body.theme-mono .mono-grid {
+  padding: 22px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+/* Mono карточка */
+body.theme-mono .mono-card {
+  border: 1px solid var(--mono-ink);
+  background: var(--mono-paper);
+  cursor: pointer;
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.3s ease both;
+}
+body.theme-mono .mono-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 0 var(--mono-ink);
+  border-color: var(--mono-red);
+}
+body.theme-mono .mono-poster {
+  aspect-ratio: 1 / 1;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  background-color: #1a1a18;
+  overflow: hidden;
+}
+body.theme-mono .mono-poster::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(160deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.8) 100%);
+  pointer-events: none;
+}
+body.theme-mono .mono-poster-top {
+  position: absolute;
+  top: 8px; left: 8px; right: 8px;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+body.theme-mono .mono-num { color: rgba(255,255,255,0.7); }
+body.theme-mono .mono-type {
+  background: var(--mono-red);
+  color: var(--mono-paper);
+  padding: 1px 6px;
+  font-weight: 700;
+}
+body.theme-mono .mono-poster-bot {
+  position: absolute;
+  bottom: 10px; left: 10px; right: 10px;
+  z-index: 1;
+}
+body.theme-mono .mono-poster-title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: rgba(255,255,255,0.97);
+  text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+body.theme-mono .mono-card-actions {
+  position: absolute;
+  top: 36px; right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+body.theme-mono .mono-card:hover .mono-card-actions { opacity: 1; }
+body.theme-mono .mono-act {
+  width: 28px; height: 28px;
+  border: 1px solid var(--mono-paper);
+  background: rgba(10,10,8,0.85);
+  color: var(--mono-paper);
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 0;
+}
+body.theme-mono .mono-act:hover { background: var(--mono-red); }
+body.theme-mono .mono-act.active { background: var(--mono-red); }
+body.theme-mono .mono-meta {
+  padding: 8px 10px;
+  border-top: 1px solid var(--mono-ink);
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+body.theme-mono .mono-year { color: var(--mono-ink-mid); }
+body.theme-mono .mono-rating { color: var(--mono-ink); font-weight: 700; }
+
+/* Правая колонка */
+body.theme-mono .mono-rail {
+  padding: 22px 0 22px 24px;
+  border-left: 1px solid var(--mono-ink);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+body.theme-mono .mono-rail-block { display: flex; flex-direction: column; }
+body.theme-mono .mono-rail-head {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--mono-ink-mid);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--mono-ink);
+}
+body.theme-mono .mono-rail-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dotted rgba(10,10,8,0.2);
+}
+body.theme-mono .mono-rail-num {
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+  color: var(--mono-ink);
+  min-width: 50px;
+}
+body.theme-mono .mono-rail-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mono-ink-mid);
+  line-height: 1.35;
+}
+body.theme-mono .mono-rail-list { display: flex; flex-direction: column; gap: 2px; }
+body.theme-mono .mono-rail-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px dotted rgba(10,10,8,0.2);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+body.theme-mono .mono-rail-row:hover { color: var(--mono-red); }
+body.theme-mono .mono-rail-rank {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--mono-red);
+  font-weight: 700;
+}
+body.theme-mono .mono-rail-title {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--mono-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+body.theme-mono .mono-rail-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--mono-ink-mid);
+  white-space: nowrap;
+}
+body.theme-mono .mono-rail-more {
+  margin-top: 14px;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--mono-ink);
+  color: var(--mono-red);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+body.theme-mono .mono-rail-more:hover { color: var(--mono-ink); }
+body.theme-mono .mono-rail-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--mono-ink-mid);
+}
+
+/* Подвал страницы */
+body.theme-mono .mono-page-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 0 0;
+  margin-top: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mono-ink-soft);
+}
+
+/* На планшетах сворачиваем правую колонку */
+@media (max-width: 1100px) {
+  body.theme-mono .mono-body { grid-template-columns: 180px 1fr; }
+  body.theme-mono .mono-rail { display: none; }
+}
+
+/* На мобилке убираем сайдбар */
+@media (max-width: 720px) {
+  body.theme-mono .mono-body { grid-template-columns: 1fr; }
+  body.theme-mono .mono-sidebar { display: none; }
+  body.theme-mono .mono-grid { padding: 16px 0; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  body.theme-mono .mono-stamp { display: none; }
+  body.theme-mono .mono-hero-title { font-size: clamp(36px, 14vw, 64px); }
+  body.theme-mono .mono-feature-content { max-width: 100%; padding: 20px; }
+  body.theme-mono .mono-feature-title { font-size: 30px; }
+  body.theme-mono .mono-feature-overview { font-size: 14px; }
+}
