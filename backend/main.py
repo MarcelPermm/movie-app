@@ -1041,24 +1041,31 @@ async def ai_suggest(user_id: int = 1, query: str = ""):
     already_seen = ", ".join(all_watched_titles[:40]) if all_watched_titles else "none"
 
     if query:
-        prompt = f"""You are a movie expert. A user wants to watch something and described it:
+        # ВАЖНО: когда есть текстовый запрос — игнорируем вкус пользователя.
+        # Запрос диктует жанр/год/настроение. Историю используем ТОЛЬКО для исключения
+        # уже просмотренного. Это убирает галлюцинации типа "ужастик с 2015" → "Veronica Mars 2004".
+        prompt = f"""You are a strict movie recommendation engine. Follow the user's request EXACTLY.
 
-"{query}"
+USER REQUEST: "{query}"
 
-Also consider their taste:
-- Favorite genres: {", ".join(top_genres) if top_genres else "various"}
-- Highly rated by user: {", ".join(top_titles) if top_titles else "none yet"}
+You MUST obey every constraint in the request:
+- If a GENRE is mentioned (horror, comedy, thriller, etc.) — recommend ONLY that genre
+- If a YEAR or year range is mentioned (e.g. "since 2015", "from the 90s") — recommend ONLY titles in that range
+- If "popular", "highly rated", "blockbuster" is mentioned — recommend only well-known/successful titles
+- If a country/language is mentioned — match it
+- If a duration/mood is mentioned — match it
+- Ignore the user's general taste — match the request literally
 
-ALREADY WATCHED (DO NOT recommend these): {already_seen}
+ALREADY WATCHED (NEVER recommend any of these): {already_seen}
 
-Recommend exactly 15 movies or TV shows that best match the request and that the user has NOT seen yet.
+Recommend exactly 15 titles strictly matching the USER REQUEST.
 
-IMPORTANT RULES:
-- Output ONLY a raw JSON array, no markdown, no code blocks, no explanation
-- Use the ORIGINAL English title (as it appears on IMDb/TMDB), not translated
-- Only recommend titles that definitely exist on IMDb/TMDB
-- Do NOT recommend anything from the "ALREADY WATCHED" list
-- reason must be in Russian, one short sentence
+OUTPUT RULES:
+- ONLY a raw JSON array, no markdown, no code blocks, no explanation
+- ORIGINAL English titles (as on IMDb/TMDB), NOT translated
+- Each item MUST satisfy the user request
+- Provide the correct year and type ("movie" or "tv")
+- reason in Russian, one short sentence explaining WHY it matches the request
 
 Example output:
 {example}"""
@@ -1087,11 +1094,14 @@ Example output:
     ai_client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
 
     try:
+        # При запросе — низкая температура для строгого следования ограничениям.
+        # Без запроса — выше для разнообразия рекомендаций.
+        temp = 0.4 if query else 0.8
         response = await ai_client.chat.completions.create(
             model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1600,
-            temperature=0.8,
+            temperature=temp,
         )
         raw = response.choices[0].message.content.strip()
 
