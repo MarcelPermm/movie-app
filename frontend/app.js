@@ -408,7 +408,7 @@ async function loadHomepage() {
     if (hp.movies && hp.tv) {
       renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
     } else {
-      $("home-content-mono").innerHTML = `<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ ИНДЕКС</div></div>`;
+      $("home-content-mono").innerHTML = `<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ ИНДЕКС</div></div>`;
     }
     try {
       const [movies, tvShows] = await Promise.all([
@@ -933,7 +933,7 @@ function showAllMovies() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные фильмы";
-  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=movie").then(movies => {
     renderMovies($("movies-grid"), movies, "discover");
   }).catch(() => {
@@ -945,7 +945,7 @@ function showAllTV() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные сериалы";
-  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=tv").then(shows => {
     renderMovies($("movies-grid"), shows, "discover");
   }).catch(() => {
@@ -975,7 +975,7 @@ async function loadWatched(filterRating = null, filterTitle = "") {
       state.cache.watched[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watched", mode));
       state.cache.watched[mode] = items;
@@ -1041,7 +1041,7 @@ async function loadWatchlist() {
       state.cache.watchlist[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watchlist-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("watchlist-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watchlist", mode));
       state.cache.watchlist[mode] = items;
@@ -1433,8 +1433,14 @@ async function openMovieModal(movie, isBack = false) {
   const mediaType = movie._mediaType || movie.media_type || state.mediaType;
 
   try {
-    const details = await apiFetch(`/movie/${movie.id || movie.movie_id}/details?media_type=${mediaType}`);
-    // Гарантируем что media_type в данных — все внутренние ссылки на него внутри модалки идут отсюда
+    const movieId = movie.id || movie.movie_id;
+    const cacheKey = `${movieId}-${mediaType}`;
+    let details = state._detailsCache?.get(cacheKey);
+    if (!details) {
+      details = await apiFetch(`/movie/${movieId}/details?media_type=${mediaType}`);
+      if (!state._detailsCache) state._detailsCache = new Map();
+      state._detailsCache.set(cacheKey, details);
+    }
     details.media_type = details.media_type || mediaType;
     renderMovieContent(details);
     if (isBack) $("modal").scrollTop = state.modalStack[state.modalStack.length - 1]?.scrollTop || 0;
@@ -2110,6 +2116,13 @@ async function init() {
   buildMfPanel("country");
   buildMfPanel("genre");
   loadHomepage();
+
+  // Скрываем splash после того как первичная загрузка завершена.
+  // Минимальное время показа 600мс — чтобы анимация прыжка успела сыграться хотя бы раз.
+  const splash = document.getElementById("app-splash");
+  if (splash) {
+    setTimeout(() => splash.classList.add("hidden"), 700);
+  }
 }
 
 // ─── Аутентификация ────────────────────────────────────────────────────────
@@ -2263,7 +2276,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     } catch {}
   }
-  // Нет сохранённого пользователя — показываем авторизацию
+  // Нет сохранённого пользователя — показываем авторизацию (и сразу убираем splash)
+  document.getElementById("app-splash")?.classList.add("hidden");
   $("auth-overlay").classList.add("visible");
 })();
 
@@ -2271,7 +2285,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function loadActors() {
   const grid = $("actors-grid");
-  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ИЩЕМ АКТЁРОВ</div></div>';
+  grid.innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ИЩЕМ АКТЁРОВ</div></div>';
   try {
     const actors = await apiFetch("/watched/top-actors");
     if (!actors?.length) {
@@ -2379,7 +2393,7 @@ async function loadDismissed() {
       state.cache.dismissed[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("dismissed-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("dismissed-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/dismissed", mode));
       state.cache.dismissed[mode] = items;
@@ -2416,7 +2430,16 @@ async function loadSuggest() {
   hint.textContent = query
     ? "AI читает твой запрос, обычно 5–10 секунд…"
     : "AI анализирует твою историю просмотров, обычно 5–10 секунд…";
-  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ПОДБИРАЕМ</div></div>';
+  grid.innerHTML = `
+    <div class="ai-thinker">
+      <div class="ai-thinker-stage">
+        <div class="ai-thought">💭</div>
+        <div class="ai-spark">✦</div>
+        <div class="ai-monkey">🙊</div>
+        <div class="ai-shadow"></div>
+      </div>
+      <div class="ai-thinker-text">ОБЕЗЬЯНКА ДУМАЕТ<span class="ai-thinker-dots">...</span></div>
+    </div>`;
 
   try {
     const url = query
@@ -2489,7 +2512,7 @@ async function loadSuggest() {
 
 async function loadProfile() {
   const wrap = $("profile-content");
-  wrap.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">СОБИРАЕМ ПРОФИЛЬ</div></div>';
+  wrap.innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">СОБИРАЕМ ПРОФИЛЬ</div></div>';
   try {
     const [s, actorsData] = await Promise.all([
       apiFetch("/profile/stats"),

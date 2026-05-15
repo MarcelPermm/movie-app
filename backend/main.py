@@ -252,9 +252,20 @@ async def popular_movies(media_type: str = "movie", user_id: int = 1):
 
 
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
+# Кэш TMDB-части (не зависит от пользователя). user-specific (is_watched, оценка)
+# добавляется на каждый запрос отдельно — это быстро (один DB-look-up).
+_details_cache = {}    # {(movie_id, media_type): (timestamp, tmdb_only_dict)}
+_DETAILS_TTL = 600     # 10 минут
 
-@app.get("/movie/{movie_id}/details")
-async def movie_details(movie_id: int, media_type: str = "movie", user_id: int = 1):
+
+async def _fetch_details_tmdb(movie_id: int, media_type: str) -> dict:
+    """Возвращает кэшированный или свежезагруженный TMDB-блок деталей фильма."""
+    cache_key = (movie_id, media_type)
+    now = _time.time()
+    cached = _details_cache.get(cache_key)
+    if cached and now - cached[0] < _DETAILS_TTL:
+        return cached[1]
+
     prefix = "/tv" if media_type == "tv" else "/movie"
     details, credits, ext_ids = await asyncio.gather(
         tmdb_get(f"{prefix}/{movie_id}"),
@@ -279,14 +290,8 @@ async def movie_details(movie_id: int, media_type: str = "movie", user_id: int =
     studios  = [{"id": c["id"], "name": c["name"], "logo": c.get("logo_path")} for c in details.get("production_companies", [])]
     countries = [c["iso_3166_1"] for c in details.get("production_countries", [])]
 
-    entry        = database.get_watched_entry(movie_id, media_type, user_id)
-    watched_info = {"user_rating": entry["user_rating"], "review": entry["review"]} if entry else None
-
     out = {**details, "cast": cast, "director": director, "director_id": director_id,
-           "studios": studios, "countries": countries,
-           "is_watched":   entry is not None,
-           "is_watchlist": database.is_watchlist(movie_id, media_type, user_id),
-           "watched_info": watched_info}
+           "studios": studios, "countries": countries}
 
     if media_type == "tv":
         out["seasons_count"]  = details.get("number_of_seasons")
@@ -294,12 +299,27 @@ async def movie_details(movie_id: int, media_type: str = "movie", user_id: int =
 
     imdb_id = ext_ids.get("imdb_id")
     if imdb_id:
-        database.save_imdb_mapping(movie_id, imdb_id, media_type)  # кэшируем маппинг
+        database.save_imdb_mapping(movie_id, imdb_id, media_type)
         if imdb_loader.has_imdb_data():
             imdb_stats = imdb_loader.get_imdb_stats_by_id(imdb_id)
             if imdb_stats:
                 out["imdb_vote_count"] = int(imdb_stats["vote_count"])
                 out["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
+
+    _details_cache[cache_key] = (now, out)
+    return out
+
+
+@app.get("/movie/{movie_id}/details")
+async def movie_details(movie_id: int, media_type: str = "movie", user_id: int = 1):
+    out = dict(await _fetch_details_tmdb(movie_id, media_type))  # копия чтобы не мутировать кэш
+
+    # User-specific аннотации добавляем на каждый запрос (дёшево с пулом+индексами)
+    entry        = database.get_watched_entry(movie_id, media_type, user_id)
+    watched_info = {"user_rating": entry["user_rating"], "review": entry["review"]} if entry else None
+    out["is_watched"]   = entry is not None
+    out["is_watchlist"] = database.is_watchlist(movie_id, media_type, user_id)
+    out["watched_info"] = watched_info
 
     return out
 
