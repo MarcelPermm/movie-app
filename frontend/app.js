@@ -360,15 +360,24 @@ function renderSearchResults(container, movies, people) {
 const HOMEPAGE_TTL = 60_000;   // 60s — после возвращаем кэш + обновляем в фоне
 
 function renderHomepageData(movies, tvShows, recs) {
-  if (movies?.length) renderHero(movies[0]);
+  // Отфильтровываем то что пользователь убрал в "Неинтересное"
+  const notDismissed = m => !state.dismissed.has(m.id);
+  const m  = (movies  || []).filter(notDismissed);
+  const tv = (tvShows || []).filter(notDismissed);
+  const r  = (recs    || []).filter(notDismissed);
+
+  // Hero — теперь карусель из 5 фильмов
+  state.heroSlides = m.slice(0, 5);
+  state.heroIdx    = 0;
+  if (state.heroSlides.length) renderHero(state.heroSlides[0]);
   else $("home-hero").innerHTML = "";
-  renderScrollRow("scroll-movies", movies || [], "movie");
-  renderScrollRow("scroll-tv",     tvShows || [], "tv");
+  renderScrollRow("scroll-movies", m, "movie");
+  renderScrollRow("scroll-tv",     tv, "tv");
   attachScrollArrows("movies");
   attachScrollArrows("tv");
-  if (recs?.length) {
+  if (r.length) {
     $("home-row-recs").style.display = "";
-    renderScrollRow("scroll-recs", recs.slice(0, 20), "movie");
+    renderScrollRow("scroll-recs", r.slice(0, 20), "movie");
     attachScrollArrows("recs");
   } else {
     $("home-row-recs").style.display = "none";
@@ -399,7 +408,7 @@ async function loadHomepage() {
     if (hp.movies && hp.tv) {
       renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
     } else {
-      $("home-content-mono").innerHTML = `<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ ИНДЕКС</div></div>`;
+      $("home-content-mono").innerHTML = `<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ ИНДЕКС</div></div>`;
     }
     try {
       const [movies, tvShows] = await Promise.all([
@@ -501,8 +510,12 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
   const wrap = $("home-content-mono");
   if (!wrap) return;
 
-  const moviesArr = (movies || []).map(m => ({...m, media_type: "movie"}));
-  const tvArr     = (tvShows || []).map(m => ({...m, media_type: "tv"}));
+  // Фильтр отклонённых: убираем всё что пользователь скрыл
+  const notDismissed = m => !state.dismissed.has(m.id);
+  const moviesArr = (movies  || []).filter(notDismissed).map(m => ({...m, media_type: "movie"}));
+  const tvArr     = (tvShows || []).filter(notDismissed).map(m => ({...m, media_type: "tv"}));
+  recs    = (recs   || []).filter(notDismissed);
+  recsTv  = (recsTv || []).filter(notDismissed);
 
   // Дата/время для шапки
   const now  = new Date();
@@ -776,9 +789,21 @@ function renderHero(movie) {
   const isWatched  = state.watched.has(movie.id);
   const isWatchlist = state.watchlist.has(movie.id);
 
+  // Карусель: если есть state.heroSlides, рендерим точки и стрелки
+  const total = (state.heroSlides || []).length;
+  const idx   = state.heroIdx || 0;
+  const dotsHTML = total > 1
+    ? `<div class="hero-dots">${state.heroSlides.map((_, i) => `<button class="hero-dot ${i === idx ? "active" : ""}" data-idx="${i}"></button>`).join("")}</div>`
+    : "";
+  const arrowsHTML = total > 1
+    ? `<button class="hero-nav-arrow left" id="hero-prev" title="Предыдущий">‹</button>
+       <button class="hero-nav-arrow right" id="hero-next" title="Следующий">›</button>`
+    : "";
+
   $("home-hero").innerHTML = `
     ${backdropUrl ? `<div class="hero-backdrop" style="background-image:url('${backdropUrl}')"></div>` : `<div class="hero-backdrop" style="background:var(--card-bg)"></div>`}
     <div class="hero-gradient"></div>
+    ${arrowsHTML}
     <div class="hero-content">
       ${posterUrl ? `
         <div class="hero-poster-wrap">
@@ -788,6 +813,7 @@ function renderHero(movie) {
         <div class="hero-meta">
           ${year ? `<span class="hero-meta-item">${year}</span>` : ""}
           ${rating ? `<span class="hero-meta-item hero-rating">${rating}</span>` : ""}
+          ${total > 1 ? `<span class="hero-meta-item hero-counter">${String(idx + 1).padStart(2, "0")} / ${String(total).padStart(2, "0")}</span>` : ""}
         </div>
         <div class="hero-title">${movie.title}</div>
         ${overview ? `<div class="hero-overview">${overview}</div>` : ""}
@@ -802,7 +828,20 @@ function renderHero(movie) {
         </div>
       </div>
     </div>
+    ${dotsHTML}
   `;
+
+  // Биндинг навигации карусели
+  const cycleTo = (newIdx) => {
+    if (!state.heroSlides || !state.heroSlides.length) return;
+    state.heroIdx = ((newIdx % total) + total) % total;
+    renderHero(state.heroSlides[state.heroIdx]);
+  };
+  $("hero-prev")?.addEventListener("click", e => { e.stopPropagation(); cycleTo(idx - 1); });
+  $("hero-next")?.addEventListener("click", e => { e.stopPropagation(); cycleTo(idx + 1); });
+  document.querySelectorAll(".hero-dot").forEach(d => {
+    d.addEventListener("click", e => { e.stopPropagation(); cycleTo(parseInt(d.dataset.idx)); });
+  });
 
   $("hero-open-btn").addEventListener("click", () => {
     pushModal({ type: "movie", data: { ...movie, _mediaType: "movie" } });
@@ -894,7 +933,7 @@ function showAllMovies() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные фильмы";
-  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=movie").then(movies => {
     renderMovies($("movies-grid"), movies, "discover");
   }).catch(() => {
@@ -906,7 +945,7 @@ function showAllTV() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные сериалы";
-  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=tv").then(shows => {
     renderMovies($("movies-grid"), shows, "discover");
   }).catch(() => {
@@ -936,7 +975,7 @@ async function loadWatched(filterRating = null, filterTitle = "") {
       state.cache.watched[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watched", mode));
       state.cache.watched[mode] = items;
@@ -1002,7 +1041,7 @@ async function loadWatchlist() {
       state.cache.watchlist[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watchlist-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("watchlist-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watchlist", mode));
       state.cache.watchlist[mode] = items;
@@ -2232,7 +2271,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function loadActors() {
   const grid = $("actors-grid");
-  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ИЩЕМ АКТЁРОВ</div></div>';
+  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ИЩЕМ АКТЁРОВ</div></div>';
   try {
     const actors = await apiFetch("/watched/top-actors");
     if (!actors?.length) {
@@ -2340,7 +2379,7 @@ async function loadDismissed() {
       state.cache.dismissed[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("dismissed-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    $("dismissed-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/dismissed", mode));
       state.cache.dismissed[mode] = items;
@@ -2377,7 +2416,7 @@ async function loadSuggest() {
   hint.textContent = query
     ? "AI читает твой запрос, обычно 5–10 секунд…"
     : "AI анализирует твою историю просмотров, обычно 5–10 секунд…";
-  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ПОДБИРАЕМ</div></div>';
+  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ПОДБИРАЕМ</div></div>';
 
   try {
     const url = query
@@ -2450,7 +2489,7 @@ async function loadSuggest() {
 
 async function loadProfile() {
   const wrap = $("profile-content");
-  wrap.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">СОБИРАЕМ ПРОФИЛЬ</div></div>';
+  wrap.innerHTML = '<div class="fun-loader"><div class="fun-monkey-wrap"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div></div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">СОБИРАЕМ ПРОФИЛЬ</div></div>';
   try {
     const [s, actorsData] = await Promise.all([
       apiFetch("/profile/stats"),
