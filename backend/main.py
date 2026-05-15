@@ -1120,7 +1120,7 @@ Example output:
             return None
         try:
             # /search/multi — обходит проблему угадывания типа (movie vs tv)
-            params = {"api_key": TMDB_KEY, "query": title, "language": "ru-RU"}
+            params = {"api_key": TMDB_API_KEY, "query": title, "language": "ru-RU"}
             if year:
                 params["year"] = year
             r = await h.get(f"{TMDB_BASE}/search/multi", params=params)
@@ -1134,7 +1134,7 @@ Example output:
 
             # Попытка 3: без language
             if not items:
-                r = await h.get(f"{TMDB_BASE}/search/multi", params={"api_key": TMDB_KEY, "query": title})
+                r = await h.get(f"{TMDB_BASE}/search/multi", params={"api_key": TMDB_API_KEY, "query": title})
                 items = [x for x in r.json().get("results", []) if x.get("media_type") in ("movie", "tv")]
 
             if not items:
@@ -1156,7 +1156,7 @@ Example output:
                 try:
                     det = await h.get(
                         f"{TMDB_BASE}/{media_type}/{tmdb_id}",
-                        params={"api_key": TMDB_KEY, "language": "ru-RU"}
+                        params={"api_key": TMDB_API_KEY, "language": "ru-RU"}
                     )
                     ru_title = det.json().get(name_key) or ru_title
                 except Exception:
