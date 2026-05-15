@@ -38,6 +38,37 @@ const state = {
   user: null,  // { id, username, display_name }
 };
 
+// ─── Переключатель оформления ──────────────────────────────────────────────
+// Две темы: "cinema" (тёмная по умолчанию) и "mono" (бумажная редакторская).
+// Тоггл живёт в шапке. Предпочтение сохраняется в localStorage.
+
+function applyTheme(theme) {
+  document.body.classList.toggle("theme-mono", theme === "mono");
+  document.querySelectorAll(".theme-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.theme === theme);
+  });
+  try { localStorage.setItem("film_theme", theme); } catch {}
+}
+
+(function initTheme() {
+  // Восстанавливаем сохранённую тему сразу при загрузке, до рендера
+  let saved = "cinema";
+  try { saved = localStorage.getItem("film_theme") || "cinema"; } catch {}
+  if (saved === "mono") document.body.classList.add("theme-mono");
+})();
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".theme-btn").forEach(btn => {
+    btn.addEventListener("click", () => applyTheme(btn.dataset.theme));
+  });
+  // Синхронизируем активную кнопку с сохранённой темой (на случай если она была "mono")
+  let saved = "cinema";
+  try { saved = localStorage.getItem("film_theme") || "cinema"; } catch {}
+  document.querySelectorAll(".theme-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.theme === saved);
+  });
+});
+
 // Хелпер — добавляет media_type к URL. По умолчанию берёт state.mediaType,
 // но можно передать явный тип (для per-tab переключателей).
 function mt(params = {}, mediaType = null) {
@@ -855,6 +886,20 @@ function updateGenrePanel(pool) {
 
   const panel = $("mf-genre-panel");
   if (panel && !panel.hidden) buildMfPanel("genre");
+}
+
+// Есть ли активные фильтры — определяет, включать ли Mono mode
+function hasActiveFilters() {
+  const yearFrom  = parseInt($("filter-year-from")?.value) || 0;
+  const yearTo    = parseInt($("filter-year-to")?.value)   || 0;
+  const minRating = parseFloat($("filter-min-rating")?.value) || 0;
+  const studioId  = parseInt($("filter-studio")?.value) || 0;
+  const { genre, country } = state.filterState;
+  return (
+    yearFrom > 0 || yearTo > 0 || minRating > 0 || studioId > 0 ||
+    genre.inc.size > 0 || genre.exc.size > 0 ||
+    country.inc.size > 0 || country.exc.size > 0
+  );
 }
 
 function applyFiltersAndRender() {
