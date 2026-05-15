@@ -313,8 +313,10 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* ─── Адаптивность ───────────────────────────────────────── */
 @media (max-width: 768px) {
   .header { padding: 0 16px; }
-  .header-top { gap: 10px; }
-  .search-wrap { display: none; }
+  .header-top { gap: 10px; flex-wrap: wrap; height: auto; padding: 10px 0; }
+  /* Поиск на мобилке — собственная строка, полная ширина */
+  .search-wrap { order: 3; width: 100%; margin-left: 0; }
+  .search-input { width: 100%; }
   .tab-mode-btn { padding: 6px 12px; font-size: 12px; }
   .main { padding: 24px 16px 60px; }
   .movies-grid { grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 14px; }

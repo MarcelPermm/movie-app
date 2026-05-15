@@ -1015,8 +1015,11 @@ async def ai_suggest(user_id: int = 1, query: str = ""):
     tv      = database.get_watched("tv",    user_id)
     all_watched = movies + tv
 
-    if len(all_watched) < 3:
-        raise HTTPException(status_code=400, detail="Отметь хотя бы 3 фильма чтобы получить советы")
+    # Если пользователь написал запрос — пускаем независимо от истории
+    # (AI может рекомендовать по описанию). Без запроса — нужны хотя бы 3
+    # просмотренных, иначе анализировать вкус не из чего.
+    if not query.strip() and len(all_watched) < 3:
+        raise HTTPException(status_code=400, detail="Отметь хотя бы 3 фильма или опиши что хочешь посмотреть в поле ниже")
 
     watched_ids = {m.get("movie_id") or m.get("id") for m in all_watched}
 
