@@ -506,7 +506,12 @@ async def remove_favorite_actor(actor_id: int, user_id: int = 1):
 
 @app.get("/watched")
 async def get_watched(media_type: str = "movie", user_id: int = 1):
-    return database.get_watched(media_type, user_id)
+    items = database.get_watched(media_type, user_id)
+    # Нормализуем id для enrich_with_imdb (он ищет "id", а БД хранит "movie_id")
+    for m in items:
+        m["id"] = m.get("movie_id")
+    items = await enrich_with_imdb(items, media_type, fetch_unknown=True)
+    return items
 
 
 class WatchedRequest(BaseModel):
@@ -589,7 +594,11 @@ async def remove_watched(movie_id: int, media_type: str = "movie", user_id: int 
 
 @app.get("/watchlist")
 async def get_watchlist(media_type: str = "movie", user_id: int = 1):
-    return database.get_watchlist(media_type, user_id)
+    items = database.get_watchlist(media_type, user_id)
+    for m in items:
+        m["id"] = m.get("movie_id")
+    items = await enrich_with_imdb(items, media_type, fetch_unknown=True)
+    return items
 
 
 class MovieRequest(BaseModel):

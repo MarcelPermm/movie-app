@@ -399,7 +399,7 @@ async function loadHomepage() {
     if (hp.movies && hp.tv) {
       renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
     } else {
-      $("home-content-mono").innerHTML = `<div class="mono-loader">ЗАГРУЖАЕМ ИНДЕКС…</div>`;
+      $("home-content-mono").innerHTML = `<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ ИНДЕКС</div></div>`;
     }
     try {
       const [movies, tvShows] = await Promise.all([
@@ -545,6 +545,7 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
               <button class="mono-feat-btn primary" data-act="open">ОТКРЫТЬ →</button>
               <button class="mono-feat-btn ${isWatched ? "active" : ""}" data-act="watched">${isWatched ? "✓ ПРОСМОТРЕНО" : "✓ ОТМЕТИТЬ"}</button>
               <button class="mono-feat-btn ${isWatchlist ? "active-blue" : ""}" data-act="watchlist">${isWatchlist ? "🕐 В СПИСКЕ" : "🕐 ПОЗЖЕ"}</button>
+              <button class="mono-feat-btn dismiss" data-act="dismiss" title="Не интересно">✕</button>
             </div>
           </div>
         </div>
@@ -556,6 +557,7 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
     const poster = m.poster_path ? `${TMDB_CARD}${m.poster_path}` : null;
     const year   = (m.release_date || m.first_air_date || "").slice(2, 4);
     const rating = m.vote_average ? Number(m.vote_average).toFixed(1) : "—";
+    const imdb   = m.imdb_rating ? Number(m.imdb_rating).toFixed(1) : null;
     const num    = String(idx + 1).padStart(3, "0");
     const isWatched   = state.watched.has(m.id);
     const isWatchlist = state.watchlist.has(m.id);
@@ -573,11 +575,12 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
           <div class="mono-card-actions">
             <button class="mono-act watched ${isWatched ? "active" : ""}" data-act="watched" title="Просмотрено">✓</button>
             <button class="mono-act watchlist ${isWatchlist ? "active" : ""}" data-act="watchlist" title="Позже">🕐</button>
+            <button class="mono-act dismiss" data-act="dismiss" title="Не интересно">✕</button>
           </div>
         </div>
         <div class="mono-meta">
           <span class="mono-year">'${year}</span>
-          <span class="mono-rating">★ ${rating}</span>
+          <span class="mono-rating">★ ${rating}${imdb ? ` <span class="mono-imdb">· IMDb ${imdb}</span>` : ""}</span>
         </div>
       </article>`;
   };
@@ -608,8 +611,8 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
   // ─── Шаблон сетки квадратиков ──────────────────────────────────────────
   const gridSectionHTML = (num, title, subtitle, items, sectionKey) => {
     if (!items || items.length === 0) return "";
-    // Берём с 6-го (т.к. 5 первых уже в карусели)
-    const gridItems = items.slice(5, 21);
+    // Берём с 6-го (5 первых уже в карусели). Ровно 15 = 3 ряда по 5, без сирот.
+    const gridItems = items.slice(5, 20);
     if (!gridItems.length) return "";
     return `
       <section class="mono-section mono-section-grid" data-section="${sectionKey}-grid">
@@ -708,6 +711,9 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
           const now = btn.classList.toggle("active-blue");
           btn.textContent = now ? "🕐 В СПИСКЕ" : "🕐 ПОЗЖЕ";
         }
+        if (act === "dismiss") {
+          dismissMovie(id, card, true, type);
+        }
       });
     });
   });
@@ -727,9 +733,17 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
       btn.addEventListener("click", e => {
         e.stopPropagation();
         const act = btn.dataset.act;
-        if (act === "watched") toggleWatched(id, btn, null, type);
-        if (act === "watchlist") toggleWatchlist(id, btn, null, type);
-        btn.classList.toggle("active");
+        if (act === "watched") {
+          toggleWatched(id, btn, null, type);
+          btn.classList.toggle("active");
+        }
+        if (act === "watchlist") {
+          toggleWatchlist(id, btn, null, type);
+          btn.classList.toggle("active");
+        }
+        if (act === "dismiss") {
+          dismissMovie(id, card, true, type);
+        }
       });
     });
   });
@@ -831,6 +845,7 @@ function renderScrollRow(rowId, movies, mediaType) {
         <div class="scroll-card-overlay">
           <button class="scroll-card-action watch ${isWatched ? "is-watched" : ""}" data-action="watched" title="Просмотрено">✓</button>
           <button class="scroll-card-action list ${isWatchlist ? "is-watch" : ""}" data-action="watchlist" title="Смотреть позже">🕐</button>
+          <button class="scroll-card-action dismiss" data-action="dismiss" title="Не интересно">✕</button>
         </div>
         ${rating ? `<div class="scroll-card-rating">★ ${rating}</div>` : ""}
       </div>
@@ -847,6 +862,10 @@ function renderScrollRow(rowId, movies, mediaType) {
       e.stopPropagation();
       toggleWatched(movie.id, e.currentTarget, null, mediaType);
       e.currentTarget.classList.toggle("is-watched");
+    });
+    card.querySelector('[data-action="dismiss"]').addEventListener("click", e => {
+      e.stopPropagation();
+      dismissMovie(movie.id, card, true, mediaType);
     });
     card.querySelector('[data-action="watchlist"]').addEventListener("click", e => {
       e.stopPropagation();
@@ -875,7 +894,7 @@ function showAllMovies() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные фильмы";
-  $("movies-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=movie").then(movies => {
     renderMovies($("movies-grid"), movies, "discover");
   }).catch(() => {
@@ -887,7 +906,7 @@ function showAllTV() {
   $("home-content").style.display = "none";
   $("search-content").style.display = "";
   $("discover-title").textContent = "Популярные сериалы";
-  $("movies-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+  $("movies-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
   apiFetch("/popular?media_type=tv").then(shows => {
     renderMovies($("movies-grid"), shows, "discover");
   }).catch(() => {
@@ -917,7 +936,7 @@ async function loadWatched(filterRating = null, filterTitle = "") {
       state.cache.watched[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watched-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watched", mode));
       state.cache.watched[mode] = items;
@@ -983,7 +1002,7 @@ async function loadWatchlist() {
       state.cache.watchlist[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watchlist-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+    $("watchlist-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/watchlist", mode));
       state.cache.watchlist[mode] = items;
@@ -2213,7 +2232,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function loadActors() {
   const grid = $("actors-grid");
-  grid.innerHTML = '<div class="loader">Ищем твоих любимых актёров…</div>';
+  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ИЩЕМ АКТЁРОВ</div></div>';
   try {
     const actors = await apiFetch("/watched/top-actors");
     if (!actors?.length) {
@@ -2321,7 +2340,7 @@ async function loadDismissed() {
       state.cache.dismissed[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("dismissed-grid").innerHTML = '<div class="loader">Загружаем…</div>';
+    $("dismissed-grid").innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
     try {
       items = await apiFetch(mtq("/dismissed", mode));
       state.cache.dismissed[mode] = items;
@@ -2358,7 +2377,7 @@ async function loadSuggest() {
   hint.textContent = query
     ? "AI читает твой запрос, обычно 5–10 секунд…"
     : "AI анализирует твою историю просмотров, обычно 5–10 секунд…";
-  grid.innerHTML = '<div class="loader">Подбираем для тебя…</div>';
+  grid.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">ПОДБИРАЕМ</div></div>';
 
   try {
     const url = query
@@ -2431,7 +2450,7 @@ async function loadSuggest() {
 
 async function loadProfile() {
   const wrap = $("profile-content");
-  wrap.innerHTML = '<div class="loader">Загружаем профиль…</div>';
+  wrap.innerHTML = '<div class="fun-loader"><div class="fun-monkey">🐵</div><div class="fun-dots"><span></span><span></span><span></span></div><div class="fun-text">СОБИРАЕМ ПРОФИЛЬ</div></div>';
   try {
     const [s, actorsData] = await Promise.all([
       apiFetch("/profile/stats"),

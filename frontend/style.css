@@ -1293,7 +1293,7 @@ body.theme-mono .hero-section {
   background: var(--mono-paper); margin: 0 0 30px;
   width: 100%; border-radius: 0;
 }
-body.theme-mono .hero-backdrop { filter: grayscale(1) contrast(1.1) brightness(0.55); }
+body.theme-mono .hero-backdrop { filter: contrast(1.05) saturate(1.08) brightness(0.65); }
 body.theme-mono .hero-gradient {
   background: linear-gradient(105deg, rgba(245,243,237,0.96) 0%, rgba(245,243,237,0.65) 45%, rgba(245,243,237,0.1) 100%);
 }
@@ -1327,7 +1327,7 @@ body.theme-mono .hero-btn-primary { background: var(--mono-red); color: var(--mo
 body.theme-mono .hero-btn-primary:hover { background: var(--mono-ink); border-color: var(--mono-ink); }
 body.theme-mono .hero-btn-watched.active { background: var(--mono-ink); color: var(--mono-paper); border-color: var(--mono-ink); }
 body.theme-mono .hero-btn-watchlist.active { background: var(--mono-red); color: var(--mono-paper); border-color: var(--mono-red); }
-body.theme-mono .hero-poster-wrap { filter: grayscale(1); }
+body.theme-mono .hero-poster-wrap { filter: contrast(1.05) saturate(1.05); }
 
 body.theme-mono .home-row-title {
   font-family: 'Inter', system-ui, sans-serif;
@@ -1489,7 +1489,7 @@ body.theme-mono .profile-banner {
   border-radius: 0; border: 1px solid var(--mono-ink);
   border-bottom: none; background: var(--mono-paper);
 }
-body.theme-mono .profile-banner-poster { filter: grayscale(1) contrast(1.05) brightness(0.5); }
+body.theme-mono .profile-banner-poster { filter: contrast(1.05) saturate(1.08) brightness(0.7); }
 body.theme-mono .profile-banner-overlay {
   background: linear-gradient(105deg, rgba(245,243,237,0.96) 0%, rgba(245,243,237,0.7) 55%, rgba(245,243,237,0.3) 100%);
 }
@@ -1632,8 +1632,8 @@ body.theme-mono .main { padding-top: 32px; }
 body.theme-mono .mono-page-head {
   position: relative;
   border-bottom: 2px solid var(--mono-ink);
-  padding: 28px 0 36px;
-  margin-bottom: 28px;
+  padding: 18px 0 22px;
+  margin-bottom: 20px;
 }
 body.theme-mono .mono-eyebrow {
   font-family: 'JetBrains Mono', monospace;
@@ -1688,7 +1688,7 @@ body.theme-mono .mono-feature:hover {
 body.theme-mono .mono-feature-bg {
   position: absolute; inset: 0;
   background-size: cover; background-position: center;
-  filter: grayscale(1) contrast(1.1) brightness(0.55);
+  filter: contrast(1.05) saturate(1.08) brightness(0.65);
 }
 body.theme-mono .mono-feature-overlay {
   position: absolute; inset: 0;
@@ -1812,11 +1812,18 @@ body.theme-mono .mono-side-c {
 
 /* Основная сетка карточек */
 body.theme-mono .mono-grid {
-  padding: 22px 24px;
+  padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
   align-content: start;
+}
+/* Ограничиваем минимальную ширину карточки чтобы 5 в ряд работало до ~1100px */
+@media (max-width: 1100px) {
+  body.theme-mono .mono-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 880px) {
+  body.theme-mono .mono-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* Mono карточка */
@@ -2100,17 +2107,17 @@ body.theme-mono .mono-pstat-l {
 
 /* ─── Заголовок секции с большим номером ───────────────── */
 body.theme-mono .mono-section {
-  margin: 56px 0 0;
-  padding-top: 24px;
+  margin: 36px 0 0;
+  padding-top: 18px;
   border-top: 2px solid var(--mono-ink);
 }
-body.theme-mono .mono-section:first-of-type { margin-top: 36px; }
+body.theme-mono .mono-section:first-of-type { margin-top: 24px; }
 body.theme-mono .mono-sec-head {
   display: grid;
-  grid-template-columns: 80px 1fr auto;
-  gap: 20px;
+  grid-template-columns: 64px 1fr auto;
+  gap: 18px;
   align-items: end;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
 body.theme-mono .mono-sec-num {
   font-family: 'Inter', sans-serif;
@@ -2183,7 +2190,7 @@ body.theme-mono .mono-feat-card {
   border: 1px solid var(--mono-ink);
   position: relative;
   cursor: pointer;
-  height: 460px;
+  height: 380px;
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
   background: var(--mono-paper-2);
@@ -2196,7 +2203,8 @@ body.theme-mono .mono-feat-bg {
   position: absolute; inset: 0;
   background-size: cover;
   background-position: center;
-  filter: grayscale(1) contrast(1.1) brightness(0.5);
+  /* ЦВЕТНОЕ изображение — без grayscale. Чуть приглушаем для контраста с текстом */
+  filter: contrast(1.05) saturate(1.08) brightness(0.72);
 }
 body.theme-mono .mono-feat-bg-empty {
   background: var(--mono-paper-3);
@@ -2204,8 +2212,8 @@ body.theme-mono .mono-feat-bg-empty {
 body.theme-mono .mono-feat-overlay {
   position: absolute; inset: 0;
   background:
-    linear-gradient(105deg, rgba(245,243,237,0.95) 0%, rgba(245,243,237,0.6) 45%, rgba(245,243,237,0.05) 90%),
-    linear-gradient(to top, rgba(10,10,8,0.4) 0%, transparent 60%);
+    linear-gradient(105deg, rgba(245,243,237,0.92) 0%, rgba(245,243,237,0.55) 38%, rgba(245,243,237,0.02) 75%),
+    linear-gradient(to top, rgba(10,10,8,0.55) 0%, transparent 55%);
 }
 body.theme-mono .mono-feat-grid {
   position: relative;
@@ -2787,4 +2795,80 @@ body.theme-mono .mono-ai-result {
   body.theme-mono .mono-avg-num { font-size: 60px; }
   body.theme-mono .mono-donut-row { grid-template-columns: 110px 1fr; }
   body.theme-mono .mono-donut { width: 110px; height: 110px; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   FUN LOADER — обезьянка прыгает над тремя точками
+   ═══════════════════════════════════════════════════════════ */
+.fun-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 20px;
+  min-height: 200px;
+}
+.fun-loader .fun-monkey {
+  font-size: 36px;
+  animation: monkey-hop 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center bottom;
+}
+.fun-loader .fun-dots {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.fun-loader .fun-dots span {
+  width: 12px;
+  height: 12px;
+  background: var(--gold);
+  border-radius: 50%;
+  animation: dot-pulse 0.9s ease infinite;
+}
+.fun-loader .fun-dots span:nth-child(2) { animation-delay: 0.15s; }
+.fun-loader .fun-dots span:nth-child(3) { animation-delay: 0.3s; }
+.fun-loader .fun-text {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-family: "DM Sans", sans-serif;
+}
+@keyframes monkey-hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  25%      { transform: translateY(-26px) scale(0.96, 1.04) rotate(-8deg); }
+  50%      { transform: translateY(0) scale(1.1, 0.9); }
+  75%      { transform: translateY(-26px) scale(0.96, 1.04) rotate(8deg); }
+}
+@keyframes dot-pulse {
+  0%, 100% { transform: scale(0.65); opacity: 0.45; }
+  50%      { transform: scale(1.15); opacity: 1; }
+}
+/* В Mono — точки красные, шрифт mono */
+body.theme-mono .fun-loader .fun-dots span { background: var(--mono-red); border-radius: 0; width: 14px; height: 14px; }
+body.theme-mono .fun-loader .fun-text { font-family: "JetBrains Mono", monospace; color: var(--mono-ink-mid); }
+
+/* ─── Dismiss-кнопка на scroll-card (Cinema) ─────────────── */
+.scroll-card-action.dismiss { background: rgba(201,76,76,0.85); color: #fff; backdrop-filter: blur(4px); }
+.scroll-card-action.dismiss:hover { background: var(--red); }
+
+/* ─── Dismiss-кнопка на Mono-карточке ─────────────────────── */
+body.theme-mono .mono-act.dismiss { background: var(--mono-ink); color: var(--mono-paper); border-color: var(--mono-ink); }
+body.theme-mono .mono-act.dismiss:hover { background: var(--mono-red); border-color: var(--mono-red); }
+body.theme-mono .mono-feat-btn.dismiss {
+  background: var(--mono-paper);
+  color: var(--mono-ink);
+  border: 1px solid var(--mono-ink);
+  padding: 10px 14px;
+}
+body.theme-mono .mono-feat-btn.dismiss:hover { background: var(--mono-red); color: var(--mono-paper); border-color: var(--mono-red); }
+
+/* ─── IMDb рейтинг в мини-мета mono карточки ──────────────── */
+body.theme-mono .mono-imdb {
+  color: var(--mono-red);
+  font-weight: 700;
+  margin-left: 4px;
 }
