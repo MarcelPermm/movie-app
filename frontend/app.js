@@ -33,7 +33,7 @@ const state = {
     dismissed: { movie: null, tv: null },
     // Кэш главной страницы — возврат на вкладку Обзор мгновенный.
     // TTL 60с: после возвращаем кэш и параллельно обновляем в фоне.
-    homepage:  { ts: 0, movies: null, tv: null, recs: null },
+    homepage:  { ts: 0, movies: null, tv: null, recs: null, recsTv: null },
   },
   user: null,  // { id, username, display_name }
 };
@@ -48,9 +48,12 @@ function applyTheme(theme) {
     b.classList.toggle("active", b.dataset.theme === theme);
   });
   try { localStorage.setItem("film_theme", theme); } catch {}
-  // Перерендериваем активную вкладку Обзор т.к. layout кардинально другой
+  // Перерендериваем активную вкладку т.к. layout кардинально другой
   if (document.getElementById("tab-discover")?.classList.contains("active") && typeof loadHomepage === "function") {
     loadHomepage();
+  }
+  if (document.getElementById("tab-profile")?.classList.contains("active") && typeof loadProfile === "function") {
+    loadProfile();
   }
 }
 
@@ -390,11 +393,11 @@ async function loadHomepage() {
   // ─── MONO путь ──────────────────────────────────────────────────────────
   if (isMono) {
     if (fresh && hp.movies && hp.tv) {
-      renderMonoHomepage(hp.movies, hp.tv, hp.recs);
+      renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
       return;
     }
     if (hp.movies && hp.tv) {
-      renderMonoHomepage(hp.movies, hp.tv, hp.recs);
+      renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
     } else {
       $("home-content-mono").innerHTML = `<div class="mono-loader">ЗАГРУЖАЕМ ИНДЕКС…</div>`;
     }
@@ -404,12 +407,19 @@ async function loadHomepage() {
         apiFetch("/popular?media_type=tv"),
       ]);
       hp.movies = movies; hp.tv = tvShows; hp.ts = Date.now();
-      renderMonoHomepage(movies, tvShows, hp.recs);
+      renderMonoHomepage(movies, tvShows, hp.recs, hp.recsTv);
+
+      // Лениво грузим рекомендации обоих типов параллельно
       if (state.watched.size > 0) {
-        apiFetch("/recommendations?media_type=movie").then(recs => {
-          hp.recs = recs;
-          renderMonoHomepage(hp.movies, hp.tv, recs);
-        }).catch(() => {});
+        const recPromises = [
+          apiFetch("/recommendations?media_type=movie").catch(() => null),
+          apiFetch("/recommendations?media_type=tv").catch(() => null),
+        ];
+        Promise.all(recPromises).then(([recs, recsTv]) => {
+          if (recs)   hp.recs   = recs;
+          if (recsTv) hp.recsTv = recsTv;
+          renderMonoHomepage(hp.movies, hp.tv, hp.recs, hp.recsTv);
+        });
       }
     } catch {
       if (!hp.movies) $("home-content-mono").innerHTML = `<div class="empty-state"><p>Не удалось загрузить</p></div>`;
@@ -483,56 +493,71 @@ async function loadHomepage() {
 }
 
 // ─── Главная: MONO редакторский индекс ──────────────────────────────────────
-function renderMonoHomepage(movies, tvShows, recs) {
+// ─── Главная: MONO редакторский индекс ─────────────────────────────────────
+// Layout: гигантский заголовок + 4 секции (Popular Movies, Popular TV, Recs Movies, Recs TV).
+// Каждая секция = большая горизонтальная карусель из 5 хедер-карточек с backdrop+описанием+рейтингом.
+// Между секциями popular — сетка квадратных карточек с дополнительными фильмами/сериалами.
+function renderMonoHomepage(movies, tvShows, recs, recsTv) {
   const wrap = $("home-content-mono");
   if (!wrap) return;
 
-  const allItems = [
-    ...(movies || []).map(m => ({...m, media_type: "movie"})),
-    ...(tvShows || []).map(m => ({...m, media_type: "tv"})),
-  ];
+  const moviesArr = (movies || []).map(m => ({...m, media_type: "movie"}));
+  const tvArr     = (tvShows || []).map(m => ({...m, media_type: "tv"}));
 
-  // Подсчёт жанров и десятилетий для боковой панели
-  const genreCount = new Map();
-  const decadeCount = new Map();
-  allItems.forEach(m => {
-    (m.genres || []).forEach(g => {
-      const name = (typeof g === "string") ? g : g.name;
-      if (name) genreCount.set(name, (genreCount.get(name) || 0) + 1);
-    });
-    const yr = parseInt((m.release_date || m.first_air_date || "0000").slice(0, 4));
-    if (yr) {
-      const d = `${Math.floor(yr / 10) * 10}s`;
-      decadeCount.set(d, (decadeCount.get(d) || 0) + 1);
-    }
-  });
-  const topGenres = [...genreCount.entries()].sort((a,b) => b[1]-a[1]).slice(0, 10);
-  const decades   = [...decadeCount.entries()].sort((a,b) => parseInt(b[0]) - parseInt(a[0]));
-
-  // Грид: фильмы + сериалы, перемешаны по популярности (топ 20)
-  const gridItems = allItems
-    .sort((a,b) => (b.popularity || b.vote_average || 0) - (a.popularity || a.vote_average || 0))
-    .slice(0, 20);
-
-  // Featured — первый item для большой карточки
-  const featured = gridItems[0];
-
-  // Для правой колонки — топ recs
-  const railRecs = (recs || []).slice(0, 5);
-
-  // Дата/время для coords
+  // Дата/время для шапки
   const now  = new Date();
   const hh   = String(now.getHours()).padStart(2, "0");
   const mm   = String(now.getMinutes()).padStart(2, "0");
   const date = now.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }).toUpperCase();
 
-  // Карточка для main grid
-  const cardHTML = (m, idx) => {
+  // ─── Шаблон БОЛЬШОЙ карточки в карусели (5 шт) ─────────────────────────
+  const bigCardHTML = (m, idx, total) => {
+    const backdrop = m.backdrop_path
+      ? `https://image.tmdb.org/t/p/w1280${m.backdrop_path}`
+      : (m.poster_path ? `${TMDB_IMG}${m.poster_path}` : null);
+    const title    = (m.title || m.name || "").toUpperCase();
+    const year     = (m.release_date || m.first_air_date || "").slice(0, 4) || "—";
+    const rating   = m.vote_average ? Number(m.vote_average).toFixed(1) : "—";
+    const genres   = (m.genres || []).slice(0, 3).map(g => (typeof g === "string" ? g : g.name)).filter(Boolean).join(" · ").toUpperCase();
+    const overview = m.overview ? (m.overview.length > 280 ? m.overview.slice(0, 280) + "…" : m.overview) : "";
+    const isWatched   = state.watched.has(m.id);
+    const isWatchlist = state.watchlist.has(m.id);
+    const num    = String(idx + 1).padStart(2, "0");
+    const total2 = String(total).padStart(2, "0");
+    return `
+      <article class="mono-feat-card" data-id="${m.id}" data-type="${m.media_type}">
+        ${backdrop ? `<div class="mono-feat-bg" style="background-image:url('${backdrop}')"></div>` : `<div class="mono-feat-bg mono-feat-bg-empty"></div>`}
+        <div class="mono-feat-overlay"></div>
+        <div class="mono-feat-grid">
+          <div class="mono-feat-num">Nº ${num}/${total2}</div>
+          <div class="mono-feat-info">
+            <div class="mono-feat-genres">${genres || "—"}</div>
+            <h3 class="mono-feat-title">${title}</h3>
+            <div class="mono-feat-meta">
+              <span class="mono-feat-rating">★ ${rating}</span>
+              <span class="mono-feat-sep">/</span>
+              <span>${year}</span>
+              <span class="mono-feat-sep">/</span>
+              <span>${m.media_type === "tv" ? "СЕРИАЛ" : "ФИЛЬМ"}</span>
+            </div>
+            ${overview ? `<p class="mono-feat-overview">${overview}</p>` : ""}
+            <div class="mono-feat-actions">
+              <button class="mono-feat-btn primary" data-act="open">ОТКРЫТЬ →</button>
+              <button class="mono-feat-btn ${isWatched ? "active" : ""}" data-act="watched">${isWatched ? "✓ ПРОСМОТРЕНО" : "✓ ОТМЕТИТЬ"}</button>
+              <button class="mono-feat-btn ${isWatchlist ? "active-blue" : ""}" data-act="watchlist">${isWatchlist ? "🕐 В СПИСКЕ" : "🕐 ПОЗЖЕ"}</button>
+            </div>
+          </div>
+        </div>
+      </article>`;
+  };
+
+  // ─── Шаблон квадратной карточки для сеток ──────────────────────────────
+  const squareCardHTML = (m, idx) => {
     const poster = m.poster_path ? `${TMDB_CARD}${m.poster_path}` : null;
     const year   = (m.release_date || m.first_air_date || "").slice(2, 4);
     const rating = m.vote_average ? Number(m.vote_average).toFixed(1) : "—";
     const num    = String(idx + 1).padStart(3, "0");
-    const isWatched  = state.watched.has(m.id);
+    const isWatched   = state.watched.has(m.id);
     const isWatchlist = state.watchlist.has(m.id);
     const typeBadge = m.media_type === "tv" ? "TV" : "FILM";
     return `
@@ -557,121 +582,142 @@ function renderMonoHomepage(movies, tvShows, recs) {
       </article>`;
   };
 
-  // Featured большая карточка
-  const featuredPoster = featured?.backdrop_path
-    ? `https://image.tmdb.org/t/p/w780${featured.backdrop_path}`
-    : (featured?.poster_path ? `${TMDB_IMG}${featured.poster_path}` : null);
-  const featuredTitle  = (featured?.title || featured?.name || "").toUpperCase();
-  const featuredOverview = featured?.overview
-    ? (featured.overview.length > 220 ? featured.overview.slice(0, 220) + "…" : featured.overview)
-    : "";
-  const featuredRating = featured?.vote_average ? Number(featured.vote_average).toFixed(1) : "—";
-  const featuredYear   = (featured?.release_date || featured?.first_air_date || "").slice(0, 4);
+  // ─── Шаблон секции с каруселью ─────────────────────────────────────────
+  const sectionHTML = (num, title, subtitle, items, sectionKey) => {
+    if (!items || items.length === 0) return "";
+    const top5 = items.slice(0, 5);
+    return `
+      <section class="mono-section" data-section="${sectionKey}">
+        <div class="mono-sec-head">
+          <div class="mono-sec-num">${num}</div>
+          <div class="mono-sec-titles">
+            <h2 class="mono-sec-title">${title}</h2>
+            <p class="mono-sec-sub">${subtitle}</p>
+          </div>
+          <div class="mono-sec-nav">
+            <button class="mono-carousel-arrow" data-dir="-1">‹</button>
+            <button class="mono-carousel-arrow" data-dir="1">›</button>
+          </div>
+        </div>
+        <div class="mono-carousel" data-section="${sectionKey}">
+          ${top5.map((m, i) => bigCardHTML(m, i, top5.length)).join("")}
+        </div>
+      </section>`;
+  };
 
+  // ─── Шаблон сетки квадратиков ──────────────────────────────────────────
+  const gridSectionHTML = (num, title, subtitle, items, sectionKey) => {
+    if (!items || items.length === 0) return "";
+    // Берём с 6-го (т.к. 5 первых уже в карусели)
+    const gridItems = items.slice(5, 21);
+    if (!gridItems.length) return "";
+    return `
+      <section class="mono-section mono-section-grid" data-section="${sectionKey}-grid">
+        <div class="mono-sec-head">
+          <div class="mono-sec-num">${num}</div>
+          <div class="mono-sec-titles">
+            <h2 class="mono-sec-title">${title}</h2>
+            <p class="mono-sec-sub">${subtitle}</p>
+          </div>
+        </div>
+        <div class="mono-grid">${gridItems.map(squareCardHTML).join("")}</div>
+      </section>`;
+  };
+
+  // ─── Финальная HTML-сборка ─────────────────────────────────────────────
   wrap.innerHTML = `
     <header class="mono-page-head">
       <div class="mono-eyebrow">INDEX Nº 47 · ${date} · ${hh}:${mm}</div>
       <h1 class="mono-hero-title">ЧТО СМОТРИШЬ<br/><span>СЕГОДНЯ?</span></h1>
       <div class="mono-stamp">NOW SHOWING</div>
+      <div class="mono-page-stats">
+        <div class="mono-pstat"><span class="mono-pstat-v">${moviesArr.length}</span><span class="mono-pstat-l">фильмов</span></div>
+        <div class="mono-pstat"><span class="mono-pstat-v">${tvArr.length}</span><span class="mono-pstat-l">сериалов</span></div>
+        <div class="mono-pstat"><span class="mono-pstat-v">${state.watched.size}</span><span class="mono-pstat-l">просмотрено</span></div>
+        <div class="mono-pstat"><span class="mono-pstat-v">${state.watchlist.size}</span><span class="mono-pstat-l">в списке</span></div>
+      </div>
     </header>
 
-    ${featured ? `
-    <section class="mono-feature" data-id="${featured.id}" data-type="${featured.media_type || 'movie'}">
-      ${featuredPoster ? `<div class="mono-feature-bg" style="background-image:url('${featuredPoster}')"></div>` : ""}
-      <div class="mono-feature-overlay"></div>
-      <div class="mono-feature-content">
-        <div class="mono-feature-eyebrow">★ В ФОКУСЕ · ${featured.media_type === "tv" ? "СЕРИАЛ" : "ФИЛЬМ"} · ${featuredYear}</div>
-        <h2 class="mono-feature-title">${featuredTitle}</h2>
-        <p class="mono-feature-overview">${featuredOverview}</p>
-        <div class="mono-feature-meta">
-          <span class="mono-feature-rating">★ ${featuredRating}</span>
-          <span class="mono-feature-sep">/</span>
-          <span>${(featured.genres || []).slice(0,3).map(g => (typeof g === "string" ? g : g.name)).join(" · ").toUpperCase()}</span>
-        </div>
-        <button class="mono-feature-btn">ОТКРЫТЬ КАРТОЧКУ →</button>
-      </div>
-    </section>` : ""}
-
-    <div class="mono-body">
-      <aside class="mono-sidebar">
-        <div class="mono-side-block">
-          <div class="mono-side-head">FILTER / ЖАНР</div>
-          <div class="mono-side-item active"><span>Все</span><span class="mono-side-c">${allItems.length}</span></div>
-          ${topGenres.map(([g, c]) => `<div class="mono-side-item" data-genre="${g}"><span>${g}</span><span class="mono-side-c">${c}</span></div>`).join("")}
-        </div>
-        <div class="mono-side-block">
-          <div class="mono-side-head">DECADE</div>
-          ${decades.map(([d, c]) => `<div class="mono-side-item" data-decade="${d}"><span>${d}</span><span class="mono-side-c">${c}</span></div>`).join("")}
-        </div>
-        <div class="mono-side-block">
-          <div class="mono-side-head">QUICK</div>
-          <div class="mono-side-item" data-jump="watched"><span>Просмотренное</span><span class="mono-side-c">${state.watched.size}</span></div>
-          <div class="mono-side-item" data-jump="watchlist"><span>К просмотру</span><span class="mono-side-c">${state.watchlist.size}</span></div>
-          <div class="mono-side-item" data-jump="recommendations"><span>Рекомендации</span><span class="mono-side-c">→</span></div>
-        </div>
-      </aside>
-
-      <div class="mono-grid">${gridItems.map(cardHTML).join("")}</div>
-
-      <aside class="mono-rail">
-        <div class="mono-rail-block">
-          <div class="mono-rail-head">КОНТЕКСТ</div>
-          <div class="mono-rail-stat">
-            <span class="mono-rail-num">${allItems.length}</span>
-            <span class="mono-rail-lbl">единиц в индексе</span>
-          </div>
-          <div class="mono-rail-stat">
-            <span class="mono-rail-num">${state.watched.size}</span>
-            <span class="mono-rail-lbl">просмотрено тобой</span>
-          </div>
-          <div class="mono-rail-stat">
-            <span class="mono-rail-num">${state.watchlist.size}</span>
-            <span class="mono-rail-lbl">в списке к просмотру</span>
+    ${sectionHTML("01", "ПОПУЛЯРНЫЕ ФИЛЬМЫ", "Топ-5 этой недели по версии TMDB", moviesArr, "pop-movies")}
+    ${gridSectionHTML("02", "ФИЛЬМЫ — БОЛЬШЕ", "Что ещё смотрят прямо сейчас", moviesArr, "pop-movies")}
+    ${sectionHTML("03", "ПОПУЛЯРНЫЕ СЕРИАЛЫ", "Топ-5 сериалов недели", tvArr, "pop-tv")}
+    ${gridSectionHTML("04", "СЕРИАЛЫ — БОЛЬШЕ", "Расширенный индекс сериалов", tvArr, "pop-tv")}
+    ${recs?.length ? sectionHTML("05", "✦ ДЛЯ ТЕБЯ · ФИЛЬМЫ", "Подобрано на основе твоих оценок", recs, "rec-movies") : ""}
+    ${recsTv?.length ? sectionHTML("06", "✦ ДЛЯ ТЕБЯ · СЕРИАЛЫ", "Сериалы которые могут понравиться", recsTv, "rec-tv") : ""}
+    ${(!recs?.length && state.watched.size > 0) ? `
+      <section class="mono-section mono-recs-loading">
+        <div class="mono-sec-head">
+          <div class="mono-sec-num">05</div>
+          <div class="mono-sec-titles">
+            <h2 class="mono-sec-title">✦ ДЛЯ ТЕБЯ</h2>
+            <p class="mono-sec-sub">Подбираем рекомендации…</p>
           </div>
         </div>
-
-        ${railRecs.length ? `
-        <div class="mono-rail-block">
-          <div class="mono-rail-head">✦ ДЛЯ ТЕБЯ</div>
-          <div class="mono-rail-list">
-            ${railRecs.map((r, i) => {
-              const yr = (r.release_date || r.first_air_date || "").slice(0, 4);
-              const rt = r.vote_average ? Number(r.vote_average).toFixed(1) : "—";
-              return `<div class="mono-rail-row" data-id="${r.id}" data-type="${r.media_type || 'movie'}">
-                <span class="mono-rail-rank">${String(i+1).padStart(2,"0")}</span>
-                <span class="mono-rail-title">${r.title || r.name}</span>
-                <span class="mono-rail-meta">${yr} · ${rt}</span>
-              </div>`;
-            }).join("")}
-          </div>
-          <button class="mono-rail-more" onclick="document.querySelector('[data-tab=recommendations]').click()">ВСЕ РЕКОМЕНДАЦИИ →</button>
-        </div>` : `
-        <div class="mono-rail-block">
-          <div class="mono-rail-head">DECADE LENS · 2020s</div>
-          <div class="mono-rail-text">
-            ${decadeCount.get("2020s") || 0} единиц в индексе ·
-            <span style="color:var(--mono-red);font-weight:700">
-              ${Math.round(((decadeCount.get("2020s") || 0) / Math.max(allItems.length, 1)) * 100)}%
-            </span>
-            от общего количества
-          </div>
-        </div>
-        `}
-      </aside>
-    </div>
+        <div class="mono-loader">АНАЛИЗИРУЕМ ТВОЮ ИСТОРИЮ…</div>
+      </section>` : ""}
 
     <footer class="mono-page-foot">
       <span>END OF INDEX Nº 47</span>
       <span>FILMBYMIHAYLOV · ${new Date().getFullYear()}</span>
-      <span>← / →  NAV · CLICK CARD TO OPEN</span>
+      <span>← / →  NAVIGATE · CLICK CARD TO OPEN</span>
     </footer>
   `;
 
-  // ── Биндинги кликов ──────────────────────────────────────────────────────
+  // ── Биндинги ─────────────────────────────────────────────────────────
+  const allMaps = {
+    "pop-movies": moviesArr,
+    "pop-tv":     tvArr,
+    "rec-movies": recs    || [],
+    "rec-tv":     recsTv  || [],
+  };
+
+  // Большие карточки в каруселях
+  wrap.querySelectorAll(".mono-feat-card").forEach(card => {
+    const id   = parseInt(card.dataset.id);
+    const type = card.dataset.type;
+    const findInAll = () => {
+      for (const arr of Object.values(allMaps)) {
+        const found = arr.find(m => m.id === id);
+        if (found) return found;
+      }
+      return null;
+    };
+    const movie = findInAll();
+
+    card.addEventListener("click", e => {
+      if (e.target.closest(".mono-feat-actions")) return;
+      if (!movie) return;
+      pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
+      openMovieModal({ ...movie, _mediaType: type });
+    });
+    card.querySelectorAll(".mono-feat-btn").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const act = btn.dataset.act;
+        if (act === "open" && movie) {
+          pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
+          openMovieModal({ ...movie, _mediaType: type });
+        }
+        if (act === "watched") {
+          toggleWatched(id, btn, null, type);
+          const now = btn.classList.toggle("active");
+          btn.textContent = now ? "✓ ПРОСМОТРЕНО" : "✓ ОТМЕТИТЬ";
+        }
+        if (act === "watchlist") {
+          toggleWatchlist(id, btn, null, type);
+          const now = btn.classList.toggle("active-blue");
+          btn.textContent = now ? "🕐 В СПИСКЕ" : "🕐 ПОЗЖЕ";
+        }
+      });
+    });
+  });
+
+  // Квадратные карточки
   wrap.querySelectorAll(".mono-card").forEach(card => {
     const id   = parseInt(card.dataset.id);
     const type = card.dataset.type;
-    const movie = allItems.find(m => m.id === id);
+    const movie = (type === "tv" ? tvArr : moviesArr).find(m => m.id === id);
+    if (!movie) return;
     card.addEventListener("click", e => {
       if (e.target.closest(".mono-card-actions")) return;
       pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
@@ -688,29 +734,17 @@ function renderMonoHomepage(movies, tvShows, recs) {
     });
   });
 
-  const feature = wrap.querySelector(".mono-feature");
-  if (feature && featured) {
-    feature.addEventListener("click", () => {
-      pushModal({ type: "movie", data: { ...featured, _mediaType: featured.media_type || "movie" } });
-      openMovieModal({ ...featured, _mediaType: featured.media_type || "movie" });
-    });
-  }
-
-  wrap.querySelectorAll(".mono-rail-row").forEach(row => {
-    const id   = parseInt(row.dataset.id);
-    const type = row.dataset.type;
-    const movie = (recs || []).find(m => m.id === id);
-    if (!movie) return;
-    row.addEventListener("click", () => {
-      pushModal({ type: "movie", data: { ...movie, _mediaType: type } });
-      openMovieModal({ ...movie, _mediaType: type });
-    });
-  });
-
-  wrap.querySelectorAll(".mono-side-item[data-jump]").forEach(item => {
-    item.addEventListener("click", () => {
-      const tab = item.dataset.jump;
-      document.querySelector(`[data-tab="${tab}"]`)?.click();
+  // Стрелки навигации в каруселях
+  wrap.querySelectorAll(".mono-sec-head").forEach(head => {
+    const section = head.closest(".mono-section");
+    if (!section) return;
+    const carousel = section.querySelector(".mono-carousel");
+    if (!carousel) return;
+    head.querySelectorAll(".mono-carousel-arrow").forEach(arr => {
+      arr.addEventListener("click", () => {
+        const dir = parseInt(arr.dataset.dir) || 1;
+        carousel.scrollBy({ left: dir * (carousel.clientWidth * 0.85), behavior: "smooth" });
+      });
     });
   });
 }
@@ -2139,7 +2173,7 @@ function authLogout() {
     watched:   { movie: null, tv: null },
     watchlist: { movie: null, tv: null },
     dismissed: { movie: null, tv: null },
-    homepage:  { ts: 0, movies: null, tv: null, recs: null },
+    homepage:  { ts: 0, movies: null, tv: null, recs: null, recsTv: null },
   };
   localStorage.removeItem("film_user");
   const badge = $("user-badge");
@@ -2410,6 +2444,10 @@ async function loadProfile() {
 }
 
 function renderProfile(s, actorsData) {
+  // В Mono теме — отдельный рендерер с другим layout
+  if (document.body.classList.contains("theme-mono")) {
+    return renderProfileMono(s, actorsData);
+  }
   const wrap = $("profile-content");
   const user = state.user || { display_name: "Пользователь" };
   const initial = user.display_name?.[0]?.toUpperCase() || "?";
@@ -2658,6 +2696,277 @@ function renderProfile(s, actorsData) {
 
   // Клики по актёрам
   document.querySelectorAll(".profile-actor-item[data-actor-id]").forEach(el => {
+    const actorId = parseInt(el.dataset.actorId);
+    if (!actorId) return;
+    el.addEventListener("click", () => {
+      state.modalStack = [];
+      pushModal({ type: "person", data: { id: actorId } });
+      $("modal-overlay").classList.add("open");
+      document.body.style.overflow = "hidden";
+      openPersonModal({ id: actorId });
+    });
+  });
+}
+
+// ─── MONO профиль: редакторская верстка ─────────────────────────────────────
+function renderProfileMono(s, actorsData) {
+  const wrap = $("profile-content");
+  const user = state.user || { display_name: "Пользователь", username: "user" };
+  const actors = Array.isArray(actorsData) ? actorsData : (actorsData?.actors || []);
+
+  if (!s || !s.total) {
+    wrap.innerHTML = `
+      <div class="mono-profile">
+        <div class="mono-profile-head">
+          <div class="mono-prof-name-block">
+            <div class="mono-prof-eyebrow">PROFILE · MEMBER SINCE 2025</div>
+            <h1 class="mono-prof-name">${(user.display_name || "ПОЛЬЗОВАТЕЛЬ").toUpperCase()}</h1>
+            <div class="mono-prof-handle">@${user.username || "user"}</div>
+          </div>
+        </div>
+        <div class="empty-state" style="padding:60px 0"><p style="font-family:'Fraunces',serif;font-style:italic;font-size:18px">Отметь хотя бы один фильм просмотренным, чтобы появилась статистика.</p></div>
+      </div>`;
+    return;
+  }
+
+  // ── Подготовка данных ─────────────────────────────────────────────────
+  // Donut: movie vs tv
+  const totalWatched = s.movies + s.tv;
+  const moviePct = Math.round((s.movies / Math.max(totalWatched, 1)) * 100);
+  const tvPct    = 100 - moviePct;
+  // SVG donut
+  const R = 60, C = 2 * Math.PI * R;
+  const movieLen = (moviePct / 100) * C;
+  const tvLen    = C - movieLen;
+
+  // Гистограмма рейтингов
+  const maxRC = Math.max(
+    ...Array.from({length: 10}, (_, i) => {
+      const d = s.rating_distribution[String(i + 1)] || {};
+      return (d.movie || 0) + (d.tv || 0);
+    }), 1
+  );
+  const ratingBarsHTML = Array.from({length: 10}, (_, i) => {
+    const num = i + 1;
+    const d   = s.rating_distribution[String(num)] || {};
+    const mc  = d.movie || 0;
+    const tc  = d.tv    || 0;
+    const total = mc + tc;
+    const pct = Math.round((total / maxRC) * 100);
+    const moviePctBar = total ? Math.round((mc / total) * 100) : 50;
+    const tvPctBar    = 100 - moviePctBar;
+    return `
+      <div class="mono-rb" title="Оценка ${num}: фильмов ${mc}, сериалов ${tc}">
+        ${total ? `<div class="mono-rb-cnt">${total}</div>` : ""}
+        <div class="mono-rb-stack" style="height:${Math.max(pct, total ? 3 : 0)}%">
+          <div class="mono-rb-bar tv"    style="height:${tvPctBar}%"></div>
+          <div class="mono-rb-bar movie" style="height:${moviePctBar}%"></div>
+        </div>
+        <div class="mono-rb-num">${num}</div>
+      </div>`;
+  }).join("");
+
+  // Жанры
+  const maxGenre = Math.max(...s.top_genres.map(g => g.total || 0), 1);
+  const genresHTML = s.top_genres.slice(0, 8).map(g => {
+    const total   = g.total || 0;
+    const mc      = g.movie_count || 0;
+    const tc      = g.tv_count || 0;
+    const barPct  = (total / maxGenre) * 100;
+    const mp = total ? (mc / total) * 100 : 50;
+    const tp = 100 - mp;
+    return `
+      <div class="mono-genre-row">
+        <div class="mono-genre-label">
+          <span class="mono-genre-name">${g.name}</span>
+          <span class="mono-genre-cnt">${mc ? `<span class="m">🎬${mc}</span>` : ""} ${tc ? `<span class="t">📺${tc}</span>` : ""}</span>
+        </div>
+        <div class="mono-genre-track">
+          <div class="mono-genre-fill movie" style="width:${barPct * mp / 100}%"></div>
+          <div class="mono-genre-fill tv"    style="width:${barPct * tp / 100}%"></div>
+        </div>
+      </div>`;
+  }).join("");
+
+  // Топ актёры
+  const actorsHTML = actors.slice(0, 8).map(a => {
+    const img = a.profile_path
+      ? `<img class="mono-actor-photo" src="https://image.tmdb.org/t/p/w185${a.profile_path}" loading="lazy" />`
+      : `<div class="mono-actor-nophoto"></div>`;
+    return `
+      <div class="mono-actor" data-actor-id="${a.id || ""}">
+        ${img}
+        <div class="mono-actor-info">
+          <div class="mono-actor-name">${a.name}</div>
+          <div class="mono-actor-meta">${a.movie_count || 0}🎬 · ${a.tv_count || 0}📺</div>
+        </div>
+      </div>`;
+  }).join("");
+
+  // Режиссёры
+  const directorsHTML = s.top_directors.slice(0, 7).map((d, i) => `
+    <div class="mono-director">
+      <span class="mono-dir-rank">${String(i + 1).padStart(2, "0")}</span>
+      <span class="mono-dir-name">${d.name}</span>
+      <span class="mono-dir-cnt">${d.count} ${d.count === 1 ? "ФИЛЬМ" : d.count < 5 ? "ФИЛЬМА" : "ФИЛЬМОВ"}</span>
+    </div>`).join("");
+
+  // Топ фильмы
+  const topRatedHTML = s.top_rated.slice(0, 10).map(m => `
+    <div class="mono-top-item">
+      <div class="mono-top-poster" ${m.poster ? `style="background-image:url('${TMDB_CARD}${m.poster}')"` : ""}>
+        <span class="rt">★ ${m.rating}</span>
+      </div>
+    </div>`).join("");
+
+  // ── HTML сборка ────────────────────────────────────────────────────────
+  wrap.innerHTML = `
+    <div class="mono-profile">
+
+      <header class="mono-profile-head">
+        <div class="mono-prof-name-block">
+          <div class="mono-prof-eyebrow">PROFILE · INDEX Nº 47</div>
+          <h1 class="mono-prof-name">${(user.display_name || "").toUpperCase()}</h1>
+          <div class="mono-prof-handle">@${user.username || "user"} · ${totalWatched} ПРОСМОТРЕНО · ${s.rated_count} ОЦЕНОК</div>
+        </div>
+        <div class="mono-prof-bigstats">
+          <div class="mono-prof-bigstat">
+            <div class="mono-prof-bigstat-v red">${s.movies}</div>
+            <div class="mono-prof-bigstat-l">фильмов</div>
+          </div>
+          <div class="mono-prof-bigstat">
+            <div class="mono-prof-bigstat-v">${s.tv}</div>
+            <div class="mono-prof-bigstat-l">сериалов</div>
+          </div>
+          <div class="mono-prof-bigstat">
+            <div class="mono-prof-bigstat-v red">${s.avg_rating ?? "—"}</div>
+            <div class="mono-prof-bigstat-l">средняя</div>
+          </div>
+          <div class="mono-prof-bigstat">
+            <div class="mono-prof-bigstat-v">${s.rated_count}</div>
+            <div class="mono-prof-bigstat-l">оценено</div>
+          </div>
+        </div>
+      </header>
+
+      <div class="mono-profile-body">
+
+        <!-- LEFT COLUMN: оценки + жанры -->
+        <div class="mono-prof-col left">
+
+          ${s.rated_count ? `
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>РАСПРЕДЕЛЕНИЕ ОЦЕНОК</span>
+              <span class="ed">${s.rated_count} оценок</span>
+            </div>
+            <div class="mono-avg-row">
+              <div class="mono-avg-num">${s.avg_rating ?? "—"}</div>
+              <div class="mono-avg-info">
+                Средняя оценка по всем твоим фильмам и сериалам.<br/>
+                <b>Топ-оценка: 10/10</b> у самых любимых, <b>1/10</b> у разочарований.
+              </div>
+            </div>
+            <div class="mono-rating-chart">${ratingBarsHTML}</div>
+            <div class="mono-rating-legend">
+              <span><span class="dot movie"></span>ФИЛЬМЫ</span>
+              <span><span class="dot tv"></span>СЕРИАЛЫ</span>
+            </div>
+          </div>` : ""}
+
+          ${s.top_genres.length ? `
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>ЛЮБИМЫЕ ЖАНРЫ</span>
+              <span class="ed">по частоте просмотров</span>
+            </div>
+            <div class="mono-genres">${genresHTML}</div>
+          </div>` : ""}
+
+        </div>
+
+        <!-- RIGHT COLUMN: donut + актёры + режиссёры + топ -->
+        <div class="mono-prof-col right">
+
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>СООТНОШЕНИЕ ТИПА</span>
+              <span class="ed">movie · tv</span>
+            </div>
+            <div class="mono-donut-row">
+              <div class="mono-donut">
+                <svg viewBox="0 0 140 140">
+                  <circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--mono-paper-3)" stroke-width="22"/>
+                  <circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--mono-red)" stroke-width="22"
+                    stroke-dasharray="${movieLen} ${C}" stroke-dashoffset="0" />
+                  <circle cx="70" cy="70" r="${R}" fill="none" stroke="var(--mono-ink)" stroke-width="22"
+                    stroke-dasharray="${tvLen} ${C}" stroke-dashoffset="${-movieLen}" />
+                </svg>
+                <div class="mono-donut-center">
+                  <div class="mono-donut-pct">${totalWatched}</div>
+                  <div class="mono-donut-lbl">всего</div>
+                </div>
+              </div>
+              <div class="mono-donut-legend">
+                <div class="mono-donut-li">
+                  <span class="mono-donut-li-name"><span class="sq" style="background:var(--mono-red)"></span>ФИЛЬМЫ</span>
+                  <span class="mono-donut-li-val">${s.movies} · ${moviePct}%</span>
+                </div>
+                <div class="mono-donut-li">
+                  <span class="mono-donut-li-name"><span class="sq" style="background:var(--mono-ink)"></span>СЕРИАЛЫ</span>
+                  <span class="mono-donut-li-val">${s.tv} · ${tvPct}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          ${actors.length ? `
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>ЧАСТО ВСТРЕЧАЕМЫЕ АКТЁРЫ</span>
+              <span class="ed">в твоей библиотеке</span>
+            </div>
+            <div class="mono-actors">${actorsHTML}</div>
+          </div>` : ""}
+
+          ${s.top_directors.length ? `
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>РЕЖИССЁРЫ</span>
+              <span class="ed">кого ты любишь</span>
+            </div>
+            <div class="mono-directors">${directorsHTML}</div>
+          </div>` : ""}
+
+          ${s.top_rated.length ? `
+          <div class="mono-prof-block">
+            <div class="mono-prof-block-head">
+              <span>ВЫСШИЕ ОЦЕНКИ</span>
+              <span class="ed">твоя личная коллекция</span>
+            </div>
+            <div class="mono-top-strip">${topRatedHTML}</div>
+          </div>` : ""}
+
+        </div>
+
+        <!-- AI блок: на всю ширину под колонками -->
+        <div class="mono-ai-block">
+          <div class="mono-prof-block-head">
+            <span>✦ AI · АНАЛИЗ ВКУСА</span>
+            <span class="ed">Cerebras Llama · по твоей истории</span>
+          </div>
+          <button class="mono-ai-btn" id="claude-analyze-btn" onclick="analyzeWithClaude()">
+            ПРОАНАЛИЗИРОВАТЬ МОЙ ВКУС →
+          </button>
+          <div class="mono-ai-result" id="claude-result" style="display:none"></div>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  // ── Биндинги: клики по актёрам ───────────────────────────────────────
+  wrap.querySelectorAll(".mono-actor[data-actor-id]").forEach(el => {
     const actorId = parseInt(el.dataset.actorId);
     if (!actorId) return;
     el.addEventListener("click", () => {
