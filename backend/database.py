@@ -218,6 +218,13 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dismissed_user_media ON dismissed (user_id, media_type)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_favactors_user       ON favorite_actors (user_id)")
 
+        # Migrations: add new columns if they don't exist
+        cur.execute("ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS category     TEXT NOT NULL DEFAULT 'not_sure'")
+        cur.execute("ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS release_year INT  DEFAULT NULL")
+        cur.execute("ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS country      TEXT DEFAULT NULL")
+        cur.execute("ALTER TABLE watched   ADD COLUMN IF NOT EXISTS platform     TEXT DEFAULT NULL")
+        cur.execute("ALTER TABLE watched   ADD COLUMN IF NOT EXISTS watched_date DATE DEFAULT NULL")
+
         conn.commit()
     finally:
         conn.close()
@@ -280,13 +287,17 @@ def add_watched(movie: dict, media_type: str = "movie", user_id: int = 1) -> boo
         conn.close()
 
 
-def rate_watched(movie_id: int, rating: int, review: str = None, media_type: str = "movie", user_id: int = 1) -> bool:
+def rate_watched(movie_id: int, rating: int, review: str = None, media_type: str = "movie", user_id: int = 1,
+                 platform: str = None, watched_date=None) -> bool:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "UPDATE watched SET user_rating = %s, review = %s WHERE movie_id = %s AND media_type = %s AND user_id = %s",
-            (rating, review, movie_id, media_type, user_id)
+            """UPDATE watched SET user_rating = %s, review = %s,
+               platform = COALESCE(%s, platform),
+               watched_date = COALESCE(%s, watched_date)
+               WHERE movie_id = %s AND media_type = %s AND user_id = %s""",
+            (rating, review, platform, watched_date, movie_id, media_type, user_id)
         )
         updated = cur.rowcount > 0
         conn.commit()
@@ -405,8 +416,8 @@ def add_watchlist(movie: dict, media_type: str = "movie", user_id: int = 1) -> b
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO watchlist (user_id, movie_id, media_type, title, genres, overview, poster_path, vote_average)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO watchlist (user_id, movie_id, media_type, title, genres, overview, poster_path, vote_average, release_year, country, category)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id, movie_id, media_type) DO NOTHING
         """, (
             user_id, movie["id"], media_type, movie["title"],
@@ -414,10 +425,28 @@ def add_watchlist(movie: dict, media_type: str = "movie", user_id: int = 1) -> b
             movie.get("overview", ""),
             movie.get("poster_path", ""),
             movie.get("vote_average", 0.0),
+            movie.get("release_year"),
+            movie.get("country"),
+            movie.get("category", "not_sure"),
         ))
         inserted = cur.rowcount > 0
         conn.commit()
         return inserted
+    finally:
+        conn.close()
+
+
+def update_watchlist_category(movie_id: int, category: str, media_type: str = "movie", user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE watchlist SET category = %s WHERE movie_id = %s AND media_type = %s AND user_id = %s",
+            (category, movie_id, media_type, user_id)
+        )
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
     finally:
         conn.close()
 

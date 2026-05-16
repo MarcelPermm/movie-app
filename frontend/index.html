@@ -29,7 +29,7 @@
     </div>
     <nav class="nav">
       <button class="nav-btn active" data-tab="discover">Обзор</button>
-      <button class="nav-btn" data-tab="watched">Просмотренное <span class="fav-count" id="watch-count">0</span></button>
+      <button class="nav-btn" data-tab="watched">Дневник <span class="fav-count" id="watch-count">0</span></button>
       <button class="nav-btn" data-tab="watchlist">К просмотру <span class="fav-count" id="watchlist-count">0</span></button>
       <button class="nav-btn" data-tab="dismissed">Отклонённые <span class="fav-count" id="dismissed-count">0</span></button>
       <button class="nav-btn" data-tab="actors">Актёры</button>
@@ -93,13 +93,14 @@
     <section class="tab" id="tab-watched">
       <div class="section-header">
         <div class="section-title-row">
-          <h2 class="section-title">Просмотренное</h2>
+          <h2 class="section-title">Кино Дневник</h2>
           <div class="tab-mode-toggle" data-toggle="watched">
             <button class="tab-mode-btn active" data-mode="movie">🎬 Фильмы</button>
             <button class="tab-mode-btn" data-mode="tv">📺 Сериалы</button>
           </div>
         </div>
-        <p class="section-sub" id="watched-sub">Фильмы которые ты уже посмотрел</p>
+        <p class="section-sub" id="watched-sub">Твоя история просмотров</p>
+        <div class="diary-mini-stats" id="diary-mini-stats"></div>
         <div class="watched-filters">
           <input type="text" id="watched-search" class="filter-input" placeholder="🔍 Поиск по названию…" />
           <select class="filter-select" id="watched-rating-filter">
@@ -116,10 +117,28 @@
             <option value="2">2</option>
             <option value="1">1 — Ужасно</option>
           </select>
+          <select class="filter-select" id="watched-platform-filter">
+            <option value="">Все платформы</option>
+            <option value="cinema">🎦 В кино</option>
+            <option value="netflix">Netflix</option>
+            <option value="kinopoisk">Кинопоиск</option>
+            <option value="prime">Prime Video</option>
+            <option value="appletv">Apple TV+</option>
+            <option value="disney">Disney+</option>
+            <option value="hbo">HBO Max</option>
+            <option value="home">🏠 Дома</option>
+            <option value="other">Другое</option>
+          </select>
+          <div class="diary-view-toggle">
+            <button class="diary-view-btn active" id="diary-view-grid" title="Сетка">⊞</button>
+            <button class="diary-view-btn" id="diary-view-timeline" title="Таймлайн">≡</button>
+          </div>
         </div>
       </div>
-      <div class="movies-grid" id="watched-grid">
-        <div class="empty-state"><div class="empty-monkey"><div class="em-icon">🙈</div><div class="em-shadow"></div></div><p>Пока пусто. Отмечай фильмы просмотренными из «Обзора»</p></div>
+      <div id="diary-container">
+        <div class="movies-grid" id="watched-grid">
+          <div class="empty-state"><div class="empty-monkey"><div class="em-icon">🙈</div><div class="em-shadow"></div></div><p>Пока пусто. Отмечай фильмы просмотренными из «Обзора»</p></div>
+        </div>
       </div>
     </section>
 
@@ -133,6 +152,37 @@
           </div>
         </div>
         <p class="section-sub" id="watchlist-sub">Фильмы которые хочешь посмотреть позже</p>
+        <div class="wl-cats">
+          <button class="wl-cat-btn active" data-cat="all">Все <span class="wl-cat-count" id="wl-count-all">0</span></button>
+          <button class="wl-cat-btn must-see" data-cat="must_see">🔥 Must See <span class="wl-cat-count" id="wl-count-must">0</span></button>
+          <button class="wl-cat-btn not-sure" data-cat="not_sure">🤔 Не знаю <span class="wl-cat-count" id="wl-count-notsure">0</span></button>
+          <button class="wl-cat-btn last-resort" data-cat="last_resort">😴 На крайний <span class="wl-cat-count" id="wl-count-last">0</span></button>
+        </div>
+        <div class="wl-filters">
+          <input type="text" id="wl-search" class="filter-input" placeholder="🔍 Поиск…" />
+          <select class="filter-select" id="wl-genre"><option value="">Жанр</option></select>
+          <select class="filter-select" id="wl-year">
+            <option value="">Год</option>
+            <option value="2020s">2020-е</option>
+            <option value="2010s">2010-е</option>
+            <option value="2000s">2000-е</option>
+            <option value="1990s">1990-е</option>
+            <option value="before1990">До 1990</option>
+          </select>
+          <select class="filter-select" id="wl-country">
+            <option value="">Страна</option>
+            <option value="US">🇺🇸 США</option>
+            <option value="GB">🇬🇧 Великобритания</option>
+            <option value="FR">🇫🇷 Франция</option>
+            <option value="DE">🇩🇪 Германия</option>
+            <option value="IT">🇮🇹 Италия</option>
+            <option value="JP">🇯🇵 Япония</option>
+            <option value="KR">🇰🇷 Южная Корея</option>
+            <option value="RU">🇷🇺 Россия</option>
+            <option value="IN">🇮🇳 Индия</option>
+            <option value="ES">🇪🇸 Испания</option>
+          </select>
+        </div>
       </div>
       <div class="movies-grid" id="watchlist-grid">
         <div class="empty-state"><div class="empty-monkey"><div class="em-icon">🐵</div><div class="em-shadow"></div></div><p>Список пуст</p></div>

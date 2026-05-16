@@ -540,11 +540,13 @@ class WatchedRequest(BaseModel):
     user_id:    int = 1
 
 class RateRequest(BaseModel):
-    movie_id:   int
-    rating:     int
-    media_type: str = "movie"
-    review:     Optional[str] = None
-    user_id:    int = 1
+    movie_id:     int
+    rating:       int
+    media_type:   str = "movie"
+    review:       Optional[str] = None
+    user_id:      int = 1
+    platform:     Optional[str] = None
+    watched_date: Optional[str] = None
 
 
 @app.post("/watched")
@@ -599,7 +601,8 @@ async def rate_watched(req: RateRequest):
             }, req.media_type, req.user_id)
         except Exception:
             raise HTTPException(404, "Не найдено")
-    if not database.rate_watched(req.movie_id, req.rating, req.review, req.media_type, req.user_id):
+    if not database.rate_watched(req.movie_id, req.rating, req.review, req.media_type, req.user_id,
+                                  platform=req.platform, watched_date=req.watched_date):
         raise HTTPException(404, "Не найдено в просмотренном")
     return {"message": "Оценка сохранена"}
 
@@ -637,13 +640,35 @@ async def add_watchlist(req: MovieRequest):
     if req.media_type == "tv":
         normalize_tv(item)
     genres = [g["name"] for g in item.get("genres", [])]
+    release_date = item.get("release_date") or item.get("first_air_date", "")
+    release_year = int(release_date[:4]) if release_date and len(release_date) >= 4 else None
+    prod_countries = item.get("production_countries", [])
+    country = prod_countries[0]["iso_3166_1"] if prod_countries else None
     added = database.add_watchlist({
         "id": item["id"], "title": item["title"], "genres": genres,
         "overview": item.get("overview", ""), "poster_path": item.get("poster_path", ""),
         "vote_average": item.get("vote_average", 0.0),
+        "release_year": release_year,
+        "country": country,
     }, req.media_type, req.user_id)
     if not added: raise HTTPException(409, "Уже в списке")
     return {"message": f"«{item['title']}» добавлен"}
+
+
+class WatchlistCategoryUpdate(BaseModel):
+    category:   str
+    media_type: str = "movie"
+    user_id:    int = 1
+
+
+@app.patch("/watchlist/{movie_id}/category")
+async def update_watchlist_category(movie_id: int, req: WatchlistCategoryUpdate):
+    if req.category not in {"must_see", "not_sure", "last_resort"}:
+        raise HTTPException(400, "Недопустимая категория")
+    updated = database.update_watchlist_category(movie_id, req.category, req.media_type, req.user_id)
+    if not updated:
+        raise HTTPException(404, "Не найден")
+    return {"message": "Категория обновлена"}
 
 
 @app.delete("/watchlist/{movie_id}")
@@ -941,6 +966,27 @@ async def get_profile_stats(user_id: int = 1):
         key=lambda x: x["user_rating"], reverse=True
     )[:6]
 
+    # Monthly stats grouped by watched_date or added_at
+    from datetime import datetime as dt
+    monthly = {}
+    for m in all_watched:
+        raw = m.get("watched_date") or m.get("added_at")
+        if raw:
+            try:
+                key = str(raw)[:7]  # "YYYY-MM"
+                dt.strptime(key, "%Y-%m")
+                if key not in monthly:
+                    monthly[key] = {"movie": 0, "tv": 0}
+                if m.get("media_type") == "tv":
+                    monthly[key]["tv"] += 1
+                else:
+                    monthly[key]["movie"] += 1
+            except Exception:
+                pass
+
+    # Platform stats
+    platform_cnt = Counter(m.get("platform") for m in all_watched if m.get("platform"))
+
     return {
         "total":               len(all_watched),
         "movies":              len(movies),
@@ -951,6 +997,8 @@ async def get_profile_stats(user_id: int = 1):
         "top_genres":          top_genres,
         "top_directors":       [{"name": n, "count": c} for n, c in Counter(all_directors).most_common(6)],
         "top_rated":           [{"title": m["title"], "rating": m["user_rating"], "poster": m.get("poster_path")} for m in top_rated],
+        "monthly_stats":       monthly,
+        "platform_stats":      dict(platform_cnt.most_common()),
     }
 
 

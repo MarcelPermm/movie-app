@@ -13,6 +13,8 @@ const state = {
   watchlistMode: "movie",
   dismissedMode: "movie",
   recsMode:      "movie",
+  watchlistCat:  "all",   // "all" | "must_see" | "not_sure" | "last_resort"
+  diaryView:     "grid",  // "grid" | "timeline"
   // Combined множества — содержат обе типа сразу (фильмы И сериалы)
   watched:     new Map(),
   watchlist:   new Set(),
@@ -964,67 +966,153 @@ async function loadPopular() {
   loadHomepage();
 }
 
-// ─── Просмотренное ─────────────────────────────────────────────────────────
-async function loadWatched(filterRating = null, filterTitle = "") {
+// ─── Кино Дневник ──────────────────────────────────────────────────────────
+async function loadWatched() {
   const mode = state.watchedMode;
   const subEl = $("watched-sub");
   if (subEl) subEl.textContent = mode === "tv"
-    ? "Сериалы которые ты уже посмотрел"
-    : "Фильмы которые ты уже посмотрел";
-  // Если кэш есть — рендерим мгновенно. Свежие данные подгрузим параллельно в фоне.
+    ? "История сериалов"
+    : "История фильмов";
   let items;
   const cached = state.cache.watched[mode];
   if (cached) {
     items = cached;
-    // Тихий refresh в фоне (без блокирования UI)
     apiFetch(mtq("/watched", mode)).then(fresh => {
       state.cache.watched[mode] = fresh;
     }).catch(() => {});
   } else {
-    $("watched-grid").innerHTML = '<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>';
+    const diaryC = $("diary-container") || $("watched-grid");
+    diaryC.innerHTML = '<div class="movies-grid" id="watched-grid"><div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div></div>';
     try {
       items = await apiFetch(mtq("/watched", mode));
       state.cache.watched[mode] = items;
     } catch {
-      $("watched-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+      diaryC.innerHTML = `<div class="movies-grid" id="watched-grid"><div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div></div>`;
       return;
     }
   }
   try {
-
-    // Фильтр по оценке
-    if (filterRating !== null) {
-      if (filterRating === 0) {
-        items = items.filter(m => !m.user_rating);  // без оценки
-      } else {
-        items = items.filter(m => m.user_rating === filterRating);
-      }
-    }
-
-    // Фильтр по названию
-    if (filterTitle) {
-      items = items.filter(m => m.title.toLowerCase().includes(filterTitle.toLowerCase()));
-    }
-
-    if (!items.length) {
-      $("watched-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">🎬</span><p>Ничего не найдено</p></div>`;
-      return;
-    }
-    renderMovies($("watched-grid"), items.map(m => ({...m, id: m.movie_id})), "watched");
+    applyDiaryFilters(items);
   } catch {
-    $("watched-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+    const diaryC2 = $("diary-container") || $("watched-grid");
+    diaryC2.innerHTML = `<div class="movies-grid" id="watched-grid"><div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div></div>`;
   }
 }
 
-// Фильтры в просмотренном
+function applyDiaryFilters(rawItems) {
+  const filterRatingVal = $("watched-rating-filter")?.value || "";
+  const filterRating    = filterRatingVal === "" ? null : parseInt(filterRatingVal);
+  const filterTitle     = $("watched-search")?.value || "";
+  const filterPlatform  = $("watched-platform-filter")?.value || "";
+
+  // Mini stats
+  const statsEl = $("diary-mini-stats");
+  if (statsEl && rawItems.length) {
+    const thisYear = new Date().getFullYear();
+    const thisYearCount = rawItems.filter(m => {
+      const d = m.watched_date || (m.added_at ? String(m.added_at).slice(0, 4) : "");
+      return String(d).slice(0, 4) === String(thisYear);
+    }).length;
+    const rated = rawItems.filter(m => m.user_rating).length;
+    const avgRating = rated ? (rawItems.filter(m => m.user_rating).reduce((a, m) => a + m.user_rating, 0) / rated).toFixed(1) : null;
+    statsEl.innerHTML = `
+      <div class="diary-stat"><span class="diary-stat-val">${rawItems.length}</span><span class="diary-stat-lbl">всего</span></div>
+      <div class="diary-stat"><span class="diary-stat-val">${thisYearCount}</span><span class="diary-stat-lbl">в ${thisYear}</span></div>
+      ${avgRating ? `<div class="diary-stat"><span class="diary-stat-val">★ ${avgRating}</span><span class="diary-stat-lbl">средняя</span></div>` : ""}
+      <div class="diary-stat"><span class="diary-stat-val">${rated}</span><span class="diary-stat-lbl">оценено</span></div>
+    `;
+  }
+
+  let items = rawItems.map(m => ({ ...m, id: m.movie_id || m.id }));
+
+  if (filterRating !== null) {
+    items = filterRating === 0
+      ? items.filter(m => !m.user_rating)
+      : items.filter(m => m.user_rating === filterRating);
+  }
+  if (filterTitle) items = items.filter(m => m.title.toLowerCase().includes(filterTitle.toLowerCase()));
+  if (filterPlatform) items = items.filter(m => m.platform === filterPlatform);
+
+  const container = $("diary-container");
+  if (!items.length) {
+    container.innerHTML = `<div class="movies-grid" id="watched-grid"><div class="empty-state"><span class="empty-icon">🎬</span><p>Ничего не найдено</p></div></div>`;
+    return;
+  }
+
+  if (state.diaryView === "timeline") {
+    renderDiaryTimeline(container, items);
+  } else {
+    container.innerHTML = `<div class="movies-grid" id="watched-grid"></div>`;
+    renderMovies($("watched-grid"), items, "watched");
+  }
+}
+
+function renderDiaryTimeline(container, items) {
+  const MONTHS_RU = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  // Group by month
+  const groups = new Map();
+  items.forEach(m => {
+    const raw = m.watched_date || m.added_at;
+    let key = "Без даты";
+    if (raw) {
+      const s = String(raw).slice(0, 7);
+      try {
+        const [y, mo] = s.split("-");
+        key = `${MONTHS_RU[parseInt(mo) - 1]} ${y}`;
+      } catch {}
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  });
+
+  container.innerHTML = "";
+  groups.forEach((groupItems, label) => {
+    const section = document.createElement("div");
+    section.className = "diary-month-section";
+    section.innerHTML = `
+      <div class="diary-month-header">
+        <span class="diary-month-label">${label}</span>
+        <span class="diary-month-count">${groupItems.length}</span>
+      </div>
+    `;
+    const grid = document.createElement("div");
+    grid.className = "movies-grid";
+    renderMovies(grid, groupItems, "watched");
+    section.appendChild(grid);
+    container.appendChild(section);
+  });
+}
+
+// Diary view toggle
+$("diary-view-grid")?.addEventListener("click", () => {
+  state.diaryView = "grid";
+  $("diary-view-grid")?.classList.add("active");
+  $("diary-view-timeline")?.classList.remove("active");
+  const cached = state.cache.watched[state.watchedMode];
+  if (cached) applyDiaryFilters(cached);
+});
+$("diary-view-timeline")?.addEventListener("click", () => {
+  state.diaryView = "timeline";
+  $("diary-view-timeline")?.classList.add("active");
+  $("diary-view-grid")?.classList.remove("active");
+  const cached = state.cache.watched[state.watchedMode];
+  if (cached) applyDiaryFilters(cached);
+});
+
+// Фильтры в дневнике
 $("watched-search").addEventListener("input", debounce(() => {
-  const rating = parseInt($("watched-rating-filter").value);
-  loadWatched(isNaN(rating) ? null : rating, $("watched-search").value);
+  const cached = state.cache.watched[state.watchedMode];
+  if (cached) applyDiaryFilters(cached);
 }, 300));
 
 $("watched-rating-filter").addEventListener("change", () => {
-  const rating = parseInt($("watched-rating-filter").value);
-  loadWatched(isNaN(rating) ? null : rating, $("watched-search").value);
+  const cached = state.cache.watched[state.watchedMode];
+  if (cached) applyDiaryFilters(cached);
+});
+
+$("watched-platform-filter")?.addEventListener("change", () => {
+  const cached = state.cache.watched[state.watchedMode];
+  if (cached) applyDiaryFilters(cached);
 });
 
 function debounce(fn, ms) {
@@ -1057,15 +1145,197 @@ async function loadWatchlist() {
     }
   }
   try {
-    if (!items.length) {
-      $("watchlist-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">🕐</span><p>Список пуст</p></div>`;
-      return;
-    }
-    renderMovies($("watchlist-grid"), items.map(m => ({...m, id: m.movie_id})), "watchlist");
+    applyWatchlistFilters(items);
   } catch {
     $("watchlist-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
   }
 }
+
+function applyWatchlistFilters(rawItems) {
+  const cat      = state.watchlistCat;
+  const search   = ($("wl-search")?.value || "").toLowerCase();
+  const genre    = $("wl-genre")?.value || "";
+  const yearBand = $("wl-year")?.value || "";
+  const country  = $("wl-country")?.value || "";
+
+  // Счётчики по категориям
+  const counts = { all: 0, must_see: 0, not_sure: 0, last_resort: 0 };
+  rawItems.forEach(m => {
+    counts.all++;
+    const c = m.category || "not_sure";
+    if (counts[c] !== undefined) counts[c]++;
+  });
+  const countIds = { all: "wl-count-all", must_see: "wl-count-must", not_sure: "wl-count-notsure", last_resort: "wl-count-last" };
+  Object.entries(countIds).forEach(([k, id]) => { const el = $(id); if (el) el.textContent = counts[k]; });
+
+  // Заполняем жанры в select один раз
+  const genreSelect = $("wl-genre");
+  if (genreSelect && genreSelect.options.length <= 1) {
+    const allGenres = [...new Set(rawItems.flatMap(m => (m.genres || []).map(g => typeof g === "string" ? g : g.name)))].sort();
+    allGenres.forEach(g => { const o = document.createElement("option"); o.value = g; o.textContent = g; genreSelect.appendChild(o); });
+  }
+
+  let items = rawItems.map(m => ({ ...m, id: m.movie_id || m.id }));
+
+  // Фильтр по категории
+  if (cat !== "all") items = items.filter(m => (m.category || "not_sure") === cat);
+
+  // Поиск
+  if (search) items = items.filter(m => m.title.toLowerCase().includes(search));
+
+  // Жанр
+  if (genre) items = items.filter(m => (m.genres || []).some(g => (typeof g === "string" ? g : g.name) === genre));
+
+  // Год
+  if (yearBand) {
+    items = items.filter(m => {
+      const y = m.release_year || parseInt((m.release_date || "").slice(0, 4)) || 0;
+      if (yearBand === "2020s")     return y >= 2020;
+      if (yearBand === "2010s")     return y >= 2010 && y < 2020;
+      if (yearBand === "2000s")     return y >= 2000 && y < 2010;
+      if (yearBand === "1990s")     return y >= 1990 && y < 2000;
+      if (yearBand === "before1990") return y > 0 && y < 1990;
+      return true;
+    });
+  }
+
+  // Страна
+  if (country) items = items.filter(m => m.country === country);
+
+  const grid = $("watchlist-grid");
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">🕐</span><p>${cat !== "all" ? "В этой категории пусто" : "Список пуст"}</p></div>`;
+    return;
+  }
+  renderWatchlistCards(grid, items);
+}
+
+function renderWatchlistCards(container, movies) {
+  container.innerHTML = "";
+  const mode = state.watchlistMode;
+  movies.forEach((movie, index) => {
+    const card = document.createElement("div");
+    card.className = "movie-card";
+    card.style.animationDelay = `${Math.min(index, 20) * 40}ms`;
+    const posterUrl  = movie.poster_path ? `${TMDB_CARD}${movie.poster_path}` : null;
+    const year       = movie.release_year || (movie.release_date || "").slice(0, 4) || "—";
+    const movieId    = movie.id || movie.movie_id;
+    const isWatched  = state.watched.has(movieId);
+    const userRating = state.watched.get(movieId) ?? movie.user_rating;
+    const cat        = movie.category || "not_sure";
+    const catLabels  = { must_see: "🔥 Must See", not_sure: "🤔 Не знаю", last_resort: "😴 На крайний" };
+    const catClass   = { must_see: "must-see", not_sure: "not-sure", last_resort: "last-resort" };
+
+    card.innerHTML = `
+      ${userRating ? `<div class="user-rating-badge">${userRating}</div>` : ""}
+      ${posterUrl
+        ? `<img class="movie-poster" src="${posterUrl}" alt="${movie.title}" loading="lazy" />`
+        : `<div class="no-poster"><span class="no-poster-icon">🎬</span>${movie.title}</div>`}
+      <button class="watched-btn ${isWatched ? "is-watched" : ""}" title="${isWatched ? "Убрать из просмотренного" : "Отметить просмотренным"}">✓</button>
+      <button class="watch-btn is-watch" title="Убрать из списка">🕐</button>
+      <div class="wl-cat-chip ${catClass[cat]}" data-movie-id="${movieId}">
+        <span class="wl-cat-label">${catLabels[cat]}</span>
+        <span class="wl-cat-arrow">▾</span>
+        <div class="wl-cat-dropdown" hidden>
+          <button data-cat="must_see">🔥 Must See</button>
+          <button data-cat="not_sure">🤔 Не знаю</button>
+          <button data-cat="last_resort">😴 На крайний</button>
+        </div>
+      </div>
+      <div class="movie-info">
+        <div class="movie-title">${movie.title}</div>
+        <div class="movie-meta"><span class="movie-year">${year}</span></div>
+        ${cardRatingsHTML(movie)}
+      </div>
+    `;
+
+    const cardMediaType = movie.media_type || mode;
+
+    card.addEventListener("click", e => {
+      if (e.target.closest(".watched-btn,.watch-btn,.wl-cat-chip")) return;
+      pushModal({ type: "movie", data: { ...movie, _mediaType: cardMediaType } });
+      openMovieModal({ ...movie, _mediaType: cardMediaType });
+    });
+
+    card.querySelector(".watched-btn").addEventListener("click", e => {
+      e.stopPropagation();
+      toggleWatched(movieId, card.querySelector(".watched-btn"), null, cardMediaType);
+    });
+
+    card.querySelector(".watch-btn").addEventListener("click", e => {
+      e.stopPropagation();
+      toggleWatchlist(movieId, card.querySelector(".watch-btn"), container, cardMediaType);
+    });
+
+    // Category chip toggle
+    const chip = card.querySelector(".wl-cat-chip");
+    const dropdown = chip.querySelector(".wl-cat-dropdown");
+    chip.addEventListener("click", e => {
+      e.stopPropagation();
+      document.querySelectorAll(".wl-cat-dropdown").forEach(d => { if (d !== dropdown) d.hidden = true; });
+      dropdown.hidden = !dropdown.hidden;
+    });
+    dropdown.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        dropdown.hidden = true;
+        setWatchlistCategory(movieId, btn.dataset.cat, cardMediaType, chip, catLabels, catClass);
+      });
+    });
+
+    container.appendChild(card);
+  });
+
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".wl-cat-dropdown").forEach(d => { d.hidden = true; });
+  }, { once: true });
+}
+
+async function setWatchlistCategory(movieId, category, mediaType, chip, catLabels, catClass) {
+  try {
+    await apiFetch(`/watchlist/${movieId}/category`, {
+      method: "PATCH",
+      body: JSON.stringify({ category, media_type: mediaType, user_id: state.user?.id || 1 }),
+    });
+    // Update local cache
+    const mode = state.watchlistMode;
+    if (state.cache.watchlist[mode]) {
+      const item = state.cache.watchlist[mode].find(m => (m.movie_id || m.id) === movieId);
+      if (item) item.category = category;
+    }
+    // Update chip appearance
+    chip.className = `wl-cat-chip ${catClass[category]}`;
+    chip.querySelector(".wl-cat-label").textContent = catLabels[category];
+    // Refresh counts
+    const cached = state.cache.watchlist[mode];
+    if (cached) applyWatchlistFilters(cached);
+    toast("Категория обновлена", "success");
+  } catch {
+    toast("Ошибка обновления категории", "error");
+  }
+}
+
+// Watchlist category tab clicks
+document.querySelectorAll(".wl-cat-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".wl-cat-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.watchlistCat = btn.dataset.cat;
+    const cached = state.cache.watchlist[state.watchlistMode];
+    if (cached) applyWatchlistFilters(cached);
+  });
+});
+
+// Watchlist filters
+["wl-search", "wl-genre", "wl-year", "wl-country"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const handler = () => {
+    const cached = state.cache.watchlist[state.watchlistMode];
+    if (cached) applyWatchlistFilters(cached);
+  };
+  el.addEventListener(id === "wl-search" ? "input" : "change", id === "wl-search" ? debounce(handler, 250) : handler);
+});
 
 // ─── Рекомендации ──────────────────────────────────────────────────────────
 $("get-recs-btn").addEventListener("click", loadRecommendations);
@@ -1350,11 +1620,16 @@ function renderMovies(container, movies, mode = "discover") {
     const showScore   = mode === "recommendations" && movie.similarity_score;
     const noRating    = mode === "watched" && !userRating;
 
+    const PLATFORM_LABELS = { cinema: "🎦 Кино", netflix: "Netflix", kinopoisk: "Кинопоиск", prime: "Prime", appletv: "Apple TV+", disney: "Disney+", hbo: "HBO", home: "🏠 Дома", other: "Другое" };
+    const platformBadge = mode === "watched" && movie.platform
+      ? `<div class="platform-badge">${PLATFORM_LABELS[movie.platform] || movie.platform}</div>`
+      : "";
     card.innerHTML = `
       ${showDismiss ? `<button class="dismiss-btn" title="Не интересно">✕</button>` : ""}
       ${showScore ? `<div class="similarity-badge">${Math.round(movie.similarity_score * 100)}%</div>` : ""}
       ${userRating ? `<div class="user-rating-badge">${userRating}</div>` : ""}
       ${noRating ? `<div class="no-rating-badge">не оценён</div>` : ""}
+      ${platformBadge}
       ${posterUrl
         ? `<img class="movie-poster ${noRating ? "poster-unrated" : ""}" src="${posterUrl}" alt="${movie.title}" loading="lazy" />`
         : `<div class="no-poster"><span class="no-poster-icon">🎬</span>${movie.title}</div>`
@@ -1555,6 +1830,8 @@ function renderMovieContent(movie) {
   ).join("");
 
   // Рейтинговые кнопки 1-10
+  const watchedPlatform = movie.platform || "";
+  const watchedDate = movie.watched_date ? String(movie.watched_date).slice(0, 10) : "";
   const ratingHTML = `
     <div class="rating-section">
       <div class="rating-label">Моя оценка</div>
@@ -1565,6 +1842,21 @@ function renderMovieContent(movie) {
           const colorClass = n >= 8 ? "good" : n >= 6 ? "ok" : n >= 4 ? "meh" : "bad";
           return `<button class="${cls} ${colorClass}" data-rating="${n}">${n}</button>`;
         }).join("")}
+      </div>
+      <div class="rating-meta-row">
+        <select class="rating-platform-select" id="rating-platform">
+          <option value="">📍 Где смотрел?</option>
+          <option value="cinema" ${watchedPlatform === "cinema" ? "selected" : ""}>🎦 В кино</option>
+          <option value="netflix" ${watchedPlatform === "netflix" ? "selected" : ""}>Netflix</option>
+          <option value="kinopoisk" ${watchedPlatform === "kinopoisk" ? "selected" : ""}>Кинопоиск</option>
+          <option value="prime" ${watchedPlatform === "prime" ? "selected" : ""}>Prime Video</option>
+          <option value="appletv" ${watchedPlatform === "appletv" ? "selected" : ""}>Apple TV+</option>
+          <option value="disney" ${watchedPlatform === "disney" ? "selected" : ""}>Disney+</option>
+          <option value="hbo" ${watchedPlatform === "hbo" ? "selected" : ""}>HBO Max</option>
+          <option value="home" ${watchedPlatform === "home" ? "selected" : ""}>🏠 Дома</option>
+          <option value="other" ${watchedPlatform === "other" ? "selected" : ""}>Другое</option>
+        </select>
+        <input type="date" class="rating-date-input" id="rating-date" value="${watchedDate}" max="${new Date().toISOString().slice(0,10)}" />
       </div>
       <textarea class="review-input" id="review-input" placeholder="Написать отзыв (необязательно)…" rows="2">${review || ""}</textarea>
       <button class="save-rating-btn" id="save-rating-btn">Сохранить оценку</button>
@@ -1663,13 +1955,16 @@ function renderMovieContent(movie) {
   // Сохранить оценку
   $("save-rating-btn").addEventListener("click", async () => {
     if (!selectedRating) { toast("Выбери оценку от 1 до 10", "error"); return; }
-    const review = $("review-input").value.trim();
+    const review  = $("review-input").value.trim();
+    const platform    = $("rating-platform")?.value || null;
+    const watchedDate = $("rating-date")?.value || null;
     try {
       await apiFetch("/watched/rate", {
         method: "POST",
-        body: JSON.stringify({ movie_id: movieId, rating: selectedRating, review: review || null, media_type: mediaType }),
+        body: JSON.stringify({ movie_id: movieId, rating: selectedRating, review: review || null, media_type: mediaType, platform: platform || null, watched_date: watchedDate || null }),
       });
       state.watched.set(movieId, selectedRating);
+      state.cache.watched[mediaType] = null;  // инвалидируем кэш дневника
       $("watch-count").textContent = state.watched.size;
       toast(`Оценка ${selectedRating}/10 сохранена!`, "success");
       $("modal-watched-btn").className = "modal-watched-btn remove";
@@ -2731,6 +3026,10 @@ function renderProfile(s, actorsData) {
           <div class="profile-list">${directorsHTML}</div>
         </div>` : ""}
 
+        ${buildMonthlyChartHTML(s)}
+
+        ${buildPlatformStatsHTML(s)}
+
         <div class="profile-card ${s.top_directors.length ? "" : "profile-card-full"}">
           <div class="profile-card-title">Анализ вкуса — AI</div>
           <button class="claude-btn" id="claude-analyze-btn" onclick="analyzeWithClaude()">
@@ -2785,6 +3084,72 @@ function renderProfile(s, actorsData) {
       openPersonModal({ id: actorId });
     });
   });
+}
+
+// ─── Год в кино: monthly chart ───────────────────────────────────────────────
+function buildMonthlyChartHTML(s) {
+  const monthly = s.monthly_stats;
+  if (!monthly || !Object.keys(monthly).length) return "";
+
+  const sorted = Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b));
+  if (sorted.length < 2) return "";
+
+  const MONTHS_RU = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  const maxVal = Math.max(...sorted.map(([, v]) => (v.movie || 0) + (v.tv || 0)), 1);
+
+  // Last 12 months only
+  const recent = sorted.slice(-12);
+
+  const barsHTML = recent.map(([key, v]) => {
+    const [yr, mo] = key.split("-");
+    const total  = (v.movie || 0) + (v.tv || 0);
+    const pct    = Math.round(total / maxVal * 100);
+    const mPct   = total ? Math.round((v.movie || 0) / total * 100) : 50;
+    const tPct   = 100 - mPct;
+    return `
+      <div class="mc-bar-wrap" title="${MONTHS_RU[parseInt(mo)-1]} ${yr}: ${total} шт">
+        ${total ? `<div class="mc-bar-cnt">${total}</div>` : ""}
+        <div class="mc-bar-stack" style="height:${Math.max(pct, total ? 6 : 0)}%">
+          <div class="mc-bar tv"    style="height:${tPct}%"></div>
+          <div class="mc-bar movie" style="height:${mPct}%"></div>
+        </div>
+        <div class="mc-bar-lbl">${MONTHS_RU[parseInt(mo)-1]}</div>
+      </div>`;
+  }).join("");
+
+  const thisYear = new Date().getFullYear();
+  const yearTotal = sorted.filter(([k]) => k.startsWith(String(thisYear))).reduce((a, [, v]) => a + (v.movie || 0) + (v.tv || 0), 0);
+
+  return `
+    <div class="profile-card profile-card-full">
+      <div class="profile-card-title">Год в кино <span class="profile-card-sub">${thisYear} — ${yearTotal} просмотров</span></div>
+      <div class="monthly-chart">${barsHTML}</div>
+    </div>`;
+}
+
+// ─── Статистика платформ ─────────────────────────────────────────────────────
+function buildPlatformStatsHTML(s) {
+  const platforms = s.platform_stats;
+  if (!platforms || !Object.keys(platforms).length) return "";
+  const LABELS = { cinema: "🎦 В кино", netflix: "Netflix", kinopoisk: "Кинопоиск", prime: "Prime Video", appletv: "Apple TV+", disney: "Disney+", hbo: "HBO Max", home: "🏠 Дома", other: "Другое" };
+  const total = Object.values(platforms).reduce((a, b) => a + b, 0);
+  const rows = Object.entries(platforms).map(([key, cnt]) => {
+    const pct = Math.round(cnt / total * 100);
+    return `
+      <div class="platform-row">
+        <div class="platform-row-label">${LABELS[key] || key}</div>
+        <div class="platform-row-bar-wrap">
+          <div class="platform-row-bar" style="width:${pct}%"></div>
+        </div>
+        <div class="platform-row-cnt">${cnt}</div>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="profile-card">
+      <div class="profile-card-title">Где смотрел</div>
+      <div class="platform-stats">${rows}</div>
+    </div>`;
 }
 
 // ─── MONO профиль: редакторская верстка ─────────────────────────────────────
