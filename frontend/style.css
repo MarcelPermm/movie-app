@@ -3478,3 +3478,170 @@ body.theme-mono .mc-bar.movie { background: var(--mono-red); }
 body.theme-mono .mc-bar.tv    { background: #888; }
 body.theme-mono .platform-row-bar { background: var(--mono-red); }
 body.theme-mono .platform-row-bar-wrap { background: var(--mono-border); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   ПОЛЗУНОК ГОДА С ОБЕЗЬЯНКОЙ
+══════════════════════════════════════════════════════════════ */
+
+.year-slider-container {
+  display: flex; align-items: center;
+  min-width: 200px; flex: 1;
+}
+/* Встроенный (в строку фильтров вотчлиста) */
+.year-slider-inline { min-width: 180px; max-width: 240px; }
+
+.ys-wrap { width: 100%; }
+
+.ys-display {
+  display: flex; justify-content: center; gap: 2px;
+  font-size: 13px; font-weight: 700; color: var(--gold);
+  margin-bottom: 6px; font-variant-numeric: tabular-nums;
+}
+.ys-dash { color: var(--text-dim); font-weight: 400; }
+
+.ys-area {
+  position: relative;
+  height: 36px;
+  display: flex; align-items: center;
+}
+
+/* Фоновый трек */
+.ys-track-bg {
+  position: absolute; left: 0; right: 0;
+  height: 4px; background: var(--border); border-radius: 2px;
+}
+
+/* Заполненный диапазон */
+.ys-track-fill {
+  position: absolute; height: 4px;
+  background: var(--gold); border-radius: 2px;
+  pointer-events: none; transition: left 0.05s, width 0.05s;
+}
+
+/* Оба ползунка — прозрачные, перекрываются */
+.ys-input {
+  position: absolute; width: 100%; left: 0;
+  -webkit-appearance: none; appearance: none;
+  height: 4px; background: transparent;
+  outline: none; pointer-events: none;
+  margin: 0; padding: 0;
+}
+.ys-input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--gold);
+  border: 2px solid var(--bg);
+  cursor: grab; pointer-events: all;
+  box-shadow: 0 2px 8px rgba(201,168,76,0.45);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.ys-input::-webkit-slider-thumb:active {
+  cursor: grabbing; transform: scale(1.2);
+  box-shadow: 0 4px 16px rgba(201,168,76,0.6);
+}
+.ys-input::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--gold); border: 2px solid var(--bg);
+  cursor: grab; pointer-events: all;
+  box-shadow: 0 2px 8px rgba(201,168,76,0.45);
+}
+
+/* Обезьянка */
+.ys-monkey {
+  position: absolute; top: -30px;
+  font-size: 20px; line-height: 1;
+  pointer-events: none;
+  opacity: 0; transform: translateX(-50%) scale(0.6) rotate(-15deg);
+  transition: opacity 0.2s, transform 0.15s;
+  z-index: 10; user-select: none;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+}
+.ys-monkey.visible {
+  opacity: 1; transform: translateX(-50%) scale(1.1) rotate(5deg);
+  animation: monkey-bounce 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+}
+@keyframes monkey-bounce {
+  0%   { transform: translateX(-50%) scale(0.7) rotate(-10deg); }
+  50%  { transform: translateX(-50%) scale(1.2) rotate(8deg); }
+  100% { transform: translateX(-50%) scale(1.05) rotate(3deg); }
+}
+
+/* Mono тема */
+body.theme-mono .ys-display { color: var(--mono-red); }
+body.theme-mono .ys-track-fill { background: var(--mono-red); }
+body.theme-mono .ys-input::-webkit-slider-thumb { background: var(--mono-red); border-color: var(--mono-paper); }
+body.theme-mono .ys-input::-moz-range-thumb { background: var(--mono-red); border-color: var(--mono-paper); }
+body.theme-mono .ys-track-bg { background: var(--mono-border); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   ПЛАТФОРМА: 3 кнопки + текст в модалке
+══════════════════════════════════════════════════════════════ */
+
+.platform-picker {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.plat-btn {
+  padding: 7px 14px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--text-dim); font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+.plat-btn:hover:not(.active) { border-color: var(--text-dim); color: var(--text); }
+.plat-btn.active {
+  border-color: var(--gold); color: var(--gold);
+  background: rgba(201,168,76,0.12); font-weight: 700;
+}
+.plat-other-input {
+  width: 100%; margin-top: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px;
+  outline: none; transition: border-color 0.2s;
+}
+.plat-other-input:focus { border-color: var(--gold-dim); }
+.plat-other-input::placeholder { color: var(--text-dim); }
+
+/* Фильтр платформ в дневнике */
+.diary-plat-filter {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.plat-filter-btn {
+  padding: 6px 13px; border-radius: 20px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--text-dim); font-family: 'DM Sans', sans-serif;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+.plat-filter-btn:hover:not(.active) { border-color: var(--text-dim); color: var(--text); }
+.plat-filter-btn.active {
+  border-color: var(--gold); color: var(--gold);
+  background: rgba(201,168,76,0.1); font-weight: 700;
+}
+.plat-filter-input {
+  padding: 5px 10px; border-radius: 8px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px;
+  outline: none; width: 130px; transition: border-color 0.2s;
+  display: none;
+}
+.plat-filter-input:focus { border-color: var(--gold-dim); }
+.plat-filter-input::placeholder { color: var(--text-dim); }
+
+/* Mono overrides */
+body.theme-mono .plat-btn,
+body.theme-mono .plat-filter-btn {
+  background: transparent; border-color: var(--mono-border); color: var(--mono-ink-mid);
+}
+body.theme-mono .plat-btn.active,
+body.theme-mono .plat-filter-btn.active {
+  border-color: var(--mono-red); color: var(--mono-red); background: rgba(200,0,0,0.06);
+}
+body.theme-mono .plat-other-input,
+body.theme-mono .plat-filter-input {
+  background: var(--mono-paper); border-color: var(--mono-border); color: var(--mono-ink);
+}

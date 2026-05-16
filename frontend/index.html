@@ -117,18 +117,13 @@
             <option value="2">2</option>
             <option value="1">1 — Ужасно</option>
           </select>
-          <select class="filter-select" id="watched-platform-filter">
-            <option value="">Все платформы</option>
-            <option value="cinema">🎦 В кино</option>
-            <option value="netflix">Netflix</option>
-            <option value="kinopoisk">Кинопоиск</option>
-            <option value="prime">Prime Video</option>
-            <option value="appletv">Apple TV+</option>
-            <option value="disney">Disney+</option>
-            <option value="hbo">HBO Max</option>
-            <option value="home">🏠 Дома</option>
-            <option value="other">Другое</option>
-          </select>
+          <div class="diary-plat-filter" id="diary-plat-filter">
+            <button class="plat-filter-btn active" data-val="">Все</button>
+            <button class="plat-filter-btn" data-val="cinema">🎦 Кино</button>
+            <button class="plat-filter-btn" data-val="home">🏠 Дома</button>
+            <button class="plat-filter-btn" data-val="other">Другое</button>
+            <input type="text" id="plat-filter-custom" class="plat-filter-input" placeholder="Поиск…" />
+          </div>
           <div class="diary-view-toggle">
             <button class="diary-view-btn active" id="diary-view-grid" title="Сетка">⊞</button>
             <button class="diary-view-btn" id="diary-view-timeline" title="Таймлайн">≡</button>
@@ -161,14 +156,7 @@
         <div class="wl-filters">
           <input type="text" id="wl-search" class="filter-input" placeholder="🔍 Поиск…" />
           <select class="filter-select" id="wl-genre"><option value="">Жанр</option></select>
-          <select class="filter-select" id="wl-year">
-            <option value="">Год</option>
-            <option value="2020s">2020-е</option>
-            <option value="2010s">2010-е</option>
-            <option value="2000s">2000-е</option>
-            <option value="1990s">1990-е</option>
-            <option value="before1990">До 1990</option>
-          </select>
+          <div class="year-slider-container year-slider-inline" id="wl-year-slider"></div>
           <select class="filter-select" id="wl-country">
             <option value="">Страна</option>
             <option value="US">🇺🇸 США</option>
@@ -247,30 +235,7 @@
                 <div class="mf-panel" id="mf-country-panel" hidden></div>
               </div>
               <select class="filter-select" id="filter-studio"><option value="0">Все студии</option></select>
-              <select class="filter-select" id="filter-year-from">
-                <option value="">Год от</option>
-                <option value="2025">2025</option>
-                <option value="2020">2020</option>
-                <option value="2015">2015</option>
-                <option value="2010">2010</option>
-                <option value="2005">2005</option>
-                <option value="2000">2000</option>
-                <option value="1990">1990</option>
-                <option value="1980">1980</option>
-                <option value="1970">1970</option>
-              </select>
-              <select class="filter-select" id="filter-year-to">
-                <option value="">Год до</option>
-                <option value="2026">2026</option>
-                <option value="2025">2025</option>
-                <option value="2024">2024</option>
-                <option value="2020">2020</option>
-                <option value="2015">2015</option>
-                <option value="2010">2010</option>
-                <option value="2005">2005</option>
-                <option value="2000">2000</option>
-                <option value="1990">1990</option>
-              </select>
+              <div class="year-slider-container" id="rec-year-slider"></div>
               <select class="filter-select filter-select-sm" id="filter-min-rating">
                 <option value="">Рейтинг</option>
                 <option value="6">6+</option>

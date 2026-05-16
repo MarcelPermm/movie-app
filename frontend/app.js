@@ -112,6 +112,89 @@ const mfItems = { genre: [], country: COUNTRY_OPTIONS };
 
 const $ = id => document.getElementById(id);
 const PAGE_SIZE = 50;
+const CUR_YEAR  = new Date().getFullYear();
+
+// ─── Ползунок года с обезьянкой ────────────────────────────────────────────
+function initYearSlider(containerId, onChange) {
+  const MIN_Y = 1960, MAX_Y = CUR_YEAR;
+  const container = document.getElementById(containerId);
+  if (!container) return null;
+
+  container.innerHTML = `
+    <div class="ys-wrap">
+      <div class="ys-display">
+        <span class="ys-from-val">${MIN_Y}</span>
+        <span class="ys-dash"> — </span>
+        <span class="ys-to-val">${MAX_Y}</span>
+      </div>
+      <div class="ys-area">
+        <div class="ys-monkey" id="${containerId}-mk">🐒</div>
+        <div class="ys-track-bg"></div>
+        <div class="ys-track-fill" id="${containerId}-fill"></div>
+        <input type="range" class="ys-input ys-from" id="${containerId}-from"
+               min="${MIN_Y}" max="${MAX_Y}" value="${MIN_Y}" step="1" />
+        <input type="range" class="ys-input ys-to"   id="${containerId}-to"
+               min="${MIN_Y}" max="${MAX_Y}" value="${MAX_Y}" step="1" />
+      </div>
+    </div>`;
+
+  const fromInput = container.querySelector('.ys-from');
+  const toInput   = container.querySelector('.ys-to');
+  const fromVal   = container.querySelector('.ys-from-val');
+  const toVal     = container.querySelector('.ys-to-val');
+  const fill      = container.querySelector('.ys-track-fill');
+  const monkey    = container.querySelector('.ys-monkey');
+  let hideTimer   = null;
+
+  function pct(val) { return (val - MIN_Y) / (MAX_Y - MIN_Y) * 100; }
+
+  function updateUI(activeHandle) {
+    const from = parseInt(fromInput.value);
+    const to   = parseInt(toInput.value);
+    fromVal.textContent = from === MIN_Y ? MIN_Y : from;
+    toVal.textContent   = to   === MAX_Y ? MAX_Y : to;
+    const fp = pct(from), tp = pct(to);
+    fill.style.left  = fp + '%';
+    fill.style.width = (tp - fp) + '%';
+    if (activeHandle !== undefined) {
+      const mp = activeHandle === 'from' ? fp : tp;
+      monkey.style.left = `calc(${mp}% - 14px)`;
+      monkey.classList.add('visible');
+      clearTimeout(hideTimer);
+    }
+    onChange(from, to);
+  }
+
+  fromInput.addEventListener('input', () => {
+    if (parseInt(fromInput.value) > parseInt(toInput.value))
+      fromInput.value = toInput.value;
+    updateUI('from');
+  });
+  toInput.addEventListener('input', () => {
+    if (parseInt(toInput.value) < parseInt(fromInput.value))
+      toInput.value = fromInput.value;
+    updateUI('to');
+  });
+
+  [fromInput, toInput].forEach((inp, i) => {
+    const handle = i === 0 ? 'from' : 'to';
+    inp.addEventListener('mousedown',  () => { clearTimeout(hideTimer); updateUI(handle); });
+    inp.addEventListener('touchstart', () => { clearTimeout(hideTimer); updateUI(handle); }, { passive: true });
+    inp.addEventListener('mouseup',    () => { hideTimer = setTimeout(() => monkey.classList.remove('visible'), 700); });
+    inp.addEventListener('touchend',   () => { hideTimer = setTimeout(() => monkey.classList.remove('visible'), 700); });
+  });
+
+  updateUI();
+
+  return {
+    getFrom: () => parseInt(fromInput.value),
+    getTo:   () => parseInt(toInput.value),
+    isDefault: () => parseInt(fromInput.value) === MIN_Y && parseInt(toInput.value) === MAX_Y,
+  };
+}
+
+// Глобальные ссылки на слайдеры (инициализируются после DOMContentLoaded)
+const sliders = {};
 
 function fmtVotes(n) {
   if (n == null || n === undefined) return "—";
@@ -1003,7 +1086,9 @@ function applyDiaryFilters(rawItems) {
   const filterRatingVal = $("watched-rating-filter")?.value || "";
   const filterRating    = filterRatingVal === "" ? null : parseInt(filterRatingVal);
   const filterTitle     = $("watched-search")?.value || "";
-  const filterPlatform  = $("watched-platform-filter")?.value || "";
+  const activePlatBtn   = document.querySelector("#diary-plat-filter .plat-filter-btn.active");
+  const filterPlatform  = activePlatBtn?.dataset.val || "";
+  const filterPlatCustom = ($("plat-filter-custom")?.value || "").trim().toLowerCase();
 
   // Mini stats
   const statsEl = $("diary-mini-stats");
@@ -1031,7 +1116,17 @@ function applyDiaryFilters(rawItems) {
       : items.filter(m => m.user_rating === filterRating);
   }
   if (filterTitle) items = items.filter(m => m.title.toLowerCase().includes(filterTitle.toLowerCase()));
-  if (filterPlatform) items = items.filter(m => m.platform === filterPlatform);
+  if (filterPlatform === "cinema") {
+    items = items.filter(m => m.platform === "cinema");
+  } else if (filterPlatform === "home") {
+    items = items.filter(m => m.platform === "home");
+  } else if (filterPlatform === "other") {
+    if (filterPlatCustom) {
+      items = items.filter(m => m.platform && m.platform.toLowerCase().includes(filterPlatCustom));
+    } else {
+      items = items.filter(m => m.platform && m.platform !== "cinema" && m.platform !== "home");
+    }
+  }
 
   const container = $("diary-container");
   if (!items.length) {
@@ -1110,10 +1205,6 @@ $("watched-rating-filter").addEventListener("change", () => {
   if (cached) applyDiaryFilters(cached);
 });
 
-$("watched-platform-filter")?.addEventListener("change", () => {
-  const cached = state.cache.watched[state.watchedMode];
-  if (cached) applyDiaryFilters(cached);
-});
 
 function debounce(fn, ms) {
   let t;
@@ -1152,11 +1243,12 @@ async function loadWatchlist() {
 }
 
 function applyWatchlistFilters(rawItems) {
-  const cat      = state.watchlistCat;
-  const search   = ($("wl-search")?.value || "").toLowerCase();
-  const genre    = $("wl-genre")?.value || "";
-  const yearBand = $("wl-year")?.value || "";
-  const country  = $("wl-country")?.value || "";
+  const cat     = state.watchlistCat;
+  const search  = ($("wl-search")?.value || "").toLowerCase();
+  const genre   = $("wl-genre")?.value || "";
+  const country = $("wl-country")?.value || "";
+  const wlYearFrom = sliders.wl?.getFrom() ?? 0;
+  const wlYearTo   = sliders.wl?.isDefault() ? 9999 : (sliders.wl?.getTo() ?? 9999);
 
   // Счётчики по категориям
   const counts = { all: 0, must_see: 0, not_sure: 0, last_resort: 0 };
@@ -1186,16 +1278,11 @@ function applyWatchlistFilters(rawItems) {
   // Жанр
   if (genre) items = items.filter(m => (m.genres || []).some(g => (typeof g === "string" ? g : g.name) === genre));
 
-  // Год
-  if (yearBand) {
+  // Год (слайдер)
+  if (!sliders.wl?.isDefault()) {
     items = items.filter(m => {
       const y = m.release_year || parseInt((m.release_date || "").slice(0, 4)) || 0;
-      if (yearBand === "2020s")     return y >= 2020;
-      if (yearBand === "2010s")     return y >= 2010 && y < 2020;
-      if (yearBand === "2000s")     return y >= 2000 && y < 2010;
-      if (yearBand === "1990s")     return y >= 1990 && y < 2000;
-      if (yearBand === "before1990") return y > 0 && y < 1990;
-      return true;
+      return y >= wlYearFrom && y <= wlYearTo;
     });
   }
 
@@ -1327,7 +1414,7 @@ document.querySelectorAll(".wl-cat-btn").forEach(btn => {
 });
 
 // Watchlist filters
-["wl-search", "wl-genre", "wl-year", "wl-country"].forEach(id => {
+["wl-search", "wl-genre", "wl-country"].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   const handler = () => {
@@ -1534,8 +1621,8 @@ function updateGenrePanel(pool) {
 
 // Есть ли активные фильтры — определяет, включать ли Mono mode
 function hasActiveFilters() {
-  const yearFrom  = parseInt($("filter-year-from")?.value) || 0;
-  const yearTo    = parseInt($("filter-year-to")?.value)   || 0;
+  const yearFrom  = sliders.rec?.getFrom() ?? 0;
+  const yearTo    = sliders.rec?.getTo()   ?? 9999;
   const minRating = parseFloat($("filter-min-rating")?.value) || 0;
   const studioId  = parseInt($("filter-studio")?.value) || 0;
   const { genre, country } = state.filterState;
@@ -1547,8 +1634,8 @@ function hasActiveFilters() {
 }
 
 function applyFiltersAndRender() {
-  const yearFrom  = parseInt($("filter-year-from")?.value) || 0;
-  const yearTo    = parseInt($("filter-year-to")?.value)   || 9999;
+  const yearFrom  = sliders.rec?.getFrom() ?? 0;
+  const yearTo    = sliders.rec?.isDefault() ? 9999 : (sliders.rec?.getTo() ?? 9999);
   const minRating = parseFloat($("filter-min-rating")?.value) || 0;
   const { genre, country } = state.filterState;
 
@@ -1620,7 +1707,7 @@ function renderMovies(container, movies, mode = "discover") {
     const showScore   = mode === "recommendations" && movie.similarity_score;
     const noRating    = mode === "watched" && !userRating;
 
-    const PLATFORM_LABELS = { cinema: "🎦 Кино", netflix: "Netflix", kinopoisk: "Кинопоиск", prime: "Prime", appletv: "Apple TV+", disney: "Disney+", hbo: "HBO", home: "🏠 Дома", other: "Другое" };
+    const PLATFORM_LABELS = { cinema: "🎦 Кино", home: "🏠 Дома" };
     const platformBadge = mode === "watched" && movie.platform
       ? `<div class="platform-badge">${PLATFORM_LABELS[movie.platform] || movie.platform}</div>`
       : "";
@@ -1832,6 +1919,7 @@ function renderMovieContent(movie) {
   // Рейтинговые кнопки 1-10
   const watchedPlatform = movie.platform || "";
   const watchedDate = movie.watched_date ? String(movie.watched_date).slice(0, 10) : "";
+  const isOther   = watchedPlatform && watchedPlatform !== "cinema" && watchedPlatform !== "home";
   const ratingHTML = `
     <div class="rating-section">
       <div class="rating-label">Моя оценка</div>
@@ -1844,18 +1932,15 @@ function renderMovieContent(movie) {
         }).join("")}
       </div>
       <div class="rating-meta-row">
-        <select class="rating-platform-select" id="rating-platform">
-          <option value="">📍 Где смотрел?</option>
-          <option value="cinema" ${watchedPlatform === "cinema" ? "selected" : ""}>🎦 В кино</option>
-          <option value="netflix" ${watchedPlatform === "netflix" ? "selected" : ""}>Netflix</option>
-          <option value="kinopoisk" ${watchedPlatform === "kinopoisk" ? "selected" : ""}>Кинопоиск</option>
-          <option value="prime" ${watchedPlatform === "prime" ? "selected" : ""}>Prime Video</option>
-          <option value="appletv" ${watchedPlatform === "appletv" ? "selected" : ""}>Apple TV+</option>
-          <option value="disney" ${watchedPlatform === "disney" ? "selected" : ""}>Disney+</option>
-          <option value="hbo" ${watchedPlatform === "hbo" ? "selected" : ""}>HBO Max</option>
-          <option value="home" ${watchedPlatform === "home" ? "selected" : ""}>🏠 Дома</option>
-          <option value="other" ${watchedPlatform === "other" ? "selected" : ""}>Другое</option>
-        </select>
+        <div class="platform-picker" id="platform-picker">
+          <button class="plat-btn ${watchedPlatform === "cinema" ? "active" : ""}" data-val="cinema">🎦 В кино</button>
+          <button class="plat-btn ${watchedPlatform === "home"   ? "active" : ""}" data-val="home">🏠 Дома</button>
+          <button class="plat-btn ${isOther ? "active" : ""}" data-val="other">✏️ Другое</button>
+        </div>
+        <input type="text" class="plat-other-input" id="plat-other-input"
+               placeholder="Netflix, у друга, самолёт…"
+               value="${isOther ? watchedPlatform : ""}"
+               style="display:${isOther ? "block" : "none"}" />
         <input type="date" class="rating-date-input" id="rating-date" value="${watchedDate}" max="${new Date().toISOString().slice(0,10)}" />
       </div>
       <textarea class="review-input" id="review-input" placeholder="Написать отзыв (необязательно)…" rows="2">${review || ""}</textarea>
@@ -1952,11 +2037,25 @@ function renderMovieContent(movie) {
     });
   });
 
+  // Платформа: 3 кнопки + текстовое поле
+  document.querySelectorAll("#platform-picker .plat-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#platform-picker .plat-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const inp = $("plat-other-input");
+      if (inp) inp.style.display = btn.dataset.val === "other" ? "block" : "none";
+    });
+  });
+
   // Сохранить оценку
   $("save-rating-btn").addEventListener("click", async () => {
     if (!selectedRating) { toast("Выбери оценку от 1 до 10", "error"); return; }
     const review  = $("review-input").value.trim();
-    const platform    = $("rating-platform")?.value || null;
+    const activePlatBtn = document.querySelector("#platform-picker .plat-btn.active");
+    const platVal       = activePlatBtn?.dataset.val;
+    const platform      = platVal === "other"
+      ? ($("plat-other-input")?.value.trim() || null)
+      : (platVal || null);
     const watchedDate = $("rating-date")?.value || null;
     try {
       await apiFetch("/watched/rate", {
@@ -2557,6 +2656,36 @@ document.addEventListener("DOMContentLoaded", () => {
   $("auth-username-input")?.addEventListener("keydown", e => { if (e.key === "Enter") authLogin(); });
   $("auth-reg-username")?.addEventListener("keydown",   e => { if (e.key === "Enter") authRegister(); });
   $("auth-reg-display")?.addEventListener("keydown",    e => { if (e.key === "Enter") authRegister(); });
+
+  // ── Инициализация ползунков года ──────────────────────────────────────
+  sliders.rec = initYearSlider("rec-year-slider", (from, to) => {
+    if (state.allRecs.length > 0) applyFiltersAndRender();
+  });
+
+  sliders.wl = initYearSlider("wl-year-slider", () => {
+    const cached = state.cache.watchlist[state.watchlistMode];
+    if (cached) applyWatchlistFilters(cached);
+  });
+
+  // ── Платформа-фильтр в дневнике ───────────────────────────────────────
+  document.querySelectorAll("#diary-plat-filter .plat-filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#diary-plat-filter .plat-filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const customInput = $("plat-filter-custom");
+      if (customInput) {
+        customInput.style.display = btn.dataset.val === "other" ? "inline-block" : "none";
+        if (btn.dataset.val !== "other") customInput.value = "";
+      }
+      const cached = state.cache.watched[state.watchedMode];
+      if (cached) applyDiaryFilters(cached);
+    });
+  });
+
+  $("plat-filter-custom")?.addEventListener("input", debounce(() => {
+    const cached = state.cache.watched[state.watchedMode];
+    if (cached) applyDiaryFilters(cached);
+  }, 300));
 });
 
 // ─── Запуск ────────────────────────────────────────────────────────────────
