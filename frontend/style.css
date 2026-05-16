@@ -3264,3 +3264,15 @@ body.theme-mono .splash-logo-icon { color: var(--mono-red); }
 
 body.theme-mono .ai-thinker-text { font-family: "JetBrains Mono", monospace; color: var(--mono-ink-mid); }
 body.theme-mono .ai-spark { color: var(--mono-red); }
+
+
+/* Loader внутри hero-секции — центрирует fun-loader */
+.hero-loader-wrap {
+  position: absolute; inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  background: var(--card-bg);
+}
+body.theme-mono .hero-loader-wrap { background: var(--mono-paper); }

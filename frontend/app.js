@@ -449,10 +449,21 @@ async function loadHomepage() {
     renderHomepageData(hp.movies, hp.tv, hp.recs);
     // продолжаем — обновим в фоне ниже
   } else {
-    // Полностью пусто — показываем скелетон
-    $("home-hero").innerHTML = `<div style="height:480px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
-    $("scroll-movies").innerHTML = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
-    $("scroll-tv").innerHTML     = `<div class="loader" style="padding:40px 20px">Загружаем…</div>`;
+    // Полностью пусто — показываем фан-loader прямо в hero (вместо blocking-splash)
+    const heroLoader = `
+      <div class="hero-loader-wrap">
+        <div class="fun-loader" style="min-height:380px">
+          <div class="fun-piano">
+            <div class="fun-monkey">🐵</div>
+            <div class="fun-shadow"></div>
+            <div class="fun-dots"><span></span><span></span><span></span></div>
+          </div>
+          <div class="fun-text">СОБИРАЕМ ТВОЮ БИБЛИОТЕКУ</div>
+        </div>
+      </div>`;
+    $("home-hero").innerHTML = heroLoader;
+    $("scroll-movies").innerHTML = "";
+    $("scroll-tv").innerHTML     = "";
   }
 
   try {
@@ -466,13 +477,8 @@ async function loadHomepage() {
     hp.tv     = tvShows;
     hp.ts     = Date.now();
 
-    // Рендерим оба ряда сразу — рекомендации догрузятся позже
-    if (movies?.length) renderHero(movies[0]);
-    else $("home-hero").innerHTML = "";
-    renderScrollRow("scroll-movies", movies || [], "movie");
-    renderScrollRow("scroll-tv",     tvShows || [], "tv");
-    attachScrollArrows("movies");
-    attachScrollArrows("tv");
+    // Используем единый рендер чтобы state.heroSlides обязательно установился
+    renderHomepageData(movies, tvShows, hp.recs);
 
     // Lazy: рекомендации в фоне, не блокируют popular ряды
     if (state.watched.size > 0) {
@@ -494,9 +500,9 @@ async function loadHomepage() {
     }
   } catch {
     if (!hp.movies) {  // только если не было кэша
-      $("home-hero").innerHTML = "";
-      $("scroll-movies").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
-      $("scroll-tv").innerHTML     = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Не удалось загрузить</p></div>`;
+      $("home-hero").innerHTML = `<div class="empty-state" style="height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-monkey"><div class="em-icon">🙈</div><div class="em-shadow"></div></div><p>Не удалось загрузить — попробуй обновить</p></div>`;
+      $("scroll-movies").innerHTML = "";
+      $("scroll-tv").innerHTML     = "";
     }
   }
 }
@@ -2116,13 +2122,6 @@ async function init() {
   buildMfPanel("country");
   buildMfPanel("genre");
   loadHomepage();
-
-  // Скрываем splash после того как первичная загрузка завершена.
-  // Минимальное время показа 600мс — чтобы анимация прыжка успела сыграться хотя бы раз.
-  const splash = document.getElementById("app-splash");
-  if (splash) {
-    setTimeout(() => splash.classList.add("hidden"), 700);
-  }
 }
 
 // ─── Аутентификация ────────────────────────────────────────────────────────
@@ -2276,8 +2275,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     } catch {}
   }
-  // Нет сохранённого пользователя — показываем авторизацию (и сразу убираем splash)
-  document.getElementById("app-splash")?.classList.add("hidden");
+  // Нет сохранённого пользователя — показываем авторизацию
   $("auth-overlay").classList.add("visible");
 })();
 
