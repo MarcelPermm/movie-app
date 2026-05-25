@@ -3879,6 +3879,22 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .cal-dot.done { background: var(--sage); }
 .cal-dot.todo { background: var(--terracotta); opacity: .6; }
 .cal-dot.cancel { background: var(--nb-red); opacity: .5; }
+/* Trip bars in calendar */
+.cal-trip-bar {
+  height: 14px; border-radius: 0; margin-top: 2px;
+  font-family: 'JetBrains Mono', monospace; font-size: 8px;
+  color: var(--ink); line-height: 14px; padding: 0 3px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  opacity: .85;
+}
+.cal-trip-bar.trip-start { border-radius: 7px 0 0 7px; }
+.cal-trip-bar.trip-end { border-radius: 0 7px 7px 0; }
+.cal-trip-bar.trip-start.trip-end { border-radius: 7px; }
+/* Trip detail in day panel */
+.cal-detail-trips { margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+.cal-detail-trip { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: rgba(200,152,38,.15); border-left: 3px solid var(--honey); border-radius: 0 4px 4px 0; font-family: 'Fraunces', Georgia, serif; font-size: 13px; color: var(--ink); }
+.cal-detail-trip-dates { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-3); margin-left: auto; }
+
 /* Day detail */
 .cal-day-detail-title { font-family: 'Fraunces', Georgia, serif; font-size: 32px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
 .cal-day-detail-sub { font-family: 'Caveat', cursive; font-size: 18px; color: var(--terracotta); transform: rotate(-1.5deg); display: inline-block; margin-bottom: 14px; }

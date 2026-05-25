@@ -4517,9 +4517,12 @@ async function loadCalendar() {
   const last  = new Date(year, month + 1, 0);
   const fmt   = d => d.toISOString().slice(0, 10);
   try {
-    const tasks = await apiFetch(`/tasks/week?date_from=${fmt(first)}&date_to=${fmt(last)}`);
-    renderCalendarGrid(tasks);
-  } catch { renderCalendarGrid([]); }
+    const [tasks, trips] = await Promise.all([
+      apiFetch(`/tasks/week?date_from=${fmt(first)}&date_to=${fmt(last)}`),
+      apiFetch("/trips"),
+    ]);
+    renderCalendarGrid(tasks, trips);
+  } catch { renderCalendarGrid([], []); }
 }
 
 function renderCalendarHeader() {
@@ -4529,52 +4532,73 @@ function renderCalendarHeader() {
   if (lbl) lbl.textContent = `${months[month]} ${year}`;
 }
 
-function renderCalendarGrid(tasks) {
+function renderCalendarGrid(tasks, trips = []) {
   const grid = $("cal-grid");
   if (!grid) return;
   grid.innerHTML = "";
   const { year, month } = calState;
   const today = new Date().toISOString().slice(0, 10);
-  // First day of month (Monday-based)
   const first = new Date(year, month, 1);
-  let startDay = first.getDay(); // 0=Sun
-  startDay = startDay === 0 ? 6 : startDay - 1; // shift to Mon=0
+  let startDay = first.getDay();
+  startDay = startDay === 0 ? 6 : startDay - 1;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrev  = new Date(year, month, 0).getDate();
 
-  // Fill grid: prev month tail + current + next month head
   const cells = [];
   for (let i = startDay - 1; i >= 0; i--) cells.push({ d: daysInPrev - i, m: month - 1, y: year, other: true });
   for (let d = 1; d <= daysInMonth; d++) cells.push({ d, m: month, y: year, other: false });
   while (cells.length % 7 !== 0) { cells.push({ d: cells.length - daysInMonth - startDay + 1, m: month + 1, y: year, other: true }); }
 
-  cells.forEach(({ d, m, y, other }) => {
-    const dt  = new Date(y, m, d);
+  cells.forEach(({ d, m: mo, y, other }) => {
+    const dt  = new Date(y, mo, d);
     const ds  = dt.toISOString().slice(0, 10);
     const dayTasks = tasks.filter(t => String(t.date).slice(0,10) === ds);
+
+    // Поездки этого дня
+    const dayTrips = trips.filter(tr => {
+      const start = tr.start_date ? String(tr.start_date).slice(0,10) : null;
+      const end   = tr.end_date   ? String(tr.end_date).slice(0,10)   : start;
+      return start && ds >= start && ds <= (end || start);
+    });
+
     const cell = document.createElement("div");
     cell.className = `cal-cell${other ? " cal-other-month" : ""}${ds === today ? " cal-today" : ""}`;
     const dots = dayTasks.map(t => `<div class="cal-dot ${t.status}"></div>`).join("");
-    cell.innerHTML = `<div class="cal-day-num">${d}</div><div class="cal-dots">${dots}</div>`;
+
+    // Полосы поездок
+    const tripBars = dayTrips.map(tr => {
+      const start   = String(tr.start_date).slice(0,10);
+      const end     = tr.end_date ? String(tr.end_date).slice(0,10) : start;
+      const isStart = ds === start;
+      const isEnd   = ds === end;
+      const label   = isStart ? `${tr.emoji} ${tr.name}` : "";
+      return `<div class="cal-trip-bar ${isStart?"trip-start":""}${isEnd?" trip-end":""}" title="${tr.name}" style="background:var(--honey)">${label}</div>`;
+    }).join("");
+
+    cell.innerHTML = `<div class="cal-day-num">${d}</div><div class="cal-dots">${dots}</div>${tripBars}`;
     cell.addEventListener("click", () => {
       document.querySelectorAll(".cal-cell").forEach(c => c.classList.remove("cal-selected"));
       cell.classList.add("cal-selected");
-      loadCalendarDayDetail(ds, dayTasks);
+      loadCalendarDayDetail(ds, dayTasks, dayTrips);
     });
     grid.appendChild(cell);
   });
 }
 
-async function loadCalendarDayDetail(dateStr, cachedTasks) {
+async function loadCalendarDayDetail(dateStr, cachedTasks, dayTrips = []) {
   const detail = $("cal-day-detail");
   if (!detail) return;
   const dt = new Date(dateStr + "T00:00:00");
   const days   = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
   const months = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  const tripsHtml = dayTrips.map(tr =>
+    `<div class="cal-detail-trip"><span>${tr.emoji}</span> <span>${tr.name}</span>${tr.start_date ? `<span class="cal-detail-trip-dates">${String(tr.start_date).slice(0,10)}${tr.end_date?" → "+String(tr.end_date).slice(0,10):""}</span>` : ""}</div>`
+  ).join("");
   detail.innerHTML = `
     <div class="cal-day-detail-title">${dt.getDate()} ${months[dt.getMonth()]}</div>
     <div class="cal-day-detail-sub">${days[dt.getDay()]}</div>
-    <div class="nb-ruled-area" style="padding-right:8px">
+    ${tripsHtml ? `<div class="cal-detail-trips">${tripsHtml}</div>` : ""}
+    <div class="nb-ruled-area" style="padding-right:8px;margin-top:${tripsHtml?8:0}px">
       <div class="task-list" id="cal-task-list"></div>
       <button class="task-add-btn" id="cal-add-task-btn"><span class="task-add-line">+ задача…</span></button>
     </div>`;
