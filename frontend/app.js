@@ -14,6 +14,8 @@ const state = {
   dismissedMode: "movie",
   recsMode:      "movie",
   booksMode:     "discover",
+  appMode:       "cinema",   // "cinema" | "books"
+  activeBooksTab: "discover",
   booksRead:     new Set(),
   booksWishlist: new Set(),
   watchlistCat:  "all",   // "all" | "must_see" | "not_sure" | "last_resort"
@@ -45,6 +47,67 @@ const state = {
   },
   user: null,  // { id, username, display_name }
 };
+
+// ─── Переключатель режима (Кино / Книги) ───────────────────────────────────
+
+function switchAppMode(mode) {
+  state.appMode = mode;
+  try { localStorage.setItem("appMode", mode); } catch {}
+
+  const isCinema = mode === "cinema";
+  $("cinema-nav").style.display  = isCinema ? "" : "none";
+  $("books-nav").style.display   = isCinema ? "none" : "";
+  document.querySelectorAll(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+
+  // Hide all tabs
+  document.querySelectorAll(".tab").forEach(t => {
+    t.classList.remove("active");
+    t.style.display = "none";
+  });
+
+  if (isCinema) {
+    // Restore last active cinema tab or default to discover
+    const cinemaTab = $("tab-discover");
+    cinemaTab.classList.add("active");
+    cinemaTab.style.display = "";
+    $("search-input").placeholder = "Найти фильм, сериал…";
+    $("home-content").style.display = "";
+    $("search-content").style.display = "none";
+  } else {
+    // Open books mode
+    $("search-input").placeholder = "Найти книгу, автора…";
+    openBooksTab(state.activeBooksTab || "discover");
+  }
+}
+
+function openBooksTab(tabName) {
+  state.activeBooksTab = tabName;
+
+  // Hide all books tabs
+  document.querySelectorAll(".books-tab").forEach(t => {
+    t.classList.remove("active");
+    t.style.display = "none";
+  });
+
+  // Update nav active state
+  document.querySelectorAll(".books-nav-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.booksTab === tabName);
+  });
+
+  // Show target tab
+  const section = $(`tab-books-${tabName}`);
+  if (section) {
+    section.classList.add("active");
+    section.style.display = "";
+  }
+
+  // Load content
+  if (tabName === "discover")  loadBooksDiscover();
+  else if (tabName === "diary")    loadBooksReadView();
+  else if (tabName === "wishlist") loadBooksWishlistView();
+  else if (tabName === "suggest")  initBooksSuggest();
+  else if (tabName === "profile")  loadBooksProfile();
+}
 
 // ─── Переключатель оформления ──────────────────────────────────────────────
 // Две темы: "cinema" (тёмная по умолчанию) и "mono" (бумажная редакторская).
@@ -227,13 +290,14 @@ function cardRatingsHTML(movie) {
 }
 
 // ─── Вкладки ───────────────────────────────────────────────────────────────
-document.querySelectorAll(".nav-btn").forEach(btn => {
+document.querySelectorAll(".nav-btn[data-tab]").forEach(btn => {
   btn.addEventListener("click", () => {
     const tab = btn.dataset.tab;
-    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".nav-btn[data-tab]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
-    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-    $(`tab-${tab}`).classList.add("active");
+    document.querySelectorAll(".tab").forEach(t => { t.classList.remove("active"); t.style.display = "none"; });
+    const tabEl = $(`tab-${tab}`);
+    if (tabEl) { tabEl.classList.add("active"); tabEl.style.display = ""; }
     if (tab === "discover")  { $("home-content").style.display = ""; $("search-content").style.display = "none"; }
     if (tab === "watched")   loadWatched();
     if (tab === "watchlist") loadWatchlist();
@@ -241,7 +305,6 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (tab === "actors")    loadActors();
     if (tab === "suggest")   initSuggestTab();
     if (tab === "profile")   loadProfile();
-    if (tab === "books")     loadBooksTab();
     // Скрываем тултип рейтинговых баров при смене вкладки
     const bt = document.getElementById("bar-tooltip");
     if (bt) bt.classList.remove("visible");
@@ -357,6 +420,10 @@ $("search-input").addEventListener("keydown", e => {
 
 async function doSearch() {
   const query = $("search-input").value.trim();
+  if (state.appMode === "books") {
+    searchBooks(query);
+    return;
+  }
   if (!query) {
     // Если запрос пустой — возвращаемся на главную
     $("home-content").style.display = "";
@@ -2606,7 +2673,7 @@ async function authLogin() {
     setUser(user);
     $("auth-overlay").classList.remove("visible");
     toast(`Привет, ${user.display_name}! 👋`, "success");
-    init();
+    init().then(() => { if (state.appMode === "books") setTimeout(() => switchAppMode("books"), 100); });
   } catch (err) {
     errEl.textContent = err.message === "timeout"
       ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
@@ -2641,7 +2708,7 @@ async function authRegister() {
     setUser(user);
     $("auth-overlay").classList.remove("visible");
     toast(`Добро пожаловать, ${user.display_name}! 🎬`, "success");
-    init();
+    init().then(() => { if (state.appMode === "books") setTimeout(() => switchAppMode("books"), 100); });
   } catch (err) {
     errEl.textContent = err.message === "timeout"
       ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
@@ -2722,32 +2789,43 @@ document.addEventListener("DOMContentLoaded", () => {
     if (cached) applyDiaryFilters(cached);
   }, 300));
 
-  // ── Книги: переключение режимов и поиск ──────────────────────────────────
-  document.querySelectorAll(".books-mode-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      switchBooksMode(btn.dataset.mode);
-      if (btn.dataset.mode === "discover") loadBooksPopular();
-      else if (btn.dataset.mode === "read") loadBooksReadView();
-      else loadBooksWishlistView();
-    });
+  // ── Переключатель режима и книжная навигация ──────────────────────────────
+  document.querySelectorAll(".mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchAppMode(btn.dataset.mode));
+  });
+
+  document.querySelectorAll(".books-nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => openBooksTab(btn.dataset.booksTab));
   });
 
   const booksSearchInput = $("books-search-input");
   if (booksSearchInput) {
     booksSearchInput.addEventListener("input", debounce(e => {
-      if (state.booksMode === "discover") searchBooks(e.target.value.trim());
+      searchBooks(e.target.value.trim());
     }, 400));
   }
+
+  $("books-suggest-btn")?.addEventListener("click", loadBooksSuggest);
 });
 
 // ─── Запуск ────────────────────────────────────────────────────────────────
 (function startup() {
+  // Восстанавливаем сохранённый режим (кино/книги)
+  const savedMode = localStorage.getItem("appMode") || "cinema";
+  if (savedMode === "books") {
+    state.appMode = "books";
+  }
+
   const saved = localStorage.getItem("film_user");
   if (saved) {
     try {
       const user = JSON.parse(saved);
       setUser(user);
-      init();
+      init().then(() => {
+        if (state.appMode === "books") {
+          setTimeout(() => switchAppMode("books"), 100);
+        }
+      });
       return;
     } catch {}
   }
@@ -3666,20 +3744,108 @@ function renderDismissed(items) {
 
 // ─── Книги ─────────────────────────────────────────────────────────────────
 
-function switchBooksMode(mode) {
-  state.booksMode = mode;
-  document.querySelectorAll(".books-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
-  $("books-discover-view").style.display = mode === "discover" ? "" : "none";
-  $("books-read-view").style.display     = mode === "read"     ? "" : "none";
-  $("books-wishlist-view").style.display = mode === "wishlist" ? "" : "none";
-  $("books-search-row").style.display    = mode === "discover" ? "" : "none";
+async function loadBooksDiscover() {
+  const grid = $("books-popular-grid");
+  const query = $("books-search-input")?.value?.trim();
+  if (query) {
+    await searchBooks(query);
+  } else {
+    await loadBooksPopular();
+  }
 }
 
-async function loadBooksTab() {
-  switchBooksMode(state.booksMode);
-  if (state.booksMode === "discover") loadBooksPopular();
-  else if (state.booksMode === "read") loadBooksReadView();
-  else loadBooksWishlistView();
+function initBooksSuggest() {
+  // Nothing to load initially, just show the form
+}
+
+async function loadBooksSuggest() {
+  const query = $("books-suggest-input")?.value?.trim() || "";
+  const grid = $("books-suggest-grid");
+  grid.innerHTML = `<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ДУМАЕМ…</div></div>`;
+  try {
+    const result = await apiFetch(`/books/suggest?query=${encodeURIComponent(query)}`);
+    if (!result?.books?.length) {
+      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">📚</span><p>Не удалось подобрать — попробуй уточнить запрос</p></div>`;
+      return;
+    }
+    renderBookCards(grid, result.books);
+  } catch(err) {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>${err?.detail || "Ошибка загрузки"}</p></div>`;
+  }
+}
+
+async function loadBooksProfile() {
+  const content = $("books-profile-content");
+  try {
+    const [readBooks, wishlistBooks] = await Promise.all([
+      apiFetch("/books/read"),
+      apiFetch("/books/wishlist"),
+    ]);
+    const rated = readBooks.filter(b => b.user_rating);
+    const avgRating = rated.length ? (rated.reduce((s, b) => s + b.user_rating, 0) / rated.length).toFixed(1) : null;
+    const thisYear = new Date().getFullYear();
+    const readThisYear = readBooks.filter(b => (b.added_at || "").startsWith(thisYear)).length;
+
+    // Genre stats
+    const genreCounts = {};
+    readBooks.forEach(b => {
+      (b.genres || []).forEach(g => { genreCounts[g] = (genreCounts[g] || 0) + 1; });
+    });
+    const topGenres = Object.entries(genreCounts).sort((a,b) => b[1]-a[1]).slice(0,5);
+
+    // Author stats
+    const authorCounts = {};
+    readBooks.forEach(b => {
+      if (b.author) authorCounts[b.author] = (authorCounts[b.author] || 0) + 1;
+    });
+    const topAuthors = Object.entries(authorCounts).sort((a,b) => b[1]-a[1]).slice(0,5);
+
+    const topRated = [...readBooks].filter(b => b.user_rating).sort((a,b) => b.user_rating - a.user_rating).slice(0,4);
+
+    content.innerHTML = `
+      <div class="profile-grid">
+        <div class="profile-card">
+          <div class="profile-card-title">Статистика</div>
+          <div class="profile-stats-row">
+            <div class="profile-stat"><div class="stat-num">${readBooks.length}</div><div class="stat-label">Прочитано</div></div>
+            <div class="profile-stat"><div class="stat-num">${wishlistBooks.length}</div><div class="stat-label">Хочу прочитать</div></div>
+            <div class="profile-stat"><div class="stat-num">${readThisYear}</div><div class="stat-label">В ${thisYear} году</div></div>
+            ${avgRating ? `<div class="profile-stat"><div class="stat-num">${avgRating}</div><div class="stat-label">Средняя оценка</div></div>` : ""}
+          </div>
+        </div>
+        ${topGenres.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Любимые жанры</div>
+          <div class="top-genres-list">
+            ${topGenres.map(([g, c]) => `<div class="genre-bar-row"><span class="genre-bar-label">${g}</span><span class="genre-bar-count">${c}</span></div>`).join("")}
+          </div>
+        </div>` : ""}
+        ${topAuthors.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Любимые авторы</div>
+          <div class="top-genres-list">
+            ${topAuthors.map(([a, c]) => `<div class="genre-bar-row"><span class="genre-bar-label">${a}</span><span class="genre-bar-count">${c}</span></div>`).join("")}
+          </div>
+        </div>` : ""}
+        ${topRated.length ? `
+        <div class="profile-card">
+          <div class="profile-card-title">Лучшие книги</div>
+          <div class="top-rated-list">
+            ${topRated.map(b => `
+              <div class="top-rated-item">
+                ${b.cover ? `<img class="top-rated-poster" src="${b.cover}" />` : `<div class="top-rated-no-poster">📖</div>`}
+                <div class="top-rated-info">
+                  <div class="top-rated-title">${b.title}</div>
+                  <div class="top-rated-rating">${b.user_rating}/10</div>
+                </div>
+              </div>`).join("")}
+          </div>
+        </div>` : ""}
+      </div>
+    `;
+  } catch {
+    content.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
 }
 
 async function loadBooksPopular() {
@@ -3807,10 +3973,8 @@ async function toggleBookWishlist(bookId, btn, book) {
 
 function updateBooksCount() {
   const el  = $("books-read-count");
-  const el2 = $("books-read-count-tab");
   if (el)  el.textContent  = state.booksRead.size;
-  if (el2) el2.textContent = state.booksRead.size;
-  const we = $("books-wishlist-count-tab");
+  const we = $("books-wishlist-count");
   if (we)  we.textContent  = state.booksWishlist.size;
 }
 

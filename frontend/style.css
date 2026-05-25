@@ -3674,3 +3674,21 @@ body.theme-mono .books-mode-btn.active { border-color: var(--mono-red); color: v
 .modal-book-read-btn:hover, .modal-book-read-btn.is-watched { background: rgba(76,172,112,0.25); border-color: var(--green); }
 .modal-book-wish-btn { flex: 1; padding: 12px; background: rgba(201,168,76,0.1); border: 1px solid var(--gold-dim); border-radius: 10px; color: var(--gold); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.25s; }
 .modal-book-wish-btn:hover, .modal-book-wish-btn.is-watch { background: rgba(201,168,76,0.25); border-color: var(--gold); }
+
+/* ══════════════════════════════════════════════════════════════
+   ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМА (Кино / Книги)
+══════════════════════════════════════════════════════════════ */
+.mode-switcher {
+  display: flex; gap: 2px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 3px;
+}
+.mode-btn {
+  padding: 5px 10px; border-radius: 6px; border: none;
+  background: transparent; font-size: 16px; cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  line-height: 1;
+}
+.mode-btn:hover { background: var(--border); }
+.mode-btn.active { background: var(--gold); }
+body.theme-mono .mode-switcher { background: var(--mono-paper); border-color: var(--mono-border); }
+body.theme-mono .mode-btn.active { background: var(--mono-red); }

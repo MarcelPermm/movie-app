@@ -902,6 +902,96 @@ async def remove_book_wishlist(book_id: str, user_id: int = 1):
     return {"message": "Удалено"}
 
 
+@app.get("/books/suggest")
+async def books_suggest(query: str = "", user_id: int = 1):
+    api_key = os.getenv("CEREBRAS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI недоступен")
+
+    import json, re
+    from openai import AsyncOpenAI
+
+    read_books = database.get_books_read(user_id)
+    read_titles = [b["title"] for b in read_books if b.get("title")][:30]
+    already_read = ", ".join(read_titles) if read_titles else "none"
+
+    example = '[{"title": "The Name of the Wind", "author": "Patrick Rothfuss", "year": 2007, "reason": "Одна фраза"}]'
+
+    if query.strip():
+        prompt = f"""You are a strict book recommendation engine. Follow the user's request EXACTLY.
+
+USER REQUEST: "{query}"
+
+ALREADY READ (NEVER recommend): {already_read}
+
+Recommend exactly 12 books strictly matching the USER REQUEST.
+OUTPUT: ONLY a raw JSON array. Original English titles. reason in Russian, one short sentence.
+Example: {example}"""
+    else:
+        author_counts = {}
+        genre_counts = {}
+        for b in read_books:
+            if b.get("author"): author_counts[b["author"]] = author_counts.get(b["author"], 0) + 1
+            for g in (b.get("genres") or []): genre_counts[g] = genre_counts.get(g, 0) + 1
+        top_authors = [a for a,_ in sorted(author_counts.items(), key=lambda x: -x[1])[:5]]
+        top_genres  = [g for g,_ in sorted(genre_counts.items(),  key=lambda x: -x[1])[:5]]
+
+        prompt = f"""You are a book expert. Recommend books based on reading history.
+
+Favorite authors: {", ".join(top_authors) if top_authors else "various"}
+Favorite genres: {", ".join(top_genres) if top_genres else "various"}
+ALREADY READ (DO NOT recommend): {already_read}
+
+Recommend exactly 12 books the user hasn't read yet.
+OUTPUT: ONLY a raw JSON array. Original English titles. reason in Russian.
+Example: {example}"""
+
+    client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
+    try:
+        response = await client.chat.completions.create(
+            model="llama3.1-8b",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1200,
+            temperature=0.7 if query else 0.9,
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = re.sub(r'^```[a-z]*\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw).strip()
+        match_json = re.search(r'\[.*\]', raw, re.DOTALL)
+        if not match_json:
+            raise HTTPException(503, "AI не вернул JSON")
+        suggestions = json.loads(match_json.group())
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"Ошибка AI: {str(e)}")
+
+    async def lookup(h, item):
+        title = item.get("title", "").strip()
+        author = item.get("author", "").strip()
+        reason = item.get("reason", "")
+        if not title: return None
+        try:
+            q = f"{title} {author}".strip()
+            params = {"key": GOOGLE_BOOKS_API_KEY, "q": q, "maxResults": 3, "printType": "books"}
+            r = await h.get(f"{GOOGLE_BOOKS_BASE}/volumes", params=params)
+            items_data = r.json().get("items", [])
+            if not items_data: return None
+            book = normalize_book(items_data[0])
+            book["ai_reason"] = reason
+            read_ids = {b["book_id"] for b in database.get_books_read(user_id)}
+            book["is_read"] = book["id"] in read_ids
+            book["is_wishlist"] = database.is_book_wishlist(book["id"], user_id)
+            return book
+        except Exception:
+            return None
+
+    async with httpx.AsyncClient(timeout=30) as h:
+        results = await asyncio.gather(*[lookup(h, s) for s in suggestions[:12]])
+    books = [r for r in results if r]
+    return {"books": books}
+
+
 @app.get("/books/{book_id}/details")
 async def book_details(book_id: str, user_id: int = 1):
     try:

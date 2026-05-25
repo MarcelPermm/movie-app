@@ -18,6 +18,10 @@
         <button class="theme-btn active" data-theme="cinema" title="Кинематографический тёмный">◐</button>
         <button class="theme-btn" data-theme="mono" title="Редакторский светлый">◑</button>
       </div>
+      <div class="mode-switcher" id="mode-switcher">
+        <button class="mode-btn active" data-mode="cinema" title="Кино и сериалы">🎬</button>
+        <button class="mode-btn" data-mode="books" title="Книги">📚</button>
+      </div>
       <div class="user-badge" id="user-badge">
         <span class="user-name" id="user-name"></span>
         <button class="user-logout-btn" onclick="authLogout()">Выйти</button>
@@ -27,16 +31,22 @@
         <button id="search-btn" class="search-btn">⌕</button>
       </div>
     </div>
-    <nav class="nav">
+    <nav class="nav" id="cinema-nav">
       <button class="nav-btn active" data-tab="discover">Обзор</button>
       <button class="nav-btn" data-tab="watched">Дневник <span class="fav-count" id="watch-count">0</span></button>
       <button class="nav-btn" data-tab="watchlist">К просмотру <span class="fav-count" id="watchlist-count">0</span></button>
       <button class="nav-btn" data-tab="dismissed">Отклонённые <span class="fav-count" id="dismissed-count">0</span></button>
-      <button class="nav-btn" data-tab="books">📚 Книги <span class="fav-count" id="books-read-count">0</span></button>
       <button class="nav-btn" data-tab="actors">Актёры</button>
       <button class="nav-btn" data-tab="recommendations">Рекомендации</button>
       <button class="nav-btn" data-tab="suggest">✦ Посоветуй</button>
       <button class="nav-btn" data-tab="profile">Профиль</button>
+    </nav>
+    <nav class="nav" id="books-nav" style="display:none">
+      <button class="nav-btn books-nav-btn active" data-books-tab="discover">Открытие</button>
+      <button class="nav-btn books-nav-btn" data-books-tab="diary">Дневник <span class="fav-count" id="books-read-count">0</span></button>
+      <button class="nav-btn books-nav-btn" data-books-tab="wishlist">Хочу прочитать <span class="fav-count" id="books-wishlist-count">0</span></button>
+      <button class="nav-btn books-nav-btn" data-books-tab="suggest">✦ Посоветуй</button>
+      <button class="nav-btn books-nav-btn" data-books-tab="profile">Профиль</button>
     </nav>
   </header>
 
@@ -283,32 +293,56 @@
       </div>
     </section>
 
-    <section class="tab" id="tab-books">
+    <!-- ═══ BOOKS MODE SECTIONS ═══ -->
+    <section class="tab books-tab" id="tab-books-discover" style="display:none">
       <div class="section-header">
         <div class="section-title-row">
-          <h2 class="section-title">📚 Книги</h2>
+          <h2 class="section-title">📚 Открытие</h2>
         </div>
         <div class="books-search-row" id="books-search-row">
           <input type="text" id="books-search-input" class="filter-input" placeholder="🔍 Найти книгу или автора…" />
         </div>
-        <div class="books-mode-tabs">
-          <button class="books-mode-btn active" data-mode="discover">Открытие</button>
-          <button class="books-mode-btn" data-mode="read">Прочитанные <span class="fav-count" id="books-read-count-tab">0</span></button>
-          <button class="books-mode-btn" data-mode="wishlist">Хочу прочитать <span class="fav-count" id="books-wishlist-count-tab">0</span></button>
+      </div>
+      <div class="movies-grid" id="books-popular-grid"></div>
+    </section>
+
+    <section class="tab books-tab" id="tab-books-diary" style="display:none">
+      <div class="section-header">
+        <h2 class="section-title">Дневник чтения</h2>
+        <p class="section-sub">Книги которые ты прочитал</p>
+      </div>
+      <div class="movies-grid" id="books-read-grid">
+        <div class="empty-state"><span class="empty-icon">📖</span><p>Ещё не добавил прочитанных книг</p></div>
+      </div>
+    </section>
+
+    <section class="tab books-tab" id="tab-books-wishlist" style="display:none">
+      <div class="section-header">
+        <h2 class="section-title">Хочу прочитать</h2>
+        <p class="section-sub">Список книг на потом</p>
+      </div>
+      <div class="movies-grid" id="books-wishlist-grid">
+        <div class="empty-state"><span class="empty-icon">📚</span><p>Список пуст</p></div>
+      </div>
+    </section>
+
+    <section class="tab books-tab" id="tab-books-suggest" style="display:none">
+      <div class="section-header">
+        <h2 class="section-title">✦ Посоветуй книгу</h2>
+        <p class="section-sub">Опиши что хочешь почитать — или просто нажми кнопку</p>
+      </div>
+      <div class="suggest-wrap">
+        <textarea id="books-suggest-input" class="suggest-input" placeholder="Например: хочу что-то про космос и одиночество. Или: лёгкий детектив на вечер…" rows="4"></textarea>
+        <div class="suggest-actions">
+          <button class="btn-primary" id="books-suggest-btn">✦ Подобрать</button>
         </div>
       </div>
-      <div id="books-discover-view">
-        <div class="movies-grid" id="books-popular-grid"></div>
-      </div>
-      <div id="books-read-view" style="display:none">
-        <div class="movies-grid" id="books-read-grid">
-          <div class="empty-state"><span class="empty-icon">📖</span><p>Ещё не добавил прочитанных книг</p></div>
-        </div>
-      </div>
-      <div id="books-wishlist-view" style="display:none">
-        <div class="movies-grid" id="books-wishlist-grid">
-          <div class="empty-state"><span class="empty-icon">📚</span><p>Список пуст</p></div>
-        </div>
+      <div class="movies-grid" id="books-suggest-grid"></div>
+    </section>
+
+    <section class="tab books-tab" id="tab-books-profile" style="display:none">
+      <div id="books-profile-content">
+        <div class="loader">Загружаем профиль…</div>
       </div>
     </section>
 
