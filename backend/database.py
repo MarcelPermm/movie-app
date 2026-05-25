@@ -829,3 +829,103 @@ def is_book_wishlist(book_id: str, user_id: int = 1) -> bool:
         return cur.fetchone() is not None
     finally:
         conn.close()
+
+
+# ─── Тетрадь: Задачи ──────────────────────────────────────────────────────────
+
+def init_tasks_table():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id            SERIAL PRIMARY KEY,
+                user_id       INTEGER     NOT NULL DEFAULT 1,
+                title         TEXT        NOT NULL,
+                date          DATE        NOT NULL DEFAULT CURRENT_DATE,
+                status        VARCHAR(10) NOT NULL DEFAULT 'todo',
+                cancel_reason TEXT,
+                time_str      VARCHAR(20),
+                tag           VARCHAR(50),
+                priority      VARCHAR(10) DEFAULT 'normal',
+                created_at    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks(user_id, date)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tasks(user_id: int, date: str) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM tasks WHERE user_id=%s AND date=%s ORDER BY created_at ASC",
+            (user_id, date)
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_tasks_range(user_id: int, date_from: str, date_to: str) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM tasks WHERE user_id=%s AND date BETWEEN %s AND %s ORDER BY date ASC, created_at ASC",
+            (user_id, date_from, date_to)
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def add_task(user_id: int, title: str, date: str, time_str: str = None,
+             tag: str = None, priority: str = "normal") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tasks (user_id,title,date,time_str,tag,priority) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+            (user_id, title, date, time_str, tag, priority)
+        )
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+
+def update_task(task_id: int, user_id: int, **fields) -> dict:
+    allowed = {"title", "status", "cancel_reason", "time_str", "tag", "priority", "date"}
+    fields = {k: v for k, v in fields.items() if k in allowed}
+    if not fields:
+        raise ValueError("No valid fields")
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k}=%s" for k in fields)
+        cur.execute(
+            f"UPDATE tasks SET {set_clause} WHERE id=%s AND user_id=%s RETURNING *",
+            (*fields.values(), task_id, user_id)
+        )
+        row = cur.fetchone()
+        conn.commit()
+        if not row:
+            raise ValueError("Not found")
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def delete_task(task_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tasks WHERE id=%s AND user_id=%s", (task_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()

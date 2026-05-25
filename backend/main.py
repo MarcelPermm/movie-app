@@ -65,6 +65,7 @@ async def startup():
     database.init_db()
     database.init_imdb_map_table()
     database.init_books_tables()
+    database.init_tasks_table()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -1585,5 +1586,48 @@ Example output:
     async with httpx.AsyncClient(timeout=60) as h:
         found = await asyncio.gather(*[tmdb_lookup(h, item) for item in candidates[:15]])
     results = [r for r in found if r is not None][:12]
+
+
+# ─── Тетрадь: Задачи ──────────────────────────────────────────────────────────
+
+class TaskCreate(BaseModel):
+    title: str
+    date: str
+    time_str: Optional[str] = None
+    tag: Optional[str] = None
+    priority: Optional[str] = "normal"
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    time_str: Optional[str] = None
+    tag: Optional[str] = None
+    date: Optional[str] = None
+
+@app.get("/tasks")
+async def get_tasks(date: str, user_id: int = 1):
+    return database.get_tasks(user_id, date)
+
+@app.get("/tasks/week")
+async def get_tasks_week(date_from: str, date_to: str, user_id: int = 1):
+    return database.get_tasks_range(user_id, date_from, date_to)
+
+@app.post("/tasks")
+async def create_task(req: TaskCreate, user_id: int = 1):
+    return database.add_task(user_id, req.title, req.date, req.time_str, req.tag, req.priority)
+
+@app.patch("/tasks/{task_id}")
+async def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
+    fields = {k: v for k, v in req.dict().items() if v is not None}
+    try:
+        return database.update_task(task_id, user_id, **fields)
+    except ValueError:
+        raise HTTPException(404, "Задача не найдена")
+
+@app.delete("/tasks/{task_id}")
+async def remove_task(task_id: int, user_id: int = 1):
+    database.delete_task(task_id, user_id)
+    return {"ok": True}
 
     return {"movies": results, "debug_ai": suggestions}

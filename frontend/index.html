@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FilmByMihaylov</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;500;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;500;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -21,6 +21,7 @@
       <div class="mode-switcher" id="mode-switcher">
         <button class="mode-btn active" data-mode="cinema" title="Кино и сериалы">🎬</button>
         <button class="mode-btn" data-mode="books" title="Книги">📚</button>
+        <button class="mode-btn" data-mode="notebook" title="Тетрадь">📓</button>
       </div>
       <div class="user-badge" id="user-badge">
         <span class="user-name" id="user-name"></span>
@@ -343,6 +344,82 @@
     <section class="tab books-tab" id="tab-books-profile" style="display:none">
       <div id="books-profile-content">
         <div class="loader">Загружаем профиль…</div>
+      </div>
+    </section>
+
+    <!-- ═══ NOTEBOOK MODE ═══ -->
+    <section class="tab notebook-tab" id="tab-notebook" style="display:none">
+      <div class="notebook-wrap">
+        <!-- Корешок (desktop: левая панель, mobile: горизонтальный скролл) -->
+        <nav class="notebook-spine" id="notebook-spine">
+          <div class="spine-header">
+            <div class="spine-brand">Тетрадь</div>
+            <div class="spine-vol">ТОМ I · 2026</div>
+          </div>
+          <div class="spine-nav">
+            <button class="spine-tab active" data-ntab="today" style="--spine-color:#c96442"><span class="spine-dot"></span>Сегодня</button>
+            <button class="spine-tab" data-ntab="calendar" style="--spine-color:#7a8a5b"><span class="spine-dot"></span>Календарь</button>
+            <button class="spine-tab" data-ntab="budget" style="--spine-color:#c89826"><span class="spine-dot"></span>Бюджет</button>
+            <button class="spine-tab" data-ntab="trips" style="--spine-color:#9c6b4a"><span class="spine-dot"></span>Поездки</button>
+            <button class="spine-tab" data-ntab="lists" style="--spine-color:#6b7a8a"><span class="spine-dot"></span>Списки</button>
+            <button class="spine-tab" data-ntab="notes" style="--spine-color:#876644"><span class="spine-dot"></span>Заметки</button>
+          </div>
+        </nav>
+        <!-- Тело -->
+        <div class="notebook-body">
+          <!-- Сегодня -->
+          <div class="ntab-panel" id="ntab-today">
+            <div class="notebook-spread">
+              <div class="nb-page nb-page-today">
+                <div class="nb-page-head">
+                  <h1 class="nb-title">Сегодня</h1>
+                  <div class="nb-subtitle" id="nb-today-subtitle"></div>
+                  <div class="nb-meta-line" id="nb-today-meta"></div>
+                </div>
+                <div class="nb-ruled-area">
+                  <div class="task-list" id="task-list-today"></div>
+                  <button class="task-add-btn" id="task-add-btn"><span class="task-add-line">+ новая задача…</span></button>
+                </div>
+              </div>
+              <div class="nb-page nb-page-week">
+                <div class="nb-page-head">
+                  <h2 class="nb-title-sm">Эта неделя</h2>
+                </div>
+                <div class="week-grid" id="nb-week-grid"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Календарь -->
+          <div class="ntab-panel" id="ntab-calendar" style="display:none">
+            <div class="nb-page nb-page-single">
+              <div class="nb-coming-soon"><div class="nb-cs-icon">📅</div><div class="nb-cs-title">Календарь</div><div class="nb-cs-sub">Скоро — месячный обзор и тепловая карта привычек</div></div>
+            </div>
+          </div>
+          <!-- Бюджет -->
+          <div class="ntab-panel" id="ntab-budget" style="display:none">
+            <div class="nb-page nb-page-single">
+              <div class="nb-coming-soon"><div class="nb-cs-icon">💰</div><div class="nb-cs-title">Бюджет</div><div class="nb-cs-sub">Скоро — план/факт по месяцу, поездки, регулярные расходы</div></div>
+            </div>
+          </div>
+          <!-- Поездки -->
+          <div class="ntab-panel" id="ntab-trips" style="display:none">
+            <div class="nb-page nb-page-single">
+              <div class="nb-coming-soon"><div class="nb-cs-icon">✈️</div><div class="nb-cs-title">Поездки</div><div class="nb-cs-sub">Скоро — дневник поездок, чек-листы, траты по дням</div></div>
+            </div>
+          </div>
+          <!-- Списки -->
+          <div class="ntab-panel" id="ntab-lists" style="display:none">
+            <div class="nb-page nb-page-single">
+              <div class="nb-coming-soon"><div class="nb-cs-icon">📋</div><div class="nb-cs-title">Списки</div><div class="nb-cs-sub">Скоро — покупки, проекты, чек-листы</div></div>
+            </div>
+          </div>
+          <!-- Заметки -->
+          <div class="ntab-panel" id="ntab-notes" style="display:none">
+            <div class="nb-page nb-page-single">
+              <div class="nb-coming-soon"><div class="nb-cs-icon">✍️</div><div class="nb-cs-title">Заметки</div><div class="nb-cs-sub">Скоро — свободные заметки, стикеры, мысли</div></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

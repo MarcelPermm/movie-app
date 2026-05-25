@@ -14,8 +14,10 @@ const state = {
   dismissedMode: "movie",
   recsMode:      "movie",
   booksMode:     "discover",
-  appMode:       "cinema",   // "cinema" | "books"
+  appMode:       "cinema",   // "cinema" | "books" | "notebook"
   activeBooksTab: "discover",
+  activeNotebookTab: "today",
+  notebookDate: new Date().toISOString().slice(0, 10),
   booksRead:     new Set(),
   booksWishlist: new Set(),
   watchlistCat:  "all",   // "all" | "must_see" | "not_sure" | "last_resort"
@@ -54,9 +56,8 @@ function switchAppMode(mode) {
   state.appMode = mode;
   try { localStorage.setItem("appMode", mode); } catch {}
 
-  const isCinema = mode === "cinema";
-  $("cinema-nav").style.display  = isCinema ? "" : "none";
-  $("books-nav").style.display   = isCinema ? "none" : "";
+  $("cinema-nav").style.display   = mode === "cinema"   ? "" : "none";
+  $("books-nav").style.display    = mode === "books"    ? "" : "none";
   document.querySelectorAll(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
 
   // Hide all tabs
@@ -65,18 +66,21 @@ function switchAppMode(mode) {
     t.style.display = "none";
   });
 
-  if (isCinema) {
-    // Restore last active cinema tab or default to discover
+  if (mode === "cinema") {
     const cinemaTab = $("tab-discover");
     cinemaTab.classList.add("active");
     cinemaTab.style.display = "";
     $("search-input").placeholder = "Найти фильм, сериал…";
     $("home-content").style.display = "";
     $("search-content").style.display = "none";
-  } else {
-    // Open books mode
+  } else if (mode === "books") {
     $("search-input").placeholder = "Найти книгу, автора…";
     openBooksTab(state.activeBooksTab || "discover");
+  } else if (mode === "notebook") {
+    const nb = $("tab-notebook");
+    nb.classList.add("active");
+    nb.style.display = "";
+    openNotebookTab(state.activeNotebookTab || "today");
   }
 }
 
@@ -2673,7 +2677,7 @@ async function authLogin() {
     setUser(user);
     $("auth-overlay").classList.remove("visible");
     toast(`Привет, ${user.display_name}! 👋`, "success");
-    init().then(() => { if (state.appMode === "books") setTimeout(() => switchAppMode("books"), 100); });
+    init().then(() => { if (state.appMode === "books" || state.appMode === "notebook") setTimeout(() => switchAppMode(state.appMode), 100); });
   } catch (err) {
     errEl.textContent = err.message === "timeout"
       ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
@@ -2708,7 +2712,7 @@ async function authRegister() {
     setUser(user);
     $("auth-overlay").classList.remove("visible");
     toast(`Добро пожаловать, ${user.display_name}! 🎬`, "success");
-    init().then(() => { if (state.appMode === "books") setTimeout(() => switchAppMode("books"), 100); });
+    init().then(() => { if (state.appMode === "books" || state.appMode === "notebook") setTimeout(() => switchAppMode(state.appMode), 100); });
   } catch (err) {
     errEl.textContent = err.message === "timeout"
       ? "Сервер не отвечает (>60 сек). Попробуй ещё раз."
@@ -2810,10 +2814,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ─── Запуск ────────────────────────────────────────────────────────────────
 (function startup() {
-  // Восстанавливаем сохранённый режим (кино/книги)
+  // Восстанавливаем сохранённый режим (кино/книги/тетрадь)
   const savedMode = localStorage.getItem("appMode") || "cinema";
-  if (savedMode === "books") {
-    state.appMode = "books";
+  if (savedMode === "books" || savedMode === "notebook") {
+    state.appMode = savedMode;
   }
 
   const saved = localStorage.getItem("film_user");
@@ -2822,8 +2826,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const user = JSON.parse(saved);
       setUser(user);
       init().then(() => {
-        if (state.appMode === "books") {
-          setTimeout(() => switchAppMode("books"), 100);
+        if (state.appMode === "books" || state.appMode === "notebook") {
+          setTimeout(() => switchAppMode(state.appMode), 100);
         }
       });
       return;
@@ -4125,3 +4129,252 @@ function renderBookRatingHTML(book) {
   ).join("");
   return `<div class="rating-row" style="margin-top:12px"><span class="rating-label">Твоя оценка:</span><div class="rating-btns">${btns}</div></div>`;
 }
+
+
+// ════════════════════════════════════════════════════════════════
+//  ТЕТРАДЬ
+// ════════════════════════════════════════════════════════════════
+
+function openNotebookTab(tab) {
+  state.activeNotebookTab = tab;
+  document.querySelectorAll(".ntab-panel").forEach(p => p.style.display = "none");
+  document.querySelectorAll(".spine-tab").forEach(b => b.classList.toggle("active", b.dataset.ntab === tab));
+  const panel = $(`ntab-${tab}`);
+  if (panel) panel.style.display = "";
+  if (tab === "today") loadNotebookToday();
+}
+
+async function loadNotebookToday() {
+  const today = state.notebookDate;
+  const dateObj = new Date(today + "T00:00:00");
+  const days    = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
+  const months  = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+
+  const subtitleEl = $("nb-today-subtitle");
+  if (subtitleEl) subtitleEl.textContent = `${days[dateObj.getDay()]}, ${dateObj.getDate()} ${months[dateObj.getMonth()]}`;
+
+  const listEl = $("task-list-today");
+  if (!listEl) return;
+  listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+
+  try {
+    const [tasks, weekTasks] = await Promise.all([
+      apiFetch(`/tasks?date=${today}`),
+      loadWeekTasks(today),
+    ]);
+    renderTodayTasks(tasks);
+    renderWeekGrid(weekTasks, today);
+    initAddTaskBtn();
+  } catch {
+    listEl.innerHTML = `<div style="color:var(--nb-red);font-size:13px;padding:8px 0">Ошибка загрузки</div>`;
+  }
+}
+
+function renderTodayTasks(tasks) {
+  const listEl = $("task-list-today");
+  listEl.innerHTML = "";
+  tasks.forEach(t => listEl.appendChild(buildTaskEl(t)));
+  updateTodayMeta(tasks);
+}
+
+function updateTodayMeta(tasks) {
+  const done   = tasks.filter(t => t.status === "done").length;
+  const cancel = tasks.filter(t => t.status === "cancel").length;
+  const total  = tasks.length;
+  const metaEl = $("nb-today-meta");
+  if (metaEl) metaEl.textContent = total
+    ? `◐ ${done}/${total} выполнено${cancel ? ` · ${cancel} отменено` : ""}`
+    : "◐ нет задач на сегодня";
+}
+
+function buildTaskEl(task) {
+  const div = document.createElement("div");
+  div.className = `task-item status-${task.status}`;
+  div.dataset.id = task.id;
+
+  const cancelBlock = task.status === "cancel"
+    ? `<div class="task-cancel-block">
+         <span class="cancel-label">ПРИЧИНА:</span>
+         ${task.cancel_reason
+           ? `<span class="cancel-reason-text">${task.cancel_reason}</span>`
+           : `<input class="cancel-input" placeholder="почему отменил…" />`}
+       </div>`
+    : "";
+
+  div.innerHTML = `
+    <button class="task-cb" title="Изменить статус"></button>
+    <div class="task-body">
+      <div class="task-title">${task.title}</div>
+      <div class="task-meta">
+        ${task.time_str ? `<span class="task-time">${task.time_str}</span>` : ""}
+        ${task.tag ? `<span class="task-tag">#${task.tag}</span>` : ""}
+      </div>
+      ${cancelBlock}
+    </div>
+    <button class="task-delete-btn" title="Удалить">×</button>`;
+
+  div.querySelector(".task-cb").addEventListener("click", () => cycleTaskStatus(task, div));
+
+  const cancelInput = div.querySelector(".cancel-input");
+  if (cancelInput) bindCancelInput(cancelInput, task);
+
+  div.querySelector(".task-delete-btn").addEventListener("click", async () => {
+    div.style.opacity = "0.3";
+    try {
+      await apiFetch(`/tasks/${task.id}`, { method: "DELETE" });
+      div.remove();
+      syncMetaFromDOM();
+    } catch { div.style.opacity = "1"; }
+  });
+
+  return div;
+}
+
+function bindCancelInput(inp, task) {
+  const save = async () => {
+    const reason = inp.value.trim();
+    if (!reason) return;
+    try {
+      await apiFetch(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ cancel_reason: reason }) });
+      task.cancel_reason = reason;
+      const span = document.createElement("span");
+      span.className = "cancel-reason-text";
+      span.textContent = reason;
+      inp.replaceWith(span);
+    } catch {}
+  };
+  inp.addEventListener("blur", save);
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
+  setTimeout(() => inp.focus(), 60);
+}
+
+async function cycleTaskStatus(task, div) {
+  const order = ["todo", "done", "cancel"];
+  const next  = order[(order.indexOf(task.status) + 1) % 3];
+  const prev  = task.status;
+
+  task.status = next;
+  div.className = `task-item status-${next}`;
+
+  const body = div.querySelector(".task-body");
+  if (next === "cancel") {
+    if (!body.querySelector(".task-cancel-block")) {
+      const block = document.createElement("div");
+      block.className = "task-cancel-block";
+      block.innerHTML = `<span class="cancel-label">ПРИЧИНА:</span><input class="cancel-input" placeholder="почему отменил…" />`;
+      body.appendChild(block);
+      bindCancelInput(block.querySelector(".cancel-input"), task);
+    }
+  } else {
+    const cb = body.querySelector(".task-cancel-block");
+    if (cb) cb.remove();
+    task.cancel_reason = null;
+  }
+
+  try {
+    await apiFetch(`/tasks/${task.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: next, ...(next !== "cancel" ? { cancel_reason: null } : {}) }),
+    });
+    syncMetaFromDOM();
+  } catch {
+    task.status = prev;
+    div.className = `task-item status-${prev}`;
+  }
+}
+
+function syncMetaFromDOM() {
+  const items = Array.from(($("task-list-today") || { querySelectorAll: () => [] })
+    .querySelectorAll(".task-item"))
+    .map(el => ({
+      status: el.className.includes("status-done") ? "done"
+            : el.className.includes("status-cancel") ? "cancel" : "todo",
+    }));
+  updateTodayMeta(items);
+}
+
+async function loadWeekTasks(todayStr) {
+  const d   = new Date(todayStr + "T00:00:00");
+  const day = d.getDay();
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = dt => dt.toISOString().slice(0, 10);
+  return apiFetch(`/tasks/week?date_from=${fmt(mon)}&date_to=${fmt(sun)}`);
+}
+
+function renderWeekGrid(tasks, todayStr) {
+  const grid = $("nb-week-grid");
+  if (!grid) return;
+  const d   = new Date(todayStr + "T00:00:00");
+  const day = d.getDay();
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  const dayNames = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  grid.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const dt  = new Date(mon);
+    dt.setDate(mon.getDate() + i);
+    const ds  = dt.toISOString().slice(0, 10);
+    const isT = ds === todayStr;
+    const dayTasks = tasks.filter(t => {
+      const td = t.date instanceof Date ? t.date.toISOString().slice(0,10)
+               : String(t.date).slice(0, 10);
+      return td === ds;
+    }).slice(0, 3);
+    const row = document.createElement("div");
+    row.className = "week-day-row";
+    row.innerHTML = `
+      <div class="week-day-num ${isT ? "is-today" : ""}">${dt.getDate()}</div>
+      <div class="week-day-name">${dayNames[i]}</div>
+      <div class="week-day-tasks">
+        ${dayTasks.length
+          ? dayTasks.map(t => `<div class="week-task-dot ${t.status}">${t.title}</div>`).join("")
+          : `<div class="week-task-dot" style="opacity:.3">—</div>`}
+      </div>`;
+    grid.appendChild(row);
+  }
+}
+
+function initAddTaskBtn() {
+  const btn = $("task-add-btn");
+  if (!btn || btn._nbInit) return;
+  btn._nbInit = true;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "task-add-form";
+    form.innerHTML = `<input class="task-add-input" placeholder="Новая задача…" />`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+    const inp = form.querySelector("input");
+    inp.focus();
+
+    const submit = async () => {
+      const title = inp.value.trim();
+      form.remove();
+      btn.style.display = "";
+      if (!title) return;
+      try {
+        const task = await apiFetch("/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title, date: state.notebookDate }),
+        });
+        $("task-list-today").appendChild(buildTaskEl(task));
+        syncMetaFromDOM();
+        toast(`Задача добавлена`, "success");
+      } catch { toast("Ошибка при сохранении", "error"); }
+    };
+
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Enter")  submit();
+      if (e.key === "Escape") { form.remove(); btn.style.display = ""; }
+    });
+    inp.addEventListener("blur", () => setTimeout(() => { if (form.parentNode) { form.remove(); btn.style.display = ""; } }, 180));
+  });
+}
+
+// — Spine tab clicks —
+document.querySelectorAll(".spine-tab").forEach(btn => {
+  btn.addEventListener("click", () => openNotebookTab(btn.dataset.ntab));
+});
