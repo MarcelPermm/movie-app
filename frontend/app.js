@@ -1321,12 +1321,14 @@ function renderWatchlistCards(container, movies) {
       <button class="watched-btn ${isWatched ? "is-watched" : ""}" title="${isWatched ? "Убрать из просмотренного" : "Отметить просмотренным"}">✓</button>
       <button class="watch-btn is-watch" title="Убрать из списка">🕐</button>
       <div class="wl-cat-chip ${catClass[cat]}" data-movie-id="${movieId}">
-        <span class="wl-cat-label">${catLabels[cat]}</span>
-        <span class="wl-cat-arrow">▾</span>
-        <div class="wl-cat-dropdown">
-          <button data-cat="must_see">🔥 Must See</button>
-          <button data-cat="not_sure">🤔 Не знаю</button>
-          <button data-cat="last_resort">😴 На крайний</button>
+        <div class="wl-cat-default">
+          <span class="wl-cat-label">${catLabels[cat]}</span>
+          <span class="wl-cat-arrow">▾</span>
+        </div>
+        <div class="wl-cat-picker">
+          <button class="wl-pick-btn ${cat === 'must_see'    ? 'active' : ''}" data-cat="must_see">🔥</button>
+          <button class="wl-pick-btn ${cat === 'not_sure'    ? 'active' : ''}" data-cat="not_sure">🤔</button>
+          <button class="wl-pick-btn ${cat === 'last_resort' ? 'active' : ''}" data-cat="last_resort">😴</button>
         </div>
       </div>
       <div class="movie-info">
@@ -1354,28 +1356,26 @@ function renderWatchlistCards(container, movies) {
       toggleWatchlist(movieId, card.querySelector(".watch-btn"), container, cardMediaType);
     });
 
-    // Category chip toggle
+    // Category chip — открывает inline-пикер на месте, без дропдауна
     const chip = card.querySelector(".wl-cat-chip");
-    const dropdown = chip.querySelector(".wl-cat-dropdown");
-    chip.addEventListener("click", e => {
+    chip.querySelector(".wl-cat-default").addEventListener("click", e => {
       e.stopPropagation();
-      const isOpen = dropdown.classList.contains("open");
-      document.querySelectorAll(".wl-cat-dropdown.open").forEach(d => d.classList.remove("open"));
-      if (!isOpen) dropdown.classList.add("open");
+      document.querySelectorAll(".wl-cat-chip.picking").forEach(c => { if (c !== chip) c.classList.remove("picking"); });
+      chip.classList.toggle("picking");
     });
-    dropdown.querySelectorAll("button").forEach(btn => {
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        dropdown.classList.remove("open");
-        setWatchlistCategory(movieId, btn.dataset.cat, cardMediaType, chip, catLabels, catClass);
-      });
+    chip.querySelector(".wl-cat-picker").addEventListener("click", e => {
+      e.stopPropagation();
+      const btn = e.target.closest(".wl-pick-btn");
+      if (!btn) return;
+      chip.classList.remove("picking");
+      setWatchlistCategory(movieId, btn.dataset.cat, cardMediaType, chip, catLabels, catClass);
     });
 
     container.appendChild(card);
   });
 
   document.addEventListener("click", () => {
-    document.querySelectorAll(".wl-cat-dropdown.open").forEach(d => d.classList.remove("open"));
+    document.querySelectorAll(".wl-cat-chip.picking").forEach(c => c.classList.remove("picking"));
   }, { once: true });
 }
 
@@ -1396,6 +1396,7 @@ async function setWatchlistCategory(movieId, category, mediaType, chip, catLabel
   // Оптимистичный апдейт — мгновенно, без ожидания сети
   chip.className = `wl-cat-chip ${catClass[category]}`;
   chip.querySelector(".wl-cat-label").textContent = catLabels[category];
+  chip.querySelectorAll(".wl-pick-btn").forEach(b => b.classList.toggle("active", b.dataset.cat === category));
   if (item) item.category = category;
   updateWatchlistCounts(state.cache.watchlist[mode]);
 
@@ -1419,6 +1420,7 @@ async function setWatchlistCategory(movieId, category, mediaType, chip, catLabel
     // Откат при ошибке
     chip.className = `wl-cat-chip ${catClass[oldCategory]}`;
     chip.querySelector(".wl-cat-label").textContent = catLabels[oldCategory];
+    chip.querySelectorAll(".wl-pick-btn").forEach(b => b.classList.toggle("active", b.dataset.cat === oldCategory));
     if (item) item.category = oldCategory;
     updateWatchlistCounts(state.cache.watchlist[mode]);
     const cached = state.cache.watchlist[mode];
