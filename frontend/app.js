@@ -2518,6 +2518,7 @@ async function init() {
   loadHomepage();
 }
 
+
 // ─── Аутентификация ────────────────────────────────────────────────────────
 
 function switchAuthTab(tab) {
