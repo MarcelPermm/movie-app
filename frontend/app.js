@@ -1323,7 +1323,7 @@ function renderWatchlistCards(container, movies) {
       <div class="wl-cat-chip ${catClass[cat]}" data-movie-id="${movieId}">
         <span class="wl-cat-label">${catLabels[cat]}</span>
         <span class="wl-cat-arrow">▾</span>
-        <div class="wl-cat-dropdown" hidden>
+        <div class="wl-cat-dropdown">
           <button data-cat="must_see">🔥 Must See</button>
           <button data-cat="not_sure">🤔 Не знаю</button>
           <button data-cat="last_resort">😴 На крайний</button>
@@ -1359,13 +1359,14 @@ function renderWatchlistCards(container, movies) {
     const dropdown = chip.querySelector(".wl-cat-dropdown");
     chip.addEventListener("click", e => {
       e.stopPropagation();
-      document.querySelectorAll(".wl-cat-dropdown").forEach(d => { if (d !== dropdown) d.hidden = true; });
-      dropdown.hidden = !dropdown.hidden;
+      const isOpen = dropdown.classList.contains("open");
+      document.querySelectorAll(".wl-cat-dropdown.open").forEach(d => d.classList.remove("open"));
+      if (!isOpen) dropdown.classList.add("open");
     });
     dropdown.querySelectorAll("button").forEach(btn => {
       btn.addEventListener("click", e => {
         e.stopPropagation();
-        dropdown.hidden = true;
+        dropdown.classList.remove("open");
         setWatchlistCategory(movieId, btn.dataset.cat, cardMediaType, chip, catLabels, catClass);
       });
     });
@@ -1374,30 +1375,54 @@ function renderWatchlistCards(container, movies) {
   });
 
   document.addEventListener("click", () => {
-    document.querySelectorAll(".wl-cat-dropdown").forEach(d => { d.hidden = true; });
+    document.querySelectorAll(".wl-cat-dropdown.open").forEach(d => d.classList.remove("open"));
   }, { once: true });
 }
 
+function updateWatchlistCounts(rawItems) {
+  if (!rawItems) return;
+  const counts = { all: 0, must_see: 0, not_sure: 0, last_resort: 0 };
+  rawItems.forEach(m => { counts.all++; const c = m.category || "not_sure"; if (counts[c] !== undefined) counts[c]++; });
+  const ids = { all: "wl-count-all", must_see: "wl-count-must", not_sure: "wl-count-notsure", last_resort: "wl-count-last" };
+  Object.entries(ids).forEach(([k, id]) => { const el = $(id); if (el) el.textContent = counts[k]; });
+}
+
 async function setWatchlistCategory(movieId, category, mediaType, chip, catLabels, catClass) {
+  const mode = state.watchlistMode;
+  const item = state.cache.watchlist[mode]?.find(m => (m.movie_id || m.id) === movieId);
+  const oldCategory = item?.category || "not_sure";
+  if (oldCategory === category) return;
+
+  // Оптимистичный апдейт — мгновенно, без ожидания сети
+  chip.className = `wl-cat-chip ${catClass[category]}`;
+  chip.querySelector(".wl-cat-label").textContent = catLabels[category];
+  if (item) item.category = category;
+  updateWatchlistCounts(state.cache.watchlist[mode]);
+
+  // Если просматриваем конкретную категорию и карточка туда уже не входит — плавно убираем
+  if (state.watchlistCat !== "all" && state.watchlistCat !== category) {
+    const card = chip.closest(".movie-card");
+    if (card) {
+      card.style.transition = "opacity 0.25s, transform 0.25s";
+      card.style.opacity = "0";
+      card.style.transform = "scale(0.94)";
+      setTimeout(() => card.remove(), 260);
+    }
+  }
+
   try {
     await apiFetch(`/watchlist/${movieId}/category`, {
       method: "PATCH",
       body: JSON.stringify({ category, media_type: mediaType, user_id: state.user?.id || 1 }),
     });
-    // Update local cache
-    const mode = state.watchlistMode;
-    if (state.cache.watchlist[mode]) {
-      const item = state.cache.watchlist[mode].find(m => (m.movie_id || m.id) === movieId);
-      if (item) item.category = category;
-    }
-    // Update chip appearance
-    chip.className = `wl-cat-chip ${catClass[category]}`;
-    chip.querySelector(".wl-cat-label").textContent = catLabels[category];
-    // Refresh counts
+  } catch {
+    // Откат при ошибке
+    chip.className = `wl-cat-chip ${catClass[oldCategory]}`;
+    chip.querySelector(".wl-cat-label").textContent = catLabels[oldCategory];
+    if (item) item.category = oldCategory;
+    updateWatchlistCounts(state.cache.watchlist[mode]);
     const cached = state.cache.watchlist[mode];
     if (cached) applyWatchlistFilters(cached);
-    toast("Категория обновлена", "success");
-  } catch {
     toast("Ошибка обновления категории", "error");
   }
 }
