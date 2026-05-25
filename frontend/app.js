@@ -4062,7 +4062,7 @@ function renderBookModalContent(book) {
       </div>
       <div class="modal-info-col">
         <h2 class="modal-title">${book.title}</h2>
-        ${book.author ? `<div class="modal-director">✍️ ${book.author}</div>` : ""}
+        ${book.author ? `<button class="modal-director book-author-link" data-author="${book.author.replace(/"/g,'&quot;')}">✍️ ${book.author}</button>` : ""}
         <div class="modal-meta-row">
           ${year !== "—" ? `<span class="modal-year">${year}</span>` : ""}
           ${book.page_count ? `<span class="modal-runtime">${book.page_count} стр.</span>` : ""}
@@ -4094,6 +4094,16 @@ function renderBookModalContent(book) {
     await toggleBookWishlist(book.id, { classList: { add: () => {}, remove: () => {}, contains: () => wasWish } }, book);
     openBookModal({ ...book, is_wishlist: !wasWish });
   });
+
+  const authorLink = $("modal-content").querySelector(".book-author-link");
+  if (authorLink) {
+    authorLink.addEventListener("click", () => {
+      closeModal();
+      openBooksTab("discover");
+      const inp = $("books-search-input");
+      if (inp) { inp.value = book.author; searchBooks(book.author); }
+    });
+  }
 
   $("modal-content").querySelectorAll(".rating-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
