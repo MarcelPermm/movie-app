@@ -13,6 +13,9 @@ const state = {
   watchlistMode: "movie",
   dismissedMode: "movie",
   recsMode:      "movie",
+  booksMode:     "discover",
+  booksRead:     new Set(),
+  booksWishlist: new Set(),
   watchlistCat:  "all",   // "all" | "must_see" | "not_sure" | "last_resort"
   diaryView:     "grid",  // "grid" | "timeline"
   // Combined множества — содержат обе типа сразу (фильмы И сериалы)
@@ -36,6 +39,9 @@ const state = {
     // Кэш главной страницы — возврат на вкладку Обзор мгновенный.
     // TTL 60с: после возвращаем кэш и параллельно обновляем в фоне.
     homepage:  { ts: 0, movies: null, tv: null, recs: null, recsTv: null },
+    booksPopular:      null,
+    booksReadData:     null,
+    booksWishlistData: null,
   },
   user: null,  // { id, username, display_name }
 };
@@ -235,6 +241,7 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
     if (tab === "actors")    loadActors();
     if (tab === "suggest")   initSuggestTab();
     if (tab === "profile")   loadProfile();
+    if (tab === "books")     loadBooksTab();
     // Скрываем тултип рейтинговых баров при смене вкладки
     const bt = document.getElementById("bar-tooltip");
     if (bt) bt.classList.remove("visible");
@@ -2714,6 +2721,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const cached = state.cache.watched[state.watchedMode];
     if (cached) applyDiaryFilters(cached);
   }, 300));
+
+  // ── Книги: переключение режимов и поиск ──────────────────────────────────
+  document.querySelectorAll(".books-mode-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      switchBooksMode(btn.dataset.mode);
+      if (btn.dataset.mode === "discover") loadBooksPopular();
+      else if (btn.dataset.mode === "read") loadBooksReadView();
+      else loadBooksWishlistView();
+    });
+  });
+
+  const booksSearchInput = $("books-search-input");
+  if (booksSearchInput) {
+    booksSearchInput.addEventListener("input", debounce(e => {
+      if (state.booksMode === "discover") searchBooks(e.target.value.trim());
+    }, 400));
+  }
 });
 
 // ─── Запуск ────────────────────────────────────────────────────────────────
@@ -3638,4 +3662,292 @@ function renderDismissed(items) {
 
     grid.appendChild(card);
   });
+}
+
+// ─── Книги ─────────────────────────────────────────────────────────────────
+
+function switchBooksMode(mode) {
+  state.booksMode = mode;
+  document.querySelectorAll(".books-mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+  $("books-discover-view").style.display = mode === "discover" ? "" : "none";
+  $("books-read-view").style.display     = mode === "read"     ? "" : "none";
+  $("books-wishlist-view").style.display = mode === "wishlist" ? "" : "none";
+  $("books-search-row").style.display    = mode === "discover" ? "" : "none";
+}
+
+async function loadBooksTab() {
+  switchBooksMode(state.booksMode);
+  if (state.booksMode === "discover") loadBooksPopular();
+  else if (state.booksMode === "read") loadBooksReadView();
+  else loadBooksWishlistView();
+}
+
+async function loadBooksPopular() {
+  if (state.cache.booksPopular) {
+    renderBookCards($("books-popular-grid"), state.cache.booksPopular);
+    return;
+  }
+  $("books-popular-grid").innerHTML = `<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ КНИГИ</div></div>`;
+  try {
+    const books = await apiFetch("/books/popular");
+    state.cache.booksPopular = books;
+    renderBookCards($("books-popular-grid"), books);
+  } catch {
+    $("books-popular-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
+}
+
+async function searchBooks(q) {
+  if (!q.trim()) { loadBooksPopular(); return; }
+  $("books-popular-grid").innerHTML = `<div class="loader">Ищем «${q}»…</div>`;
+  try {
+    const books = await apiFetch(`/books/search?q=${encodeURIComponent(q)}`);
+    renderBookCards($("books-popular-grid"), books);
+  } catch {
+    $("books-popular-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ничего не найдено</p></div>`;
+  }
+}
+
+function renderBookCards(container, books) {
+  container.innerHTML = "";
+  if (!books?.length) {
+    container.innerHTML = `<div class="empty-state"><span class="empty-icon">📚</span><p>Ничего не найдено</p></div>`;
+    return;
+  }
+  books.forEach((book, index) => {
+    const card = document.createElement("div");
+    card.className = "movie-card book-card";
+    card.style.animationDelay = `${Math.min(index, 20) * 40}ms`;
+    const year = (book.published_date || book.publishedDate || "").slice(0, 4) || "—";
+    const isRead     = state.booksRead.has(book.id) || book.is_read;
+    const isWishlist = state.booksWishlist.has(book.id) || book.is_wishlist;
+    const userRating = book.user_rating;
+    const googleRating = book.rating ? `⭐ ${Number(book.rating).toFixed(1)}` : "";
+
+    card.innerHTML = `
+      ${userRating ? `<div class="user-rating-badge">${userRating}</div>` : ""}
+      ${book.cover
+        ? `<img class="movie-poster" src="${book.cover}" alt="${book.title}" loading="lazy" />`
+        : `<div class="no-poster"><span class="no-poster-icon">📖</span>${book.title}</div>`}
+      <button class="watched-btn book-read-btn ${isRead ? "is-watched" : ""}" title="${isRead ? "Убрать из прочитанного" : "Отметить прочитанной"}">✓</button>
+      <button class="watch-btn book-wish-btn ${isWishlist ? "is-watch" : ""}" title="${isWishlist ? "Убрать из списка" : "Хочу прочитать"}">🔖</button>
+      <div class="movie-info">
+        <div class="movie-title">${book.title}</div>
+        <div class="movie-meta">
+          <span class="book-author">${book.author || "—"}</span>
+          <span class="movie-year">${year}</span>
+        </div>
+        ${googleRating ? `<div class="book-grating">${googleRating} <span class="imdb-votes">${book.ratings_count ? `· ${(book.ratings_count/1000).toFixed(0)}K` : ""}</span></div>` : ""}
+      </div>
+    `;
+
+    card.addEventListener("click", e => {
+      if (e.target.closest(".book-read-btn,.book-wish-btn")) return;
+      openBookModal(book);
+    });
+
+    card.querySelector(".book-read-btn").addEventListener("click", e => {
+      e.stopPropagation();
+      toggleBookRead(book.id, card.querySelector(".book-read-btn"), book, card);
+    });
+    card.querySelector(".book-wish-btn").addEventListener("click", e => {
+      e.stopPropagation();
+      toggleBookWishlist(book.id, card.querySelector(".book-wish-btn"), book);
+    });
+
+    container.appendChild(card);
+  });
+}
+
+async function toggleBookRead(bookId, btn, book, card) {
+  const isRead = state.booksRead.has(bookId);
+  if (isRead) {
+    state.booksRead.delete(bookId);
+    btn.classList.remove("is-watched");
+    state.cache.booksReadData = null;
+    updateBooksCount();
+    try { await apiFetch(`/books/read/${bookId}`, { method: "DELETE" }); }
+    catch { state.booksRead.add(bookId); btn.classList.add("is-watched"); }
+  } else {
+    state.booksRead.add(bookId);
+    btn.classList.add("is-watched");
+    state.cache.booksReadData = null;
+    updateBooksCount();
+    try {
+      await apiFetch("/books/read", { method: "POST", body: JSON.stringify({ book_id: bookId }) });
+      toast(`«${book.title}» прочитана`, "success");
+    } catch(err) {
+      if (err?.detail && err.detail.includes("Уже")) return;
+      state.booksRead.delete(bookId); btn.classList.remove("is-watched"); updateBooksCount();
+    }
+  }
+}
+
+async function toggleBookWishlist(bookId, btn, book) {
+  const isWish = state.booksWishlist.has(bookId);
+  if (isWish) {
+    state.booksWishlist.delete(bookId);
+    btn.classList.remove("is-watch");
+    state.cache.booksWishlistData = null;
+    try { await apiFetch(`/books/wishlist/${bookId}`, { method: "DELETE" }); }
+    catch { state.booksWishlist.add(bookId); btn.classList.add("is-watch"); }
+  } else {
+    state.booksWishlist.add(bookId);
+    btn.classList.add("is-watch");
+    state.cache.booksWishlistData = null;
+    try {
+      await apiFetch("/books/wishlist", { method: "POST", body: JSON.stringify({ book_id: bookId }) });
+      toast(`«${book.title}» добавлена в список`, "success");
+    } catch(err) {
+      if (err?.detail && err.detail.includes("Уже")) return;
+      state.booksWishlist.delete(bookId); btn.classList.remove("is-watch");
+    }
+  }
+}
+
+function updateBooksCount() {
+  const el  = $("books-read-count");
+  const el2 = $("books-read-count-tab");
+  if (el)  el.textContent  = state.booksRead.size;
+  if (el2) el2.textContent = state.booksRead.size;
+  const we = $("books-wishlist-count-tab");
+  if (we)  we.textContent  = state.booksWishlist.size;
+}
+
+async function loadBooksReadView() {
+  const grid = $("books-read-grid");
+  if (state.cache.booksReadData) { renderBookCards(grid, state.cache.booksReadData); return; }
+  grid.innerHTML = `<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>`;
+  try {
+    const books = await apiFetch("/books/read");
+    state.cache.booksReadData = books;
+    state.booksRead = new Set(books.map(b => b.book_id));
+    updateBooksCount();
+    if (!books.length) {
+      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">📖</span><p>Ещё не добавил прочитанных книг</p></div>`;
+      return;
+    }
+    renderBookCards(grid, books.map(b => ({ ...b, id: b.book_id })));
+  } catch {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
+}
+
+async function loadBooksWishlistView() {
+  const grid = $("books-wishlist-grid");
+  if (state.cache.booksWishlistData) { renderBookCards(grid, state.cache.booksWishlistData); return; }
+  grid.innerHTML = `<div class="fun-loader"><div class="fun-piano"><div class="fun-monkey">🐵</div><div class="fun-shadow"></div><div class="fun-dots"><span></span><span></span><span></span></div></div><div class="fun-text">ЗАГРУЖАЕМ</div></div>`;
+  try {
+    const books = await apiFetch("/books/wishlist");
+    state.cache.booksWishlistData = books;
+    state.booksWishlist = new Set(books.map(b => b.book_id));
+    updateBooksCount();
+    if (!books.length) {
+      grid.innerHTML = `<div class="empty-state"><span class="empty-icon">📚</span><p>Список пуст</p></div>`;
+      return;
+    }
+    renderBookCards(grid, books.map(b => ({ ...b, id: b.book_id })));
+  } catch {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠</span><p>Ошибка загрузки</p></div>`;
+  }
+}
+
+async function openBookModal(book) {
+  $("modal-overlay").classList.add("open");
+  document.body.style.overflow = "hidden";
+  $("similar-section").style.display = "none";
+  $("modal-content").innerHTML = `<div style="height:400px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Загружаем…</div>`;
+  try {
+    const details = await apiFetch(`/books/${book.id}/details`);
+    renderBookModalContent(details);
+    apiFetch(`/books/${book.id}/similar`).then(similar => {
+      if (!similar?.length) return;
+      $("similar-section").style.display = "";
+      $("similar-section").querySelector(".similar-title").textContent = "Похожие книги";
+      const sg = $("similar-grid");
+      sg.innerHTML = "";
+      similar.slice(0, 8).forEach(b => {
+        const div = document.createElement("div");
+        div.className = "similar-card";
+        div.innerHTML = `
+          ${b.cover ? `<img class="similar-poster" src="${b.cover}" loading="lazy"/>` : `<div class="similar-no-poster">📖</div>`}
+          <div class="similar-title-text">${b.title}</div>
+          <div class="similar-year">${b.author || ""}</div>`;
+        div.addEventListener("click", () => openBookModal(b));
+        sg.appendChild(div);
+      });
+    }).catch(() => {});
+  } catch {
+    renderBookModalContent(book);
+  }
+}
+
+function renderBookModalContent(book) {
+  const year = (book.published_date || "").slice(0, 4) || "—";
+  const isRead     = state.booksRead.has(book.id) || book.is_read;
+  const isWishlist = state.booksWishlist.has(book.id) || book.is_wishlist;
+  const googleRating = book.rating ? `⭐ ${Number(book.rating).toFixed(1)} / 5` : "";
+  const genres = (book.genres || []).slice(0, 4).join(", ");
+
+  $("modal-content").innerHTML = `
+    <div class="modal-body">
+      <div class="modal-poster-col">
+        ${book.cover
+          ? `<img class="modal-poster" src="${book.cover.replace('zoom=2','zoom=3')}" alt="${book.title}" />`
+          : `<div class="modal-no-poster">📖</div>`}
+      </div>
+      <div class="modal-info-col">
+        <h2 class="modal-title">${book.title}</h2>
+        ${book.author ? `<div class="modal-director">✍️ ${book.author}</div>` : ""}
+        <div class="modal-meta-row">
+          ${year !== "—" ? `<span class="modal-year">${year}</span>` : ""}
+          ${book.page_count ? `<span class="modal-runtime">${book.page_count} стр.</span>` : ""}
+          ${book.publisher ? `<span class="modal-country">${book.publisher}</span>` : ""}
+        </div>
+        ${googleRating ? `<div class="modal-ratings-row"><span class="imdb-badge">Google Books</span><span class="imdb-rating">${googleRating}</span>${book.ratings_count ? `<span class="imdb-votes">${(book.ratings_count/1000).toFixed(1)}K оценок</span>` : ""}</div>` : ""}
+        ${genres ? `<div class="modal-genres">${genres.split(", ").map(g => `<span class="genre-tag">${g}</span>`).join("")}</div>` : ""}
+        ${book.description ? `<p class="modal-overview">${book.description.slice(0, 600)}${book.description.length > 600 ? "…" : ""}</p>` : ""}
+        <div class="modal-actions" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="modal-book-read-btn ${isRead ? "is-watched active-btn" : ""}" data-id="${book.id}">
+            ${isRead ? "✓ Прочитана" : "✓ Прочитал"}
+          </button>
+          <button class="modal-book-wish-btn ${isWishlist ? "is-watch active-btn" : ""}" data-id="${book.id}">
+            ${isWishlist ? "🔖 В списке" : "🔖 Хочу прочитать"}
+          </button>
+        </div>
+        ${isRead ? renderBookRatingHTML(book) : ""}
+      </div>
+    </div>
+  `;
+
+  $("modal-content").querySelector(".modal-book-read-btn").addEventListener("click", async function() {
+    const wasRead = state.booksRead.has(book.id) || book.is_read;
+    await toggleBookRead(book.id, { classList: { add: () => {}, remove: () => {}, contains: () => wasRead } }, book, null);
+    openBookModal({ ...book, is_read: !wasRead });
+  });
+  $("modal-content").querySelector(".modal-book-wish-btn").addEventListener("click", async function() {
+    const wasWish = state.booksWishlist.has(book.id) || book.is_wishlist;
+    await toggleBookWishlist(book.id, { classList: { add: () => {}, remove: () => {}, contains: () => wasWish } }, book);
+    openBookModal({ ...book, is_wishlist: !wasWish });
+  });
+
+  $("modal-content").querySelectorAll(".rating-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const rating = parseInt(btn.dataset.r);
+      try {
+        await apiFetch("/books/read/rate", { method: "POST", body: JSON.stringify({ book_id: book.id, rating }) });
+        state.cache.booksReadData = null;
+        openBookModal({ ...book, is_read: true, user_rating: rating });
+        toast("Оценка сохранена", "success");
+      } catch {}
+    });
+  });
+}
+
+function renderBookRatingHTML(book) {
+  const cur = book.user_rating;
+  const btns = Array.from({length: 10}, (_, i) => i + 1).map(r =>
+    `<button class="rating-btn ${cur === r ? "active" : ""}" data-r="${r}">${r}</button>`
+  ).join("");
+  return `<div class="rating-row" style="margin-top:12px"><span class="rating-label">Твоя оценка:</span><div class="rating-btns">${btns}</div></div>`;
 }

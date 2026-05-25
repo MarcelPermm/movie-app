@@ -618,3 +618,214 @@ def is_favorite_actor(actor_id: int, user_id: int = 1) -> bool:
         return cur.fetchone() is not None
     finally:
         conn.close()
+
+
+# ─── Книги ────────────────────────────────────────────────────────────────────
+
+def init_books_tables():
+    """Создаёт таблицы books_read и books_wishlist если их нет."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS books_read (
+                id             SERIAL PRIMARY KEY,
+                user_id        INTEGER NOT NULL DEFAULT 1,
+                book_id        TEXT    NOT NULL,
+                title          TEXT    NOT NULL,
+                author         TEXT,
+                cover          TEXT,
+                genres         TEXT DEFAULT '[]',
+                page_count     INTEGER,
+                published_date TEXT,
+                user_rating    INTEGER DEFAULT NULL,
+                review         TEXT DEFAULT NULL,
+                added_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, book_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS books_wishlist (
+                id       SERIAL PRIMARY KEY,
+                user_id  INTEGER NOT NULL DEFAULT 1,
+                book_id  TEXT    NOT NULL,
+                title    TEXT    NOT NULL,
+                author   TEXT,
+                cover    TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, book_id)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_books_read_user     ON books_read     (user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_books_wishlist_user ON books_wishlist (user_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_books_read(user_id: int = 1) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM books_read WHERE user_id = %s ORDER BY added_at DESC",
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        result = []
+        for row in rows:
+            m = dict(row)
+            m["genres"] = _parse_list(m.get("genres"))
+            result.append(m)
+        return result
+    finally:
+        conn.close()
+
+
+def add_book_read(book: dict, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO books_read (user_id, book_id, title, author, cover, genres, page_count, published_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, book_id) DO NOTHING
+        """, (
+            user_id,
+            book["id"],
+            book.get("title", ""),
+            book.get("author", ""),
+            book.get("cover", ""),
+            json.dumps(book.get("genres", [])),
+            book.get("page_count"),
+            book.get("published_date", ""),
+        ))
+        inserted = cur.rowcount > 0
+        conn.commit()
+        return inserted
+    finally:
+        conn.close()
+
+
+def rate_book(book_id: str, rating: int, review: str = None, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE books_read SET user_rating = %s, review = %s WHERE book_id = %s AND user_id = %s",
+            (rating, review, book_id, user_id)
+        )
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
+def remove_book_read(book_id: str, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM books_read WHERE book_id = %s AND user_id = %s",
+            (book_id, user_id)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def is_book_read(book_id: str, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM books_read WHERE book_id = %s AND user_id = %s",
+            (book_id, user_id)
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def get_book_read_entry(book_id: str, user_id: int = 1):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM books_read WHERE book_id = %s AND user_id = %s",
+            (book_id, user_id)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        m = dict(row)
+        m["genres"] = _parse_list(m.get("genres"))
+        return m
+    finally:
+        conn.close()
+
+
+def get_books_wishlist(user_id: int = 1) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM books_wishlist WHERE user_id = %s ORDER BY added_at DESC",
+            (user_id,)
+        )
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def add_book_wishlist(book: dict, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO books_wishlist (user_id, book_id, title, author, cover)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, book_id) DO NOTHING
+        """, (
+            user_id,
+            book["id"],
+            book.get("title", ""),
+            book.get("author", ""),
+            book.get("cover", ""),
+        ))
+        inserted = cur.rowcount > 0
+        conn.commit()
+        return inserted
+    finally:
+        conn.close()
+
+
+def remove_book_wishlist(book_id: str, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM books_wishlist WHERE book_id = %s AND user_id = %s",
+            (book_id, user_id)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def is_book_wishlist(book_id: str, user_id: int = 1) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM books_wishlist WHERE book_id = %s AND user_id = %s",
+            (book_id, user_id)
+        )
+        return cur.fetchone() is not None
+    finally:
+        conn.close()

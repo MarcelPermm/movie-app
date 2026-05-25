@@ -13,8 +13,10 @@ import imdb_loader
 
 load_dotenv()
 
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-TMDB_BASE    = "https://api.themoviedb.org/3"
+TMDB_API_KEY      = os.getenv("TMDB_API_KEY")
+TMDB_BASE         = "https://api.themoviedb.org/3"
+GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY")
+GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1"
 
 app = FastAPI(title="Movie Recommender API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -62,6 +64,7 @@ TV_NETWORKS = [
 async def startup():
     database.init_db()
     database.init_imdb_map_table()
+    database.init_books_tables()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -87,6 +90,50 @@ async def tmdb_get(path: str, **params) -> dict:
         )
         r.raise_for_status()
         return r.json()
+
+
+# ─── Google Books helpers ─────────────────────────────────────────────────────
+
+async def books_get(path: str, **params) -> dict:
+    async with httpx.AsyncClient() as client:
+        p = {**params}
+        if GOOGLE_BOOKS_API_KEY:
+            p["key"] = GOOGLE_BOOKS_API_KEY
+        r = await client.get(f"{GOOGLE_BOOKS_BASE}{path}", params=p, timeout=15)
+        r.raise_for_status()
+        return r.json()
+
+
+def normalize_book(item: dict) -> dict:
+    vi = item.get("volumeInfo", {})
+    # cover: prefer https, zoom=2 for larger thumbnail
+    cover = ""
+    img = vi.get("imageLinks", {})
+    raw = img.get("thumbnail") or img.get("smallThumbnail") or ""
+    if raw:
+        cover = raw.replace("http://", "https://")
+        if "zoom=" not in cover:
+            cover += "&zoom=2" if "?" in cover else "?zoom=2"
+        else:
+            cover = cover.replace("zoom=1", "zoom=2")
+    return {
+        "id":             item.get("id", ""),
+        "title":          vi.get("title", "Без названия"),
+        "author":         ", ".join(vi.get("authors") or []),
+        "cover":          cover,
+        "description":    vi.get("description", ""),
+        "rating":         vi.get("averageRating"),
+        "ratings_count":  vi.get("ratingsCount"),
+        "page_count":     vi.get("pageCount"),
+        "published_date": vi.get("publishedDate", ""),
+        "genres":         vi.get("categories") or [],
+        "language":       vi.get("language", ""),
+        "publisher":      vi.get("publisher", ""),
+    }
+
+
+_books_cache: dict = {}
+_BOOKS_TTL = 3600
 
 
 # ─── Утилиты ──────────────────────────────────────────────────────────────────
@@ -721,6 +768,170 @@ async def dismiss_movie(req: DismissRequest):
 async def undismiss_movie(movie_id: int, media_type: str = "movie", user_id: int = 1):
     database.remove_dismissed(movie_id, media_type, user_id)
     return {"message": "Возвращено"}
+
+
+# ─── Книги ────────────────────────────────────────────────────────────────────
+
+class BookReadRequest(BaseModel):
+    book_id: str
+    user_id: int = 1
+
+class BookRateRequest(BaseModel):
+    book_id: str
+    rating:  int
+    review:  Optional[str] = None
+    user_id: int = 1
+
+class BookWishlistRequest(BaseModel):
+    book_id: str
+    user_id: int = 1
+
+
+@app.get("/books/popular")
+async def books_popular(user_id: int = 1):
+    now = _time.time()
+    cached = _books_cache.get("popular")
+    if cached and now - cached[0] < _BOOKS_TTL:
+        items = cached[1]
+    else:
+        queries = [
+            "bestseller fiction novel",
+            "award winning thriller",
+            "classic literature must read",
+        ]
+        results = await asyncio.gather(
+            *[books_get("/volumes", q=q, maxResults=20, orderBy="relevance") for q in queries],
+            return_exceptions=True,
+        )
+        seen: set = set()
+        items = []
+        for res in results:
+            if isinstance(res, Exception):
+                continue
+            for item in res.get("items", []):
+                bid = item.get("id")
+                if not bid or bid in seen:
+                    continue
+                b = normalize_book(item)
+                vi = item.get("volumeInfo", {})
+                if b["cover"] and (b["description"] or vi.get("description")):
+                    seen.add(bid)
+                    items.append(b)
+        _books_cache["popular"] = (now, items)
+
+    read_ids    = {r["book_id"] for r in database.get_books_read(user_id)}
+    wish_ids    = {w["book_id"] for w in database.get_books_wishlist(user_id)}
+    return [{**b, "is_read": b["id"] in read_ids, "is_wishlist": b["id"] in wish_ids} for b in items]
+
+
+@app.get("/books/search")
+async def books_search(q: str = "", user_id: int = 1):
+    if not q.strip():
+        raise HTTPException(400, "Пустой запрос")
+    data = await books_get("/volumes", q=q, maxResults=20)
+    items = [normalize_book(i) for i in data.get("items", [])]
+    read_ids = {r["book_id"] for r in database.get_books_read(user_id)}
+    wish_ids = {w["book_id"] for w in database.get_books_wishlist(user_id)}
+    return [{**b, "is_read": b["id"] in read_ids, "is_wishlist": b["id"] in wish_ids} for b in items]
+
+
+@app.get("/books/read")
+async def get_books_read(user_id: int = 1):
+    return database.get_books_read(user_id)
+
+
+@app.post("/books/read")
+async def add_book_read(req: BookReadRequest):
+    try:
+        data = await books_get(f"/volumes/{req.book_id}")
+        book = normalize_book(data)
+    except Exception:
+        raise HTTPException(404, "Книга не найдена в Google Books")
+    added = database.add_book_read(book, req.user_id)
+    if not added:
+        raise HTTPException(409, "Уже в прочитанных")
+    return {"message": f"«{book['title']}» добавлена в прочитанные"}
+
+
+@app.post("/books/read/rate")
+async def rate_book(req: BookRateRequest):
+    if not 1 <= req.rating <= 10:
+        raise HTTPException(400, "Оценка от 1 до 10")
+    # auto-add if not read yet
+    if not database.is_book_read(req.book_id, req.user_id):
+        try:
+            data = await books_get(f"/volumes/{req.book_id}")
+            book = normalize_book(data)
+            database.add_book_read(book, req.user_id)
+        except Exception:
+            raise HTTPException(404, "Книга не найдена")
+    if not database.rate_book(req.book_id, req.rating, req.review, req.user_id):
+        raise HTTPException(404, "Не найдено в прочитанных")
+    return {"message": "Оценка сохранена"}
+
+
+@app.delete("/books/read/{book_id}")
+async def remove_book_read(book_id: str, user_id: int = 1):
+    if not database.remove_book_read(book_id, user_id):
+        raise HTTPException(404, "Не найдено")
+    return {"message": "Удалено"}
+
+
+@app.get("/books/wishlist")
+async def get_books_wishlist(user_id: int = 1):
+    return database.get_books_wishlist(user_id)
+
+
+@app.post("/books/wishlist")
+async def add_book_wishlist(req: BookWishlistRequest):
+    try:
+        data = await books_get(f"/volumes/{req.book_id}")
+        book = normalize_book(data)
+    except Exception:
+        raise HTTPException(404, "Книга не найдена в Google Books")
+    added = database.add_book_wishlist(book, req.user_id)
+    if not added:
+        raise HTTPException(409, "Уже в списке")
+    return {"message": f"«{book['title']}» добавлена в список"}
+
+
+@app.delete("/books/wishlist/{book_id}")
+async def remove_book_wishlist(book_id: str, user_id: int = 1):
+    if not database.remove_book_wishlist(book_id, user_id):
+        raise HTTPException(404, "Не найдено")
+    return {"message": "Удалено"}
+
+
+@app.get("/books/{book_id}/details")
+async def book_details(book_id: str, user_id: int = 1):
+    try:
+        data = await books_get(f"/volumes/{book_id}")
+        book = normalize_book(data)
+    except Exception:
+        raise HTTPException(404, "Книга не найдена")
+    entry = database.get_book_read_entry(book_id, user_id)
+    book["is_read"]      = entry is not None
+    book["is_wishlist"]  = database.is_book_wishlist(book_id, user_id)
+    book["user_rating"]  = entry["user_rating"] if entry else None
+    book["review"]       = entry["review"] if entry else None
+    return book
+
+
+@app.get("/books/{book_id}/similar")
+async def book_similar(book_id: str):
+    try:
+        data  = await books_get(f"/volumes/{book_id}")
+        vi    = data.get("volumeInfo", {})
+        cats  = vi.get("categories") or []
+        authors = vi.get("authors") or []
+        q = cats[0] if cats else (authors[0] if authors else "")
+        if not q:
+            return []
+        res = await books_get("/volumes", q=q, maxResults=12)
+        items = [normalize_book(i) for i in res.get("items", []) if i.get("id") != book_id]
+        return [b for b in items if b["cover"]][:8]
+    except Exception:
+        return []
 
 
 # ─── Рекомендации ─────────────────────────────────────────────────────────────

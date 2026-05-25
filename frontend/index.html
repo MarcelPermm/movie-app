@@ -32,6 +32,7 @@
       <button class="nav-btn" data-tab="watched">Дневник <span class="fav-count" id="watch-count">0</span></button>
       <button class="nav-btn" data-tab="watchlist">К просмотру <span class="fav-count" id="watchlist-count">0</span></button>
       <button class="nav-btn" data-tab="dismissed">Отклонённые <span class="fav-count" id="dismissed-count">0</span></button>
+      <button class="nav-btn" data-tab="books">📚 Книги <span class="fav-count" id="books-read-count">0</span></button>
       <button class="nav-btn" data-tab="actors">Актёры</button>
       <button class="nav-btn" data-tab="recommendations">Рекомендации</button>
       <button class="nav-btn" data-tab="suggest">✦ Посоветуй</button>
@@ -279,6 +280,35 @@
     <section class="tab" id="tab-profile">
       <div id="profile-content">
         <div class="loader">Загружаем профиль…</div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-books">
+      <div class="section-header">
+        <div class="section-title-row">
+          <h2 class="section-title">📚 Книги</h2>
+        </div>
+        <div class="books-search-row" id="books-search-row">
+          <input type="text" id="books-search-input" class="filter-input" placeholder="🔍 Найти книгу или автора…" />
+        </div>
+        <div class="books-mode-tabs">
+          <button class="books-mode-btn active" data-mode="discover">Открытие</button>
+          <button class="books-mode-btn" data-mode="read">Прочитанные <span class="fav-count" id="books-read-count-tab">0</span></button>
+          <button class="books-mode-btn" data-mode="wishlist">Хочу прочитать <span class="fav-count" id="books-wishlist-count-tab">0</span></button>
+        </div>
+      </div>
+      <div id="books-discover-view">
+        <div class="movies-grid" id="books-popular-grid"></div>
+      </div>
+      <div id="books-read-view" style="display:none">
+        <div class="movies-grid" id="books-read-grid">
+          <div class="empty-state"><span class="empty-icon">📖</span><p>Ещё не добавил прочитанных книг</p></div>
+        </div>
+      </div>
+      <div id="books-wishlist-view" style="display:none">
+        <div class="movies-grid" id="books-wishlist-grid">
+          <div class="empty-state"><span class="empty-icon">📚</span><p>Список пуст</p></div>
+        </div>
       </div>
     </section>
 

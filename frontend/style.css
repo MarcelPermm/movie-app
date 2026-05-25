@@ -3647,3 +3647,30 @@ body.theme-mono .plat-other-input,
 body.theme-mono .plat-filter-input {
   background: var(--mono-paper); border-color: var(--mono-border); color: var(--mono-ink);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   КНИГИ
+══════════════════════════════════════════════════════════════ */
+.books-mode-tabs {
+  display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px;
+}
+.books-mode-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 30px;
+  border: 1.5px solid var(--border); background: var(--surface);
+  color: var(--text-dim); font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.books-mode-btn:hover { color: var(--text); border-color: var(--text-dim); }
+.books-mode-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); font-weight: 700; }
+.books-search-row { margin: 4px 0 8px; }
+.books-search-row .filter-input { max-width: 360px; }
+.book-author { color: var(--text-dim); font-size: 11px; }
+.book-grating { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+body.theme-mono .books-mode-btn { border-color: var(--mono-border); color: var(--mono-ink-mid); background: transparent; }
+body.theme-mono .books-mode-btn.active { border-color: var(--mono-red); color: var(--mono-red); background: rgba(200,0,0,0.06); }
+.modal-book-read-btn { flex: 1; padding: 12px; background: rgba(76,172,112,0.1); border: 1px solid #2a6a46; border-radius: 10px; color: var(--green); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.25s; }
+.modal-book-read-btn:hover, .modal-book-read-btn.is-watched { background: rgba(76,172,112,0.25); border-color: var(--green); }
+.modal-book-wish-btn { flex: 1; padding: 12px; background: rgba(201,168,76,0.1); border: 1px solid var(--gold-dim); border-radius: 10px; color: var(--gold); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.25s; }
+.modal-book-wish-btn:hover, .modal-book-wish-btn.is-watch { background: rgba(201,168,76,0.25); border-color: var(--gold); }
