@@ -4101,7 +4101,7 @@ function renderBookModalContent(book) {
       closeModal();
       openBooksTab("discover");
       const inp = $("books-search-input");
-      if (inp) { inp.value = book.author; searchBooks(book.author); }
+      if (inp) { inp.value = book.author; searchBooks(`inauthor:"${book.author}"`); }
     });
   }
 

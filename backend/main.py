@@ -828,7 +828,7 @@ async def books_popular(user_id: int = 1):
 async def books_search(q: str = "", user_id: int = 1):
     if not q.strip():
         raise HTTPException(400, "Пустой запрос")
-    data = await books_get("/volumes", q=q, maxResults=20)
+    data = await books_get("/volumes", q=q, maxResults=20, printType="books", orderBy="relevance")
     items = [normalize_book(i) for i in data.get("items", [])]
     read_ids = {r["book_id"] for r in database.get_books_read(user_id)}
     wish_ids = {w["book_id"] for w in database.get_books_wishlist(user_id)}
