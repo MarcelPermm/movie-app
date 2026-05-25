@@ -1320,18 +1320,18 @@ function renderWatchlistCards(container, movies) {
         : `<div class="no-poster"><span class="no-poster-icon">🎬</span>${movie.title}</div>`}
       <button class="watched-btn ${isWatched ? "is-watched" : ""}" title="${isWatched ? "Убрать из просмотренного" : "Отметить просмотренным"}">✓</button>
       <button class="watch-btn is-watch" title="Убрать из списка">🕐</button>
-      <div class="wl-cat-chip ${catClass[cat]}" data-movie-id="${movieId}">
-        <div class="wl-cat-default">
-          <span class="wl-cat-label">${catLabels[cat]}</span>
-          <span class="wl-cat-arrow">▾</span>
-        </div>
-        <div class="wl-cat-picker">
-          <button class="wl-pick-btn ${cat === 'must_see'    ? 'active' : ''}" data-cat="must_see">🔥</button>
-          <button class="wl-pick-btn ${cat === 'not_sure'    ? 'active' : ''}" data-cat="not_sure">🤔</button>
-          <button class="wl-pick-btn ${cat === 'last_resort' ? 'active' : ''}" data-cat="last_resort">😴</button>
-        </div>
-      </div>
       <div class="movie-info">
+        <div class="wl-cat-chip ${catClass[cat]}" data-movie-id="${movieId}">
+          <div class="wl-cat-default">
+            <span class="wl-cat-label">${catLabels[cat]}</span>
+            <span class="wl-cat-arrow">▾</span>
+          </div>
+          <div class="wl-cat-picker">
+            <button class="wl-pick-btn ${cat === 'must_see'    ? 'active' : ''}" data-cat="must_see">🔥</button>
+            <button class="wl-pick-btn ${cat === 'not_sure'    ? 'active' : ''}" data-cat="not_sure">🤔</button>
+            <button class="wl-pick-btn ${cat === 'last_resort' ? 'active' : ''}" data-cat="last_resort">😴</button>
+          </div>
+        </div>
         <div class="movie-title">${movie.title}</div>
         <div class="movie-meta"><span class="movie-year">${year}</span></div>
         ${cardRatingsHTML(movie)}
