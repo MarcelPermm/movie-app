@@ -66,6 +66,10 @@ async def startup():
     database.init_imdb_map_table()
     database.init_books_tables()
     database.init_tasks_table()
+    database.init_lists_tables()
+    database.init_notes_table()
+    database.init_budget_tables()
+    database.init_trips_tables()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -1630,4 +1634,165 @@ async def remove_task(task_id: int, user_id: int = 1):
     database.delete_task(task_id, user_id)
     return {"ok": True}
 
-    return {"movies": results, "debug_ai": suggestions}
+
+# ─── Тетрадь: Списки ──────────────────────────────────────────────────────────
+
+class ListCreate(BaseModel):
+    name: str
+    emoji: str = "📋"
+
+class ListItemCreate(BaseModel):
+    title: str
+
+@app.get("/notebook/lists")
+async def get_lists(user_id: int = 1):
+    return database.get_lists(user_id)
+
+@app.post("/notebook/lists")
+async def create_list(req: ListCreate, user_id: int = 1):
+    return database.add_list(user_id, req.name, req.emoji)
+
+@app.delete("/notebook/lists/{list_id}")
+async def delete_list(list_id: int, user_id: int = 1):
+    database.delete_list(list_id, user_id)
+    return {"ok": True}
+
+@app.get("/notebook/lists/{list_id}/items")
+async def get_list_items(list_id: int, user_id: int = 1):
+    return database.get_list_items(list_id, user_id)
+
+@app.post("/notebook/lists/{list_id}/items")
+async def add_list_item(list_id: int, req: ListItemCreate, user_id: int = 1):
+    return database.add_list_item(list_id, user_id, req.title)
+
+@app.patch("/notebook/list-items/{item_id}")
+async def toggle_item(item_id: int, done: bool, user_id: int = 1):
+    return database.toggle_list_item(item_id, user_id, done)
+
+@app.delete("/notebook/list-items/{item_id}")
+async def delete_list_item(item_id: int, user_id: int = 1):
+    database.delete_list_item(item_id, user_id)
+    return {"ok": True}
+
+
+# ─── Тетрадь: Заметки ─────────────────────────────────────────────────────────
+
+class NoteCreate(BaseModel):
+    body: str = ""
+    title: str = ""
+    color: str = "yellow"
+
+class NoteUpdate(BaseModel):
+    body: Optional[str] = None
+    title: Optional[str] = None
+    color: Optional[str] = None
+
+@app.get("/notebook/notes")
+async def get_notes(user_id: int = 1):
+    return database.get_notes(user_id)
+
+@app.post("/notebook/notes")
+async def create_note(req: NoteCreate, user_id: int = 1):
+    return database.add_note(user_id, req.body, req.title, req.color)
+
+@app.patch("/notebook/notes/{note_id}")
+async def update_note(note_id: int, req: NoteUpdate, user_id: int = 1):
+    fields = {k: v for k, v in req.dict().items() if v is not None}
+    return database.update_note(note_id, user_id, **fields)
+
+@app.delete("/notebook/notes/{note_id}")
+async def delete_note(note_id: int, user_id: int = 1):
+    database.delete_note(note_id, user_id)
+    return {"ok": True}
+
+
+# ─── Тетрадь: Бюджет ──────────────────────────────────────────────────────────
+
+class BudgetCategoryCreate(BaseModel):
+    name: str
+    emoji: str = "💰"
+    plan_monthly: int = 0
+
+class BudgetCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    emoji: Optional[str] = None
+    plan_monthly: Optional[int] = None
+
+class BudgetExpenseCreate(BaseModel):
+    date: str
+    amount: int
+    category_id: Optional[int] = None
+    note: Optional[str] = None
+
+@app.get("/budget/categories")
+async def get_budget_categories(user_id: int = 1):
+    return database.get_budget_categories(user_id)
+
+@app.post("/budget/categories")
+async def create_budget_category(req: BudgetCategoryCreate, user_id: int = 1):
+    return database.add_budget_category(user_id, req.name, req.emoji, req.plan_monthly)
+
+@app.patch("/budget/categories/{cat_id}")
+async def update_budget_category(cat_id: int, req: BudgetCategoryUpdate, user_id: int = 1):
+    return database.update_budget_category(cat_id, user_id, req.name, req.emoji, req.plan_monthly)
+
+@app.delete("/budget/categories/{cat_id}")
+async def delete_budget_category(cat_id: int, user_id: int = 1):
+    database.delete_budget_category(cat_id, user_id)
+    return {"ok": True}
+
+@app.get("/budget/expenses")
+async def get_budget_expenses(year: int, month: int, user_id: int = 1):
+    return database.get_budget_expenses(user_id, year, month)
+
+@app.post("/budget/expenses")
+async def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
+    return database.add_budget_expense(user_id, req.date, req.amount, req.category_id, req.note)
+
+@app.delete("/budget/expenses/{exp_id}")
+async def delete_budget_expense(exp_id: int, user_id: int = 1):
+    database.delete_budget_expense(exp_id, user_id)
+    return {"ok": True}
+
+
+# ─── Тетрадь: Поездки ─────────────────────────────────────────────────────────
+
+class TripCreate(BaseModel):
+    name: str
+    emoji: str = "✈️"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    planned_total: int = 0
+
+class TripExpenseCreate(BaseModel):
+    date: str
+    amount: int
+    category: str = ""
+    note: str = ""
+    emoji: str = ""
+
+@app.get("/trips")
+async def get_trips(user_id: int = 1):
+    return database.get_trips(user_id)
+
+@app.post("/trips")
+async def create_trip(req: TripCreate, user_id: int = 1):
+    return database.add_trip(user_id, req.name, req.emoji, req.start_date, req.end_date, req.planned_total)
+
+@app.delete("/trips/{trip_id}")
+async def delete_trip(trip_id: int, user_id: int = 1):
+    database.delete_trip(trip_id, user_id)
+    return {"ok": True}
+
+@app.get("/trips/{trip_id}/expenses")
+async def get_trip_expenses(trip_id: int, user_id: int = 1):
+    return database.get_trip_expenses(trip_id, user_id)
+
+@app.post("/trips/{trip_id}/expenses")
+async def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 1):
+    return database.add_trip_expense(trip_id, user_id, req.date, req.amount, req.category, req.note, req.emoji)
+
+@app.delete("/trip-expenses/{exp_id}")
+async def delete_trip_expense(exp_id: int, user_id: int = 1):
+    database.delete_trip_expense(exp_id, user_id)
+    return {"ok": True}

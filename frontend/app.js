@@ -4378,3 +4378,755 @@ function initAddTaskBtn() {
 document.querySelectorAll(".spine-tab").forEach(btn => {
   btn.addEventListener("click", () => openNotebookTab(btn.dataset.ntab));
 });
+
+// ─── openNotebookTab: вызывает нужный загрузчик ──────────────────────────────
+const _nbLoaders = {
+  today:    () => loadNotebookToday(),
+  calendar: () => loadCalendar(),
+  budget:   () => loadBudget(),
+  trips:    () => loadTrips(),
+  lists:    () => loadLists(),
+  notes:    () => loadNotes(),
+};
+// Переопределяем openNotebookTab чтобы вызывать лоадер
+const _openNotebookTabBase = openNotebookTab;
+openNotebookTab = function(tab) {
+  state.activeNotebookTab = tab;
+  document.querySelectorAll(".ntab-panel").forEach(p => p.style.display = "none");
+  document.querySelectorAll(".spine-tab").forEach(b => b.classList.toggle("active", b.dataset.ntab === tab));
+  const panel = $(`ntab-${tab}`);
+  if (panel) panel.style.display = "";
+  if (_nbLoaders[tab]) _nbLoaders[tab]();
+};
+
+
+// ════════════════════════════════════════════════════════════════
+//  НЕДЕЛЯ — кликабельные дни
+// ════════════════════════════════════════════════════════════════
+
+function renderWeekGridClickable(tasks, todayStr) {
+  const grid = $("nb-week-grid");
+  if (!grid) return;
+  const realToday = new Date().toISOString().slice(0, 10);
+  const d   = new Date(todayStr + "T00:00:00");
+  const day = d.getDay();
+  const mon = new Date(d);
+  mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  const dayNames = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  grid.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const dt  = new Date(mon);
+    dt.setDate(mon.getDate() + i);
+    const ds  = dt.toISOString().slice(0, 10);
+    const isT = ds === realToday;
+    const isSel = ds === state.notebookDate;
+    const dayTasks = tasks.filter(t => String(t.date).slice(0,10) === ds).slice(0, 3);
+    const row = document.createElement("div");
+    row.className = `week-day-row${isSel ? " is-selected" : ""}`;
+    row.dataset.date = ds;
+    row.innerHTML = `
+      <div class="week-day-num ${isT ? "is-today" : ""}">${dt.getDate()}</div>
+      <div class="week-day-name">${dayNames[i]}</div>
+      <div class="week-day-tasks">
+        ${dayTasks.length
+          ? dayTasks.map(t => `<div class="week-task-dot ${t.status}">${t.title}</div>`).join("")
+          : `<div class="week-task-dot" style="opacity:.3">—</div>`}
+      </div>`;
+    row.addEventListener("click", () => switchNotebookDay(ds));
+    grid.appendChild(row);
+  }
+}
+
+async function switchNotebookDay(dateStr) {
+  state.notebookDate = dateStr;
+  const realToday = new Date().toISOString().slice(0, 10);
+  const isToday = dateStr === realToday;
+
+  // Обновляем заголовок
+  const titleEl = document.querySelector(".nb-page-today .nb-title");
+  if (titleEl) {
+    if (isToday) {
+      titleEl.textContent = "Сегодня";
+    } else {
+      const dt = new Date(dateStr + "T00:00:00");
+      const months = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+      titleEl.textContent = `${dt.getDate()} ${months[dt.getMonth()]}`;
+    }
+  }
+
+  // Подсвечиваем выбранный день в гриде
+  document.querySelectorAll(".week-day-row").forEach(r => {
+    r.classList.toggle("is-selected", r.dataset.date === dateStr);
+  });
+
+  // Загружаем задачи
+  const listEl = $("task-list-today");
+  if (listEl) listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  try {
+    const tasks = await apiFetch(`/tasks?date=${dateStr}`);
+    renderTodayTasks(tasks);
+    // Обновляем subtitle
+    const days   = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
+    const months = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+    const dt = new Date(dateStr + "T00:00:00");
+    const subtEl = $("nb-today-subtitle");
+    if (subtEl) subtEl.textContent = `${days[dt.getDay()]}, ${dt.getDate()} ${months[dt.getMonth()]}`;
+  } catch {}
+  initAddTaskBtn();
+}
+
+// Патчим loadNotebookToday чтобы использовать clickable grid
+const _loadNotebookTodayOrig = loadNotebookToday;
+loadNotebookToday = async function() {
+  const today = state.notebookDate;
+  const dateObj = new Date(today + "T00:00:00");
+  const days    = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
+  const months  = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  const subtitleEl = $("nb-today-subtitle");
+  if (subtitleEl) subtitleEl.textContent = `${days[dateObj.getDay()]}, ${dateObj.getDate()} ${months[dateObj.getMonth()]}`;
+  const realToday = new Date().toISOString().slice(0, 10);
+  const titleEl = document.querySelector(".nb-page-today .nb-title");
+  if (titleEl) titleEl.textContent = today === realToday ? "Сегодня" : (() => { const mo=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"]; return `${dateObj.getDate()} ${mo[dateObj.getMonth()]}`; })();
+  const listEl = $("task-list-today");
+  if (!listEl) return;
+  listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  try {
+    const [tasks, weekTasks] = await Promise.all([
+      apiFetch(`/tasks?date=${today}`),
+      loadWeekTasks(today),
+    ]);
+    renderTodayTasks(tasks);
+    renderWeekGridClickable(weekTasks, today);
+    initAddTaskBtn();
+  } catch {
+    listEl.innerHTML = `<div style="color:var(--nb-red);font-size:13px;padding:8px 0">Ошибка загрузки</div>`;
+  }
+};
+
+
+// ════════════════════════════════════════════════════════════════
+//  КАЛЕНДАРЬ
+// ════════════════════════════════════════════════════════════════
+
+const calState = { year: new Date().getFullYear(), month: new Date().getMonth() };
+
+async function loadCalendar() {
+  renderCalendarHeader();
+  const { year, month } = calState;
+  const first = new Date(year, month, 1);
+  const last  = new Date(year, month + 1, 0);
+  const fmt   = d => d.toISOString().slice(0, 10);
+  try {
+    const tasks = await apiFetch(`/tasks/week?date_from=${fmt(first)}&date_to=${fmt(last)}`);
+    renderCalendarGrid(tasks);
+  } catch { renderCalendarGrid([]); }
+}
+
+function renderCalendarHeader() {
+  const { year, month } = calState;
+  const months = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  const lbl = $("cal-month-label");
+  if (lbl) lbl.textContent = `${months[month]} ${year}`;
+}
+
+function renderCalendarGrid(tasks) {
+  const grid = $("cal-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  const { year, month } = calState;
+  const today = new Date().toISOString().slice(0, 10);
+  // First day of month (Monday-based)
+  const first = new Date(year, month, 1);
+  let startDay = first.getDay(); // 0=Sun
+  startDay = startDay === 0 ? 6 : startDay - 1; // shift to Mon=0
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrev  = new Date(year, month, 0).getDate();
+
+  // Fill grid: prev month tail + current + next month head
+  const cells = [];
+  for (let i = startDay - 1; i >= 0; i--) cells.push({ d: daysInPrev - i, m: month - 1, y: year, other: true });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ d, m: month, y: year, other: false });
+  while (cells.length % 7 !== 0) { cells.push({ d: cells.length - daysInMonth - startDay + 1, m: month + 1, y: year, other: true }); }
+
+  cells.forEach(({ d, m, y, other }) => {
+    const dt  = new Date(y, m, d);
+    const ds  = dt.toISOString().slice(0, 10);
+    const dayTasks = tasks.filter(t => String(t.date).slice(0,10) === ds);
+    const cell = document.createElement("div");
+    cell.className = `cal-cell${other ? " cal-other-month" : ""}${ds === today ? " cal-today" : ""}`;
+    const dots = dayTasks.map(t => `<div class="cal-dot ${t.status}"></div>`).join("");
+    cell.innerHTML = `<div class="cal-day-num">${d}</div><div class="cal-dots">${dots}</div>`;
+    cell.addEventListener("click", () => {
+      document.querySelectorAll(".cal-cell").forEach(c => c.classList.remove("cal-selected"));
+      cell.classList.add("cal-selected");
+      loadCalendarDayDetail(ds, dayTasks);
+    });
+    grid.appendChild(cell);
+  });
+}
+
+async function loadCalendarDayDetail(dateStr, cachedTasks) {
+  const detail = $("cal-day-detail");
+  if (!detail) return;
+  const dt = new Date(dateStr + "T00:00:00");
+  const days   = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
+  const months = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  detail.innerHTML = `
+    <div class="cal-day-detail-title">${dt.getDate()} ${months[dt.getMonth()]}</div>
+    <div class="cal-day-detail-sub">${days[dt.getDay()]}</div>
+    <div class="nb-ruled-area" style="padding-right:8px">
+      <div class="task-list" id="cal-task-list"></div>
+      <button class="task-add-btn" id="cal-add-task-btn"><span class="task-add-line">+ задача…</span></button>
+    </div>`;
+  try {
+    const tasks = cachedTasks && cachedTasks.length >= 0 ? cachedTasks : await apiFetch(`/tasks?date=${dateStr}`);
+    const listEl = $("cal-task-list");
+    listEl.innerHTML = "";
+    tasks.forEach(t => listEl.appendChild(buildTaskEl(t)));
+    if (!tasks.length) listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">нет задач</div>`;
+  } catch {}
+  // Add task button for calendar day
+  const addBtn = $("cal-add-task-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      addBtn.style.display = "none";
+      const form = document.createElement("div");
+      form.className = "task-add-form";
+      form.innerHTML = `<input class="task-add-input" placeholder="Новая задача…" />`;
+      addBtn.parentNode.insertBefore(form, addBtn.nextSibling);
+      const inp = form.querySelector("input");
+      inp.focus();
+      const submit = async () => {
+        const title = inp.value.trim();
+        form.remove(); addBtn.style.display = "";
+        if (!title) return;
+        try {
+          const task = await apiFetch("/tasks", { method: "POST", body: JSON.stringify({ title, date: dateStr }) });
+          $("cal-task-list").appendChild(buildTaskEl(task));
+        } catch {}
+      };
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") submit(); if (e.key === "Escape") { form.remove(); addBtn.style.display = ""; } });
+      inp.addEventListener("blur", () => setTimeout(() => { if (form.parentNode) { form.remove(); addBtn.style.display = ""; } }, 180));
+    });
+  }
+}
+
+// Calendar nav buttons (bind after DOM ready via delegation)
+document.addEventListener("click", e => {
+  if (e.target.id === "cal-prev") { calState.month--; if (calState.month < 0) { calState.month = 11; calState.year--; } loadCalendar(); }
+  if (e.target.id === "cal-next") { calState.month++; if (calState.month > 11) { calState.month = 0; calState.year++; } loadCalendar(); }
+});
+
+
+// ════════════════════════════════════════════════════════════════
+//  БЮДЖЕТ
+// ════════════════════════════════════════════════════════════════
+
+const budgetState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+
+async function loadBudget() {
+  renderBudgetHeader();
+  const { year, month } = budgetState;
+  try {
+    const [cats, expenses] = await Promise.all([
+      apiFetch("/budget/categories"),
+      apiFetch(`/budget/expenses?year=${year}&month=${month}`),
+    ]);
+    renderBudgetCategories(cats, expenses);
+    renderBudgetExpenses(expenses, cats);
+    renderBudgetSummary(cats, expenses);
+  } catch {}
+  initBudgetAddButtons();
+}
+
+function renderBudgetHeader() {
+  const months = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  const lbl = $("budget-month-label");
+  if (lbl) lbl.textContent = `${months[budgetState.month - 1]} ${budgetState.year}`;
+}
+
+function renderBudgetSummary(cats, expenses) {
+  const plan   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+  const actual = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const left   = plan - actual;
+  const el = $("budget-summary");
+  if (!el) return;
+  const pct = plan > 0 ? Math.min((actual / plan) * 100, 100) : 0;
+  el.innerHTML = `
+    <div class="budget-summary-nums">
+      <div class="budget-kpi"><span class="budget-kpi-label">ПЛАН</span><span class="budget-kpi-val">${plan.toLocaleString("ru")} ₽</span></div>
+      <div class="budget-kpi"><span class="budget-kpi-label">ФАКТ</span><span class="budget-kpi-val ${actual > plan ? "over" : ""}">${actual.toLocaleString("ru")} ₽</span></div>
+      <div class="budget-kpi"><span class="budget-kpi-label">${left >= 0 ? "ОСТАЛОСЬ" : "ПЕРЕРАСХОД"}</span><span class="budget-kpi-val ${left < 0 ? "over" : ""}">${Math.abs(left).toLocaleString("ru")} ₽</span></div>
+    </div>
+    <div class="budget-total-bar"><div class="budget-total-bar-fill ${actual > plan ? "over" : ""}" style="width:${pct}%"></div></div>`;
+}
+
+function renderBudgetCategories(cats, expenses) {
+  const el = $("budget-categories-list");
+  if (!el) return;
+  el.innerHTML = "";
+  cats.forEach(cat => {
+    const spent = expenses.filter(e => e.category_id === cat.id).reduce((s, e) => s + e.amount, 0);
+    const pct   = cat.plan_monthly > 0 ? Math.min((spent / cat.plan_monthly) * 100, 100) : (spent > 0 ? 100 : 0);
+    const over  = cat.plan_monthly > 0 && spent > cat.plan_monthly;
+    const row = document.createElement("div");
+    row.className = "budget-cat-row";
+    row.innerHTML = `
+      <span class="budget-cat-emoji">${cat.emoji}</span>
+      <span class="budget-cat-name">${cat.name}</span>
+      <div class="budget-cat-bar-wrap"><div class="budget-cat-bar ${over ? "over" : ""}" style="width:${pct}%"></div></div>
+      <span class="budget-cat-nums ${over ? "over" : ""}">${spent.toLocaleString("ru")}${cat.plan_monthly ? ` / ${cat.plan_monthly.toLocaleString("ru")}` : ""}</span>
+      <button class="budget-cat-delete" data-id="${cat.id}">×</button>`;
+    row.querySelector(".budget-cat-delete").addEventListener("click", async () => {
+      try { await apiFetch(`/budget/categories/${cat.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+    });
+    el.appendChild(row);
+  });
+}
+
+function renderBudgetExpenses(expenses, cats) {
+  const el = $("budget-expenses-list");
+  if (!el) return;
+  el.innerHTML = "";
+  if (!expenses.length) { el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`; return; }
+  expenses.forEach(exp => {
+    const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
+    const row = document.createElement("div");
+    row.className = "budget-exp-row";
+    row.innerHTML = `
+      <span class="budget-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
+      <div class="budget-exp-body">
+        <div class="budget-exp-note">${exp.note || "расход"}</div>
+        ${exp.cat_name ? `<div class="budget-exp-cat">${exp.cat_emoji || ""} ${exp.cat_name}</div>` : ""}
+      </div>
+      <span class="budget-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span>
+      <button class="budget-exp-delete" data-id="${exp.id}">×</button>`;
+    row.querySelector(".budget-exp-delete").addEventListener("click", async () => {
+      try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+    });
+    el.appendChild(row);
+  });
+}
+
+function initBudgetAddButtons() {
+  const catBtn = $("budget-add-cat-btn");
+  if (catBtn && !catBtn._init) {
+    catBtn._init = true;
+    catBtn.addEventListener("click", () => {
+      catBtn.style.display = "none";
+      const form = document.createElement("div");
+      form.className = "nb-inline-form";
+      form.innerHTML = `
+        <input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="💰" />
+        <input class="nb-inline-input lg" placeholder="Название…" />
+        <input class="nb-inline-input sm" placeholder="Бюджет ₽" type="number" min="0" />
+        <button class="nb-inline-btn">Добавить</button>`;
+      catBtn.parentNode.insertBefore(form, catBtn.nextSibling);
+      const [emojiI, nameI, planI] = form.querySelectorAll("input");
+      form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+        const name = nameI.value.trim(); if (!name) return;
+        try {
+          await apiFetch("/budget/categories", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value || "💰", plan_monthly: parseInt(planI.value) || 0 }) });
+          form.remove(); catBtn.style.display = ""; loadBudget();
+        } catch {}
+      });
+      const cancel = () => { form.remove(); catBtn.style.display = ""; };
+      form.addEventListener("keydown", e => { if (e.key === "Escape") cancel(); });
+    });
+  }
+  const expBtn = $("budget-add-exp-btn");
+  if (expBtn && !expBtn._init) {
+    expBtn._init = true;
+    expBtn.addEventListener("click", async () => {
+      expBtn.style.display = "none";
+      const cats = await apiFetch("/budget/categories").catch(() => []);
+      const catOpts = cats.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join("");
+      const today = new Date().toISOString().slice(0, 10);
+      const form = document.createElement("div");
+      form.className = "nb-inline-form";
+      form.innerHTML = `
+        <input class="nb-inline-input sm" placeholder="Сумма ₽" type="number" min="1" />
+        <input class="nb-inline-input md" placeholder="Заметка…" />
+        <select class="nb-inline-select"><option value="">— категория —</option>${catOpts}</select>
+        <input class="nb-inline-input sm" type="date" value="${today}" />
+        <button class="nb-inline-btn">Добавить</button>`;
+      expBtn.parentNode.insertBefore(form, expBtn.nextSibling);
+      const [amtI, noteI] = form.querySelectorAll("input");
+      const selCat = form.querySelector("select");
+      const dateI  = form.querySelectorAll("input")[3];
+      form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+        const amount = parseInt(amtI.value); if (!amount) return;
+        try {
+          await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({ amount, note: noteI.value || null, category_id: selCat.value ? parseInt(selCat.value) : null, date: dateI.value || today }) });
+          form.remove(); expBtn.style.display = ""; loadBudget();
+        } catch {}
+      });
+      form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); expBtn.style.display = ""; } });
+    });
+  }
+}
+
+document.addEventListener("click", e => {
+  if (e.target.id === "budget-prev") { budgetState.month--; if (budgetState.month < 1) { budgetState.month = 12; budgetState.year--; } loadBudget(); }
+  if (e.target.id === "budget-next") { budgetState.month++; if (budgetState.month > 12) { budgetState.month = 1; budgetState.year++; } loadBudget(); }
+});
+
+
+// ════════════════════════════════════════════════════════════════
+//  ПОЕЗДКИ
+// ════════════════════════════════════════════════════════════════
+
+async function loadTrips() {
+  const grid = $("trips-grid");
+  if (!grid) return;
+  grid.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  try {
+    const trips = await apiFetch("/trips");
+    renderTripsGrid(trips);
+  } catch { grid.innerHTML = `<div style="color:var(--nb-red);font-size:13px">Ошибка загрузки</div>`; }
+  initTripsAddBtn();
+}
+
+function renderTripsGrid(trips) {
+  const grid = $("trips-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!trips.length) { grid.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">нет поездок</div>`; return; }
+  trips.forEach(trip => {
+    const actual   = trip.actual_total || 0;
+    const planned  = trip.planned_total || 0;
+    const pct      = planned > 0 ? Math.min((actual / planned) * 100, 100) : (actual > 0 ? 100 : 0);
+    const over     = planned > 0 && actual > planned;
+    const dateStr  = trip.start_date ? `${String(trip.start_date).slice(0,10)}${trip.end_date ? " → " + String(trip.end_date).slice(0,10) : ""}` : "";
+    const card = document.createElement("div");
+    card.className = "trip-card";
+    card.innerHTML = `
+      <div class="trip-card-emoji">${trip.emoji}</div>
+      <div class="trip-card-name">${trip.name}</div>
+      ${dateStr ? `<div class="trip-card-dates">${dateStr}</div>` : ""}
+      ${planned ? `<div class="trip-card-budget">
+        <div class="trip-card-budget-bar"><div class="trip-card-budget-fill ${over?"over":""}" style="width:${pct}%"></div></div>
+        <div class="trip-card-nums"><span>${actual.toLocaleString("ru")} ₽</span><span>${planned.toLocaleString("ru")} ₽</span></div>
+      </div>` : ""}
+      <button class="trip-card-delete">×</button>`;
+    card.querySelector(".trip-card-delete").addEventListener("click", async e => {
+      e.stopPropagation();
+      try { await apiFetch(`/trips/${trip.id}`, { method: "DELETE" }); loadTrips(); } catch {}
+    });
+    card.addEventListener("click", () => openTripDetail(trip));
+    grid.appendChild(card);
+  });
+}
+
+async function openTripDetail(trip) {
+  const panel = $("ntab-trips");
+  if (!panel) return;
+  const expenses = await apiFetch(`/trips/${trip.id}/expenses`).catch(() => []);
+  const today = new Date().toISOString().slice(0, 10);
+  panel.querySelector(".nb-page").innerHTML = `
+    <button class="trip-back-btn" id="trip-back">← Поездки</button>
+    <div class="trip-detail-header">
+      <div class="trip-detail-emoji">${trip.emoji}</div>
+      <div class="trip-detail-name">${trip.name}</div>
+    </div>
+    <div id="trip-exp-list"></div>
+    <button class="task-add-btn" id="trip-add-exp-btn"><span class="task-add-line">+ расход…</span></button>`;
+  $("trip-back").addEventListener("click", () => loadTrips());
+  renderTripExpenses(expenses, trip.id, today);
+  initTripAddExpBtn(trip.id, today);
+}
+
+function renderTripExpenses(expenses, tripId, today) {
+  const el = $("trip-exp-list");
+  if (!el) return;
+  el.innerHTML = "";
+  if (!expenses.length) { el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`; return; }
+  expenses.forEach(exp => {
+    const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
+    const row = document.createElement("div");
+    row.className = "trip-exp-row";
+    row.innerHTML = `
+      <span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
+      <span class="trip-exp-emoji">${exp.emoji || "💸"}</span>
+      <div class="trip-exp-body">
+        <div class="trip-exp-note">${exp.note || "расход"}</div>
+        ${exp.category ? `<div class="trip-exp-cat">${exp.category}</div>` : ""}
+      </div>
+      <span class="trip-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span>
+      <button class="trip-exp-delete">×</button>`;
+    row.querySelector(".trip-exp-delete").addEventListener("click", async () => {
+      try { await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" }); openTripDetail({ ...{}, id: tripId, emoji: "", name: "" }); } catch {}
+    });
+    el.appendChild(row);
+  });
+}
+
+function initTripAddExpBtn(tripId, today) {
+  const btn = $("trip-add-exp-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "nb-inline-form";
+    form.innerHTML = `
+      <input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="💸" />
+      <input class="nb-inline-input md" placeholder="Заметка…" />
+      <input class="nb-inline-input sm" placeholder="Категория" />
+      <input class="nb-inline-input sm" placeholder="Сумма ₽" type="number" min="1" />
+      <input class="nb-inline-input sm" type="date" value="${today}" />
+      <button class="nb-inline-btn">Добавить</button>`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+    const [emojiI, noteI, catI, amtI, dateI] = form.querySelectorAll("input");
+    form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+      const amount = parseInt(amtI.value); if (!amount) return;
+      try {
+        const exp = await apiFetch(`/trips/${tripId}/expenses`, { method: "POST", body: JSON.stringify({ amount, note: noteI.value||"", category: catI.value||"", emoji: emojiI.value||"💸", date: dateI.value||today }) });
+        form.remove(); btn.style.display = "";
+        const list = $("trip-exp-list");
+        const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
+        const row = document.createElement("div");
+        row.className = "trip-exp-row";
+        row.innerHTML = `<span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span><span class="trip-exp-emoji">${exp.emoji||"💸"}</span><div class="trip-exp-body"><div class="trip-exp-note">${exp.note||"расход"}</div>${exp.category?`<div class="trip-exp-cat">${exp.category}</div>`:""}</div><span class="trip-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span><button class="trip-exp-delete">×</button>`;
+        row.querySelector(".trip-exp-delete").addEventListener("click", async () => { try { await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" }); row.remove(); } catch {} });
+        list.appendChild(row);
+      } catch {}
+    });
+    form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+  });
+}
+
+function initTripsAddBtn() {
+  const btn = $("trips-add-btn");
+  if (!btn || btn._init) return;
+  btn._init = true;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "nb-inline-form";
+    form.innerHTML = `
+      <input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="✈️" />
+      <input class="nb-inline-input lg" placeholder="Куда едем…" />
+      <input class="nb-inline-input sm" type="date" title="Начало" />
+      <input class="nb-inline-input sm" type="date" title="Конец" />
+      <input class="nb-inline-input sm" placeholder="Бюджет ₽" type="number" min="0" />
+      <button class="nb-inline-btn">Добавить</button>`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+    const [emojiI, nameI, startI, endI, planI] = form.querySelectorAll("input");
+    form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+      const name = nameI.value.trim(); if (!name) return;
+      try {
+        await apiFetch("/trips", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value||"✈️", start_date: startI.value||null, end_date: endI.value||null, planned_total: parseInt(planI.value)||0 }) });
+        form.remove(); btn.style.display = ""; loadTrips();
+      } catch {}
+    });
+    form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+  });
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  СПИСКИ
+// ════════════════════════════════════════════════════════════════
+
+let _activeListId = null;
+
+async function loadLists() {
+  const nav = $("lists-nav");
+  if (!nav) return;
+  nav.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  try {
+    const lists = await apiFetch("/notebook/lists");
+    renderListsNav(lists);
+    if (lists.length && !_activeListId) openList(lists[0]);
+    else if (_activeListId) { const l = lists.find(x => x.id === _activeListId); if (l) openList(l); }
+  } catch { nav.innerHTML = `<div style="color:var(--nb-red);font-size:13px">Ошибка</div>`; }
+  initListsAddBtn();
+}
+
+function renderListsNav(lists) {
+  const nav = $("lists-nav");
+  nav.innerHTML = "";
+  lists.forEach(lst => {
+    const items = document.querySelectorAll(`.list-item-row[data-list="${lst.id}"]`).length;
+    const btn = document.createElement("button");
+    btn.className = `list-nav-item${lst.id === _activeListId ? " active" : ""}`;
+    btn.innerHTML = `<span class="list-nav-item-emoji">${lst.emoji}</span><span class="list-nav-item-name">${lst.name}</span><button class="list-nav-delete" data-id="${lst.id}">×</button>`;
+    btn.querySelector(".list-nav-delete").addEventListener("click", async e => {
+      e.stopPropagation();
+      try { await apiFetch(`/notebook/lists/${lst.id}`, { method: "DELETE" }); if (_activeListId === lst.id) { _activeListId = null; $("list-detail").innerHTML = `<p class="nb-meta-line" style="opacity:.45;margin-top:40px">← выбери список</p>`; } loadLists(); } catch {}
+    });
+    btn.addEventListener("click", () => openList(lst));
+    nav.appendChild(btn);
+  });
+}
+
+async function openList(lst) {
+  _activeListId = lst.id;
+  document.querySelectorAll(".list-nav-item").forEach(b => b.classList.toggle("active", parseInt(b.querySelector(".list-nav-delete").dataset.id) === lst.id));
+  const detail = $("list-detail");
+  detail.innerHTML = `
+    <div class="list-detail-header">
+      <span class="list-detail-emoji">${lst.emoji}</span>
+      <span class="list-detail-name">${lst.name}</span>
+    </div>
+    <div class="nb-ruled-area" style="padding-right:8px">
+      <div id="list-items-container"></div>
+      <button class="task-add-btn" id="list-add-item-btn"><span class="task-add-line">+ добавить…</span></button>
+    </div>`;
+  try {
+    const items = await apiFetch(`/notebook/lists/${lst.id}/items`);
+    renderListItems(items, lst.id);
+  } catch {}
+  initListItemAddBtn(lst.id);
+}
+
+function renderListItems(items, listId) {
+  const cont = $("list-items-container");
+  if (!cont) return;
+  cont.innerHTML = "";
+  items.forEach(item => cont.appendChild(buildListItemEl(item, listId)));
+}
+
+function buildListItemEl(item, listId) {
+  const row = document.createElement("div");
+  row.className = `list-item-row${item.done ? " done" : ""}`;
+  row.dataset.list = listId;
+  row.innerHTML = `
+    <button class="list-item-cb"></button>
+    <span class="list-item-title">${item.title}</span>
+    <button class="list-item-delete">×</button>`;
+  row.querySelector(".list-item-cb").addEventListener("click", async () => {
+    const newDone = !item.done;
+    item.done = newDone;
+    row.className = `list-item-row${newDone ? " done" : ""}`;
+    try { await apiFetch(`/notebook/list-items/${item.id}?done=${newDone}`, { method: "PATCH" }); } catch { item.done = !newDone; row.className = `list-item-row${item.done ? " done" : ""}`; }
+  });
+  row.querySelector(".list-item-delete").addEventListener("click", async () => {
+    try { await apiFetch(`/notebook/list-items/${item.id}`, { method: "DELETE" }); row.remove(); } catch {}
+  });
+  return row;
+}
+
+function initListItemAddBtn(listId) {
+  const btn = $("list-add-item-btn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "task-add-form";
+    form.innerHTML = `<input class="task-add-input" placeholder="Новый пункт…" />`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+    const inp = form.querySelector("input");
+    inp.focus();
+    const submit = async () => {
+      const title = inp.value.trim();
+      form.remove(); btn.style.display = "";
+      if (!title) return;
+      try {
+        const item = await apiFetch(`/notebook/lists/${listId}/items`, { method: "POST", body: JSON.stringify({ title }) });
+        $("list-items-container").appendChild(buildListItemEl(item, listId));
+      } catch {}
+    };
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") submit(); if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+    inp.addEventListener("blur", () => setTimeout(() => { if (form.parentNode) { form.remove(); btn.style.display = ""; } }, 180));
+  });
+}
+
+function initListsAddBtn() {
+  const btn = $("lists-add-btn");
+  if (!btn || btn._init) return;
+  btn._init = true;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "nb-inline-form";
+    form.innerHTML = `<input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="📋" /><input class="nb-inline-input lg" placeholder="Название списка…" /><button class="nb-inline-btn">Создать</button>`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+    const [emojiI, nameI] = form.querySelectorAll("input");
+    form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+      const name = nameI.value.trim(); if (!name) return;
+      try { await apiFetch("/notebook/lists", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value||"📋" }) }); form.remove(); btn.style.display = ""; loadLists(); } catch {}
+    });
+    form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+  });
+}
+
+
+// ════════════════════════════════════════════════════════════════
+//  ЗАМЕТКИ
+// ════════════════════════════════════════════════════════════════
+
+const NOTE_COLORS = { yellow: "#fff3b0", green: "#d4e8c2", blue: "#c2d8e8", pink: "#f0d0cc" };
+
+async function loadNotes() {
+  const grid = $("notes-grid");
+  if (!grid) return;
+  grid.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  try {
+    const notes = await apiFetch("/notebook/notes");
+    renderNotesGrid(notes);
+  } catch { grid.innerHTML = ""; }
+  initNotesAddBtn();
+}
+
+function renderNotesGrid(notes) {
+  const grid = $("notes-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!notes.length) { grid.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">нет заметок — нажми + заметка</div>`; return; }
+  notes.forEach(note => grid.appendChild(buildNoteCard(note)));
+}
+
+function buildNoteCard(note) {
+  const card = document.createElement("div");
+  card.className = `note-card color-${note.color || "yellow"}`;
+  card.innerHTML = `
+    <input class="note-title-input" placeholder="Заголовок…" value="${(note.title||"").replace(/"/g,"&quot;")}" />
+    <textarea class="note-body-input" placeholder="Напиши что-нибудь…">${note.body||""}</textarea>
+    <div class="note-footer">
+      <div class="note-color-btns">
+        ${Object.entries(NOTE_COLORS).map(([k,v]) => `<div class="note-color-btn ${note.color===k?"active":""}" data-color="${k}" style="background:${v}"></div>`).join("")}
+      </div>
+      <button class="note-delete-btn">🗑</button>
+    </div>`;
+  let saveTimer;
+  const save = (fields) => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try { await apiFetch(`/notebook/notes/${note.id}`, { method: "PATCH", body: JSON.stringify(fields) }); } catch {}
+    }, 800);
+  };
+  card.querySelector(".note-title-input").addEventListener("input", e => { note.title = e.target.value; save({ title: note.title, body: note.body }); });
+  card.querySelector(".note-body-input").addEventListener("input", e => { note.body = e.target.value; save({ title: note.title, body: note.body }); });
+  card.querySelectorAll(".note-color-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const color = btn.dataset.color;
+      note.color = color;
+      card.className = `note-card color-${color}`;
+      card.querySelectorAll(".note-color-btn").forEach(b => b.classList.toggle("active", b.dataset.color === color));
+      try { await apiFetch(`/notebook/notes/${note.id}`, { method: "PATCH", body: JSON.stringify({ color }) }); } catch {}
+    });
+  });
+  card.querySelector(".note-delete-btn").addEventListener("click", async () => {
+    try { await apiFetch(`/notebook/notes/${note.id}`, { method: "DELETE" }); card.remove(); } catch {}
+  });
+  return card;
+}
+
+function initNotesAddBtn() {
+  const btn = $("notes-add-btn");
+  if (!btn || btn._init) return;
+  btn._init = true;
+  btn.addEventListener("click", async () => {
+    try {
+      const note = await apiFetch("/notebook/notes", { method: "POST", body: JSON.stringify({ body: "", title: "", color: "yellow" }) });
+      const grid = $("notes-grid");
+      if (grid.querySelector(".note-card")) {
+        grid.insertBefore(buildNoteCard(note), grid.firstChild);
+      } else {
+        grid.innerHTML = "";
+        grid.appendChild(buildNoteCard(note));
+      }
+    } catch {}
+  });
+}

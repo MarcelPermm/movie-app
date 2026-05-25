@@ -391,32 +391,78 @@
           </div>
           <!-- Календарь -->
           <div class="ntab-panel" id="ntab-calendar" style="display:none">
-            <div class="nb-page nb-page-single">
-              <div class="nb-coming-soon"><div class="nb-cs-icon">📅</div><div class="nb-cs-title">Календарь</div><div class="nb-cs-sub">Скоро — месячный обзор и тепловая карта привычек</div></div>
+            <div class="notebook-spread">
+              <div class="nb-page nb-page-cal">
+                <div class="nb-page-head">
+                  <div class="cal-month-nav">
+                    <button class="cal-nav-btn" id="cal-prev">‹</button>
+                    <span class="nb-title" id="cal-month-label" style="font-size:38px"></span>
+                    <button class="cal-nav-btn" id="cal-next">›</button>
+                  </div>
+                </div>
+                <div class="cal-week-labels"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+                <div class="cal-grid" id="cal-grid"></div>
+              </div>
+              <div class="nb-page nb-page-cal-detail">
+                <div id="cal-day-detail"><p class="nb-meta-line" style="opacity:.45;margin-top:40px">← выбери день</p></div>
+              </div>
             </div>
           </div>
+
           <!-- Бюджет -->
           <div class="ntab-panel" id="ntab-budget" style="display:none">
-            <div class="nb-page nb-page-single">
-              <div class="nb-coming-soon"><div class="nb-cs-icon">💰</div><div class="nb-cs-title">Бюджет</div><div class="nb-cs-sub">Скоро — план/факт по месяцу, поездки, регулярные расходы</div></div>
+            <div class="notebook-spread">
+              <div class="nb-page">
+                <div class="nb-page-head">
+                  <div class="cal-month-nav">
+                    <button class="cal-nav-btn" id="budget-prev">‹</button>
+                    <span class="nb-title" id="budget-month-label" style="font-size:36px"></span>
+                    <button class="cal-nav-btn" id="budget-next">›</button>
+                  </div>
+                  <div id="budget-summary" style="margin-top:8px"></div>
+                </div>
+                <div id="budget-categories-list"></div>
+                <button class="task-add-btn" id="budget-add-cat-btn"><span class="task-add-line">+ категория…</span></button>
+              </div>
+              <div class="nb-page">
+                <div class="nb-page-head"><h2 class="nb-title-sm">Расходы</h2></div>
+                <div id="budget-expenses-list"></div>
+                <button class="task-add-btn" id="budget-add-exp-btn"><span class="task-add-line">+ расход…</span></button>
+              </div>
             </div>
           </div>
+
           <!-- Поездки -->
           <div class="ntab-panel" id="ntab-trips" style="display:none">
-            <div class="nb-page nb-page-single">
-              <div class="nb-coming-soon"><div class="nb-cs-icon">✈️</div><div class="nb-cs-title">Поездки</div><div class="nb-cs-sub">Скоро — дневник поездок, чек-листы, траты по дням</div></div>
+            <div class="nb-page" style="max-width:none;flex:1">
+              <div class="nb-page-head"><h1 class="nb-title">Поездки</h1></div>
+              <div class="trips-grid" id="trips-grid"></div>
+              <button class="task-add-btn" id="trips-add-btn"><span class="task-add-line">+ новая поездка…</span></button>
             </div>
           </div>
+
           <!-- Списки -->
           <div class="ntab-panel" id="ntab-lists" style="display:none">
-            <div class="nb-page nb-page-single">
-              <div class="nb-coming-soon"><div class="nb-cs-icon">📋</div><div class="nb-cs-title">Списки</div><div class="nb-cs-sub">Скоро — покупки, проекты, чек-листы</div></div>
+            <div class="notebook-spread">
+              <div class="nb-page">
+                <div class="nb-page-head"><h1 class="nb-title">Списки</h1></div>
+                <div class="lists-nav" id="lists-nav"></div>
+                <button class="task-add-btn" id="lists-add-btn"><span class="task-add-line">+ новый список…</span></button>
+              </div>
+              <div class="nb-page">
+                <div id="list-detail"><p class="nb-meta-line" style="opacity:.45;margin-top:40px">← выбери список</p></div>
+              </div>
             </div>
           </div>
+
           <!-- Заметки -->
           <div class="ntab-panel" id="ntab-notes" style="display:none">
-            <div class="nb-page nb-page-single">
-              <div class="nb-coming-soon"><div class="nb-cs-icon">✍️</div><div class="nb-cs-title">Заметки</div><div class="nb-cs-sub">Скоро — свободные заметки, стикеры, мысли</div></div>
+            <div class="nb-page" style="max-width:none;flex:1">
+              <div class="nb-page-head">
+                <h1 class="nb-title">Заметки</h1>
+                <button class="notes-add-btn" id="notes-add-btn">+ заметка</button>
+              </div>
+              <div class="notes-grid" id="notes-grid"></div>
             </div>
           </div>
         </div>

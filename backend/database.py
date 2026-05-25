@@ -929,3 +929,387 @@ def delete_task(task_id: int, user_id: int):
         conn.commit()
     finally:
         conn.close()
+
+
+# ─── Тетрадь: Списки ──────────────────────────────────────────────────────────
+
+def init_lists_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notebook_lists (
+                id         SERIAL PRIMARY KEY,
+                user_id    INTEGER NOT NULL DEFAULT 1,
+                name       TEXT NOT NULL,
+                emoji      VARCHAR(10) DEFAULT '📋',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notebook_list_items (
+                id         SERIAL PRIMARY KEY,
+                list_id    INTEGER NOT NULL REFERENCES notebook_lists(id) ON DELETE CASCADE,
+                user_id    INTEGER NOT NULL DEFAULT 1,
+                title      TEXT NOT NULL,
+                done       BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_lists(user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notebook_lists WHERE user_id=%s ORDER BY created_at ASC", (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_list(user_id: int, name: str, emoji: str = "📋") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO notebook_lists (user_id,name,emoji) VALUES (%s,%s,%s) RETURNING *", (user_id, name, emoji))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def delete_list(list_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notebook_lists WHERE id=%s AND user_id=%s", (list_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_list_items(list_id: int, user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notebook_list_items WHERE list_id=%s AND user_id=%s ORDER BY created_at ASC", (list_id, user_id))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_list_item(list_id: int, user_id: int, title: str) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO notebook_list_items (list_id,user_id,title) VALUES (%s,%s,%s) RETURNING *", (list_id, user_id, title))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def toggle_list_item(item_id: int, user_id: int, done: bool) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE notebook_list_items SET done=%s WHERE id=%s AND user_id=%s RETURNING *", (done, item_id, user_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+def delete_list_item(item_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notebook_list_items WHERE id=%s AND user_id=%s", (item_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Тетрадь: Заметки ─────────────────────────────────────────────────────────
+
+def init_notes_table():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notebook_notes (
+                id         SERIAL PRIMARY KEY,
+                user_id    INTEGER NOT NULL DEFAULT 1,
+                title      TEXT DEFAULT '',
+                body       TEXT NOT NULL DEFAULT '',
+                color      VARCHAR(20) DEFAULT 'yellow',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_notes(user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notebook_notes WHERE user_id=%s ORDER BY updated_at DESC", (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_note(user_id: int, body: str = "", title: str = "", color: str = "yellow") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO notebook_notes (user_id,title,body,color) VALUES (%s,%s,%s,%s) RETURNING *", (user_id, title, body, color))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def update_note(note_id: int, user_id: int, **fields) -> dict:
+    allowed = {"title", "body", "color"}
+    fields = {k: v for k, v in fields.items() if k in allowed}
+    if not fields:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k}=%s" for k in fields) + ", updated_at=NOW()"
+        cur.execute(f"UPDATE notebook_notes SET {set_clause} WHERE id=%s AND user_id=%s RETURNING *",
+                    (*fields.values(), note_id, user_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+def delete_note(note_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notebook_notes WHERE id=%s AND user_id=%s", (note_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Тетрадь: Бюджет ──────────────────────────────────────────────────────────
+
+def init_budget_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS budget_categories (
+                id           SERIAL PRIMARY KEY,
+                user_id      INTEGER NOT NULL DEFAULT 1,
+                name         TEXT NOT NULL,
+                emoji        VARCHAR(10) DEFAULT '💰',
+                plan_monthly INTEGER DEFAULT 0
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS budget_expenses (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL DEFAULT 1,
+                date        DATE NOT NULL DEFAULT CURRENT_DATE,
+                amount      INTEGER NOT NULL,
+                category_id INTEGER REFERENCES budget_categories(id) ON DELETE SET NULL,
+                note        TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_budget_categories(user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM budget_categories WHERE user_id=%s ORDER BY id ASC", (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_budget_category(user_id: int, name: str, emoji: str, plan_monthly: int = 0) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO budget_categories (user_id,name,emoji,plan_monthly) VALUES (%s,%s,%s,%s) RETURNING *",
+                    (user_id, name, emoji, plan_monthly))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def update_budget_category(cat_id: int, user_id: int, name: str = None, emoji: str = None, plan_monthly: int = None) -> dict:
+    fields = {k: v for k, v in {"name": name, "emoji": emoji, "plan_monthly": plan_monthly}.items() if v is not None}
+    if not fields:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k}=%s" for k in fields)
+        cur.execute(f"UPDATE budget_categories SET {set_clause} WHERE id=%s AND user_id=%s RETURNING *",
+                    (*fields.values(), cat_id, user_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+def delete_budget_category(cat_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM budget_categories WHERE id=%s AND user_id=%s", (cat_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_budget_expenses(user_id: int, year: int, month: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT e.*, c.name as cat_name, c.emoji as cat_emoji
+            FROM budget_expenses e
+            LEFT JOIN budget_categories c ON c.id = e.category_id
+            WHERE e.user_id=%s AND EXTRACT(YEAR FROM e.date)=%s AND EXTRACT(MONTH FROM e.date)=%s
+            ORDER BY e.date DESC, e.created_at DESC
+        """, (user_id, year, month))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_budget_expense(user_id: int, date: str, amount: int, category_id: int = None, note: str = None) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO budget_expenses (user_id,date,amount,category_id,note) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+                    (user_id, date, amount, category_id, note))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def delete_budget_expense(exp_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM budget_expenses WHERE id=%s AND user_id=%s", (exp_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Тетрадь: Поездки ─────────────────────────────────────────────────────────
+
+def init_trips_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trips (
+                id            SERIAL PRIMARY KEY,
+                user_id       INTEGER NOT NULL DEFAULT 1,
+                name          TEXT NOT NULL,
+                emoji         VARCHAR(10) DEFAULT '✈️',
+                start_date    DATE,
+                end_date      DATE,
+                planned_total INTEGER DEFAULT 0,
+                status        VARCHAR(20) DEFAULT 'upcoming',
+                created_at    TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trip_expenses (
+                id         SERIAL PRIMARY KEY,
+                trip_id    INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+                user_id    INTEGER NOT NULL DEFAULT 1,
+                date       DATE NOT NULL,
+                amount     INTEGER NOT NULL,
+                category   TEXT DEFAULT '',
+                note       TEXT DEFAULT '',
+                emoji      VARCHAR(10) DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_trips(user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT t.*, COALESCE(SUM(e.amount),0) as actual_total
+            FROM trips t LEFT JOIN trip_expenses e ON e.trip_id = t.id
+            WHERE t.user_id=%s GROUP BY t.id ORDER BY t.start_date DESC NULLS LAST
+        """, (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_trip(user_id: int, name: str, emoji: str = "✈️",
+             start_date: str = None, end_date: str = None, planned_total: int = 0) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO trips (user_id,name,emoji,start_date,end_date,planned_total) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+                    (user_id, name, emoji, start_date, end_date, planned_total))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def delete_trip(trip_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trips WHERE id=%s AND user_id=%s", (trip_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_trip_expenses(trip_id: int, user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM trip_expenses WHERE trip_id=%s AND user_id=%s ORDER BY date ASC, created_at ASC",
+                    (trip_id, user_id))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_trip_expense(trip_id: int, user_id: int, date: str, amount: int,
+                     category: str = "", note: str = "", emoji: str = "") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO trip_expenses (trip_id,user_id,date,amount,category,note,emoji) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+                    (trip_id, user_id, date, amount, category, note, emoji))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def delete_trip_expense(exp_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM trip_expenses WHERE id=%s AND user_id=%s", (exp_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
