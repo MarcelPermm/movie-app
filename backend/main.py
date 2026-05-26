@@ -1,7 +1,7 @@
 import os
 import asyncio
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -1753,6 +1753,52 @@ async def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
 async def delete_budget_expense(exp_id: int, user_id: int = 1):
     database.delete_budget_expense(exp_id, user_id)
     return {"ok": True}
+
+
+@app.post("/budget/parse-statement")
+async def parse_statement(file: UploadFile):
+    """Принимает PDF-выписку, возвращает список распознанных транзакций."""
+    from statement_parser import parse_ozon_pdf
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Нужен PDF-файл")
+    data = await file.read()
+    try:
+        transactions = parse_ozon_pdf(data)
+    except Exception as e:
+        raise HTTPException(500, f"Ошибка парсинга: {e}")
+    return {"transactions": transactions, "count": len(transactions)}
+
+
+@app.post("/budget/import")
+async def import_expenses(req: dict, user_id: int = 1):
+    """Сохраняет подтверждённые транзакции из выписки в budget_expenses."""
+    items = req.get("transactions", [])
+    saved = 0
+    for t in items:
+        try:
+            # Ищем категорию по имени или создаём «Из выписки»
+            cats = database.get_budget_categories(user_id)
+            cat_id = None
+            cat_name = t.get("category", "Другое")
+            cat_emoji = t.get("emoji", "💰")
+            for c in cats:
+                if c["name"] == cat_name:
+                    cat_id = c["id"]
+                    break
+            if cat_id is None:
+                new_cat = database.add_budget_category(user_id, cat_name, cat_emoji, 0)
+                cat_id = new_cat["id"]
+            database.add_budget_expense(
+                user_id,
+                t["date"],
+                int(t["amount"]),
+                cat_id,
+                t.get("description", "")
+            )
+            saved += 1
+        except Exception:
+            continue
+    return {"saved": saved}
 
 
 # ─── Тетрадь: Поездки ─────────────────────────────────────────────────────────

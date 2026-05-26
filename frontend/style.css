@@ -4060,3 +4060,109 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   .nb-ruled-area { padding-left: 28px; }
   .ntab-panel { min-height: auto; }
 }
+
+/* ── Импорт выписки ─────────────────────────────────────────────────────────── */
+.import-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--ink-3); border: 1px dashed var(--rule);
+  border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  transition: color .15s, border-color .15s;
+  white-space: nowrap; user-select: none;
+}
+.import-btn:hover { color: var(--terracotta); border-color: var(--terracotta); }
+
+/* Модальный оверлей */
+.import-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(31,26,20,.55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.import-modal {
+  background: var(--paper); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(31,26,20,.25);
+  width: 100%; max-width: 740px; max-height: 85vh;
+  display: flex; flex-direction: column;
+  font-family: 'Fraunces', Georgia, serif;
+}
+.import-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px 14px; border-bottom: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+.import-modal-title {
+  font-size: 20px; font-weight: 600; color: var(--ink);
+}
+.import-modal-meta {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--ink-3); margin-top: 2px;
+}
+.import-modal-close {
+  background: none; border: none; font-size: 22px;
+  color: var(--ink-3); cursor: pointer; line-height: 1;
+  padding: 2px 6px; border-radius: 4px;
+}
+.import-modal-close:hover { color: var(--nb-red); }
+
+/* Таблица */
+.import-table-wrap { overflow-y: auto; flex: 1; padding: 0 24px; }
+.import-table {
+  width: 100%; border-collapse: collapse; margin: 8px 0;
+}
+.import-table th {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em;
+  padding: 6px 8px; border-bottom: 1px solid var(--rule);
+  text-align: left; position: sticky; top: 0; background: var(--paper);
+}
+.import-table td {
+  padding: 7px 8px; border-bottom: 1px solid var(--rule);
+  font-size: 13px; color: var(--ink); vertical-align: middle;
+}
+.import-table tr:last-child td { border-bottom: none; }
+.import-table tr.skip-row td { opacity: .35; }
+
+/* Ячейка с чекбоксом */
+.import-cb { width: 18px; height: 18px; cursor: pointer; accent-color: var(--terracotta); }
+
+/* Ячейка с категорией — dropdown + custom */
+.import-cat-wrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
+.import-cat-emoji { font-size: 15px; flex-shrink: 0; }
+.import-cat-select {
+  font-family: 'Fraunces', Georgia, serif; font-size: 13px;
+  color: var(--ink); background: transparent; border: none;
+  border-bottom: 1px dashed var(--rule); outline: none; cursor: pointer;
+  max-width: 160px;
+}
+.import-cat-select:focus { border-bottom-color: var(--terracotta); }
+
+/* Сумма */
+.import-amount { font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: nowrap; }
+
+/* Описание — мелкое */
+.import-desc { font-size: 12px; color: var(--ink-2); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Футер */
+.import-modal-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px 18px; border-top: 1px solid var(--rule);
+  flex-shrink: 0; gap: 12px; flex-wrap: wrap;
+}
+.import-selected-info {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3);
+}
+.import-save-btn {
+  background: var(--terracotta); color: #fff; border: none;
+  border-radius: 8px; padding: 9px 22px; font-family: 'Fraunces', Georgia, serif;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s;
+}
+.import-save-btn:hover { opacity: .85; }
+.import-save-btn:disabled { opacity: .4; cursor: default; }
+.import-cancel-btn {
+  background: none; border: 1px solid var(--rule); border-radius: 8px;
+  padding: 9px 18px; font-family: 'Fraunces', Georgia, serif;
+  font-size: 14px; color: var(--ink-2); cursor: pointer;
+}
+.import-cancel-btn:hover { border-color: var(--ink-2); }

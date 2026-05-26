@@ -5315,3 +5315,249 @@ function initNotesAddBtn() {
     } catch {}
   });
 }
+
+
+// ════════════════════════════════════════════════════════════════
+//  ИМПОРТ ВЫПИСКИ ИЗ БАНКА
+// ════════════════════════════════════════════════════════════════
+
+// Все категории-пресеты для select в таблице ревью
+const IMPORT_CATS = [
+  { emoji: "🍕", name: "Доставка еды" },
+  { emoji: "🚕", name: "Такси" },
+  { emoji: "🛴", name: "Самокаты" },
+  { emoji: "💛", name: "Яндекс" },
+  { emoji: "✈️", name: "Билеты / Транспорт" },
+  { emoji: "🍺", name: "Алкоголь" },
+  { emoji: "🍸", name: "Бары" },
+  { emoji: "🍽️", name: "Кафе / Ресторан" },
+  { emoji: "🛒", name: "Продукты" },
+  { emoji: "⛽", name: "АЗС / Топливо" },
+  { emoji: "💊", name: "Аптека" },
+  { emoji: "🏋️", name: "Спорт" },
+  { emoji: "👗", name: "Одежда / Шопинг" },
+  { emoji: "🎢", name: "Развлечения" },
+  { emoji: "📱", name: "Связь" },
+  { emoji: "💸", name: "Переводы" },
+  { emoji: "💰", name: "Другое" },
+];
+
+function initBudgetImport() {
+  const fileInput = $("budget-import-file");
+  if (!fileInput || fileInput._init) return;
+  fileInput._init = true;
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    fileInput.value = ""; // reset so same file can be re-selected
+
+    // Показываем оверлей «загружаем…»
+    const overlay = document.createElement("div");
+    overlay.className = "import-overlay";
+    overlay.innerHTML = `
+      <div class="import-modal" style="align-items:center;justify-content:center;padding:40px;gap:12px">
+        <div style="font-size:32px">📂</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--ink-3)">Читаем выписку…</div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const resp = await fetch(`${API}/budget/parse-statement`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || "Ошибка сервера");
+      }
+      const { transactions } = await resp.json();
+      overlay.remove();
+
+      if (!transactions || !transactions.length) {
+        showImportEmpty();
+        return;
+      }
+      showImportReview(transactions);
+    } catch (e) {
+      overlay.remove();
+      alert("Не удалось разобрать файл: " + e.message);
+    }
+  });
+}
+
+function showImportEmpty() {
+  const overlay = document.createElement("div");
+  overlay.className = "import-overlay";
+  overlay.innerHTML = `
+    <div class="import-modal" style="align-items:center;justify-content:center;padding:40px;gap:12px">
+      <div style="font-size:32px">🤷</div>
+      <div style="font-family:'Fraunces',Georgia,serif;font-size:16px;color:var(--ink)">Транзакции не найдены</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">Убедись что это выписка Озон Банка в формате PDF</div>
+      <button class="import-cancel-btn" style="margin-top:8px">Закрыть</button>
+    </div>`;
+  overlay.querySelector("button").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function showImportReview(transactions) {
+  // Строим select options один раз
+  const catOptions = IMPORT_CATS.map(c =>
+    `<option value="${c.name}" data-emoji="${c.emoji}">${c.emoji} ${c.name}</option>`
+  ).join("");
+
+  const overlay = document.createElement("div");
+  overlay.className = "import-overlay";
+
+  // Считаем общую сумму
+  const total = transactions.reduce((s, t) => s + t.amount, 0);
+
+  overlay.innerHTML = `
+    <div class="import-modal">
+      <div class="import-modal-head">
+        <div>
+          <div class="import-modal-title">Импорт выписки</div>
+          <div class="import-modal-meta">Найдено ${transactions.length} операций · ${total.toLocaleString("ru")} ₽</div>
+        </div>
+        <button class="import-modal-close" id="import-close">×</button>
+      </div>
+      <div class="import-table-wrap">
+        <table class="import-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="import-check-all" checked style="cursor:pointer;accent-color:var(--terracotta)" /></th>
+              <th>Дата</th>
+              <th>Описание</th>
+              <th>Категория</th>
+              <th>Сумма</th>
+            </tr>
+          </thead>
+          <tbody id="import-tbody"></tbody>
+        </table>
+      </div>
+      <div class="import-modal-foot">
+        <div class="import-selected-info" id="import-info">Выбрано: ${transactions.length} / ${transactions.length}</div>
+        <div style="display:flex;gap:10px">
+          <button class="import-cancel-btn" id="import-cancel">Отмена</button>
+          <button class="import-save-btn" id="import-save">Сохранить выбранные</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const tbody = overlay.querySelector("#import-tbody");
+
+  // Рендерим строки
+  transactions.forEach((t, idx) => {
+    const tr = document.createElement("tr");
+    tr.dataset.idx = idx;
+
+    // Форматируем дату: YYYY-MM-DD → DD.MM
+    const [y, mo, d] = t.date.split("-");
+    const dateDisplay = `${d}.${mo}`;
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="import-cb" checked data-idx="${idx}" /></td>
+      <td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:12px">${dateDisplay}</td>
+      <td><div class="import-desc" title="${t.description}">${t.description}</div></td>
+      <td>
+        <div class="import-cat-wrap">
+          <span class="import-cat-emoji" id="import-emoji-${idx}">${t.emoji}</span>
+          <select class="import-cat-select" id="import-cat-${idx}">
+            ${catOptions}
+          </select>
+        </div>
+      </td>
+      <td class="import-amount">${Math.round(t.amount).toLocaleString("ru")} ₽</td>`;
+
+    // Ставим текущую категорию как selected
+    const sel = tr.querySelector(`#import-cat-${idx}`);
+    [...sel.options].forEach(opt => {
+      if (opt.value === t.category) opt.selected = true;
+    });
+
+    // При смене категории — обновляем emoji и данные
+    sel.addEventListener("change", () => {
+      const chosen = IMPORT_CATS.find(c => c.name === sel.value);
+      if (chosen) {
+        tr.querySelector(`#import-emoji-${idx}`).textContent = chosen.emoji;
+        transactions[idx].emoji    = chosen.emoji;
+        transactions[idx].category = chosen.name;
+      }
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  // Чекбоксы
+  const updateInfo = () => {
+    const checked = overlay.querySelectorAll(".import-cb:checked").length;
+    overlay.querySelector("#import-info").textContent =
+      `Выбрано: ${checked} / ${transactions.length}`;
+    overlay.querySelector("#import-save").disabled = checked === 0;
+  };
+
+  overlay.querySelector("#import-check-all").addEventListener("change", e => {
+    overlay.querySelectorAll(".import-cb").forEach(cb => {
+      cb.checked = e.target.checked;
+      cb.closest("tr").classList.toggle("skip-row", !e.target.checked);
+    });
+    updateInfo();
+  });
+
+  overlay.addEventListener("change", e => {
+    if (e.target.classList.contains("import-cb")) {
+      e.target.closest("tr").classList.toggle("skip-row", !e.target.checked);
+      updateInfo();
+    }
+  });
+
+  // Закрытие
+  const close = () => overlay.remove();
+  overlay.querySelector("#import-close").addEventListener("click", close);
+  overlay.querySelector("#import-cancel").addEventListener("click", close);
+  overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+
+  // Сохранение
+  overlay.querySelector("#import-save").addEventListener("click", async () => {
+    const selected = [];
+    overlay.querySelectorAll(".import-cb:checked").forEach(cb => {
+      const idx = parseInt(cb.dataset.idx);
+      selected.push(transactions[idx]);
+    });
+    if (!selected.length) return;
+
+    overlay.querySelector("#import-save").disabled = true;
+    overlay.querySelector("#import-save").textContent = "Сохраняем…";
+
+    try {
+      const res = await apiFetch("/budget/import", {
+        method: "POST",
+        body: JSON.stringify({ transactions: selected }),
+      });
+      close();
+      loadBudget();
+      // Небольшое уведомление
+      const toast = document.createElement("div");
+      toast.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:600;background:var(--terracotta);color:#fff;padding:12px 20px;border-radius:10px;font-family:'Fraunces',Georgia,serif;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.2)`;
+      toast.textContent = `✅ Сохранено ${res.saved} операций`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    } catch {
+      overlay.querySelector("#import-save").disabled = false;
+      overlay.querySelector("#import-save").textContent = "Сохранить выбранные";
+      alert("Ошибка при сохранении");
+    }
+  });
+}
+
+// Инициализируем импорт когда открываем вкладку Бюджет
+const _origLoadBudget = loadBudget;
+loadBudget = async function() {
+  await _origLoadBudget();
+  initBudgetImport();
+};

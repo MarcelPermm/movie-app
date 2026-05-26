@@ -425,7 +425,13 @@
                 <button class="task-add-btn" id="budget-add-cat-btn"><span class="task-add-line">+ категория…</span></button>
               </div>
               <div class="nb-page">
-                <div class="nb-page-head"><h2 class="nb-title-sm">Расходы</h2></div>
+                <div class="nb-page-head" style="display:flex;align-items:center;justify-content:space-between">
+                  <h2 class="nb-title-sm">Расходы</h2>
+                  <label class="import-btn" title="Загрузить выписку из банка (PDF)">
+                    📂 выписка
+                    <input type="file" id="budget-import-file" accept=".pdf" style="display:none" />
+                  </label>
+                </div>
                 <div id="budget-expenses-list"></div>
                 <button class="task-add-btn" id="budget-add-exp-btn"><span class="task-add-line">+ расход…</span></button>
               </div>
