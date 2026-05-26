@@ -1210,6 +1210,54 @@ def delete_budget_expense(exp_id: int, user_id: int):
     finally:
         conn.close()
 
+def update_budget_expense(exp_id: int, user_id: int,
+                          amount: int = None, note: str = None,
+                          category_id: int = None) -> dict:
+    fields = {}
+    if amount is not None:  fields["amount"] = amount
+    if note is not None:    fields["note"]   = note
+    if category_id is not None: fields["category_id"] = category_id
+    if not fields:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k}=%s" for k in fields)
+        cur.execute(
+            f"UPDATE budget_expenses SET {set_clause} WHERE id=%s AND user_id=%s RETURNING *",
+            (*fields.values(), exp_id, user_id)
+        )
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+def delete_budget_expenses_month(user_id: int, year: int, month: int) -> int:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM budget_expenses WHERE user_id=%s AND EXTRACT(YEAR FROM date)=%s AND EXTRACT(MONTH FROM date)=%s",
+            (user_id, year, month)
+        )
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+def delete_budget_expenses_all(user_id: int) -> int:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM budget_expenses WHERE user_id=%s", (user_id,))
+        deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
 
 # ─── Тетрадь: Поездки ─────────────────────────────────────────────────────────
 
