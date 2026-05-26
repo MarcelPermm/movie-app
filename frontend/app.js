@@ -4379,6 +4379,32 @@ document.querySelectorAll(".spine-tab").forEach(btn => {
   btn.addEventListener("click", () => openNotebookTab(btn.dataset.ntab));
 });
 
+// — Кнопки удаления расходов бюджета (статические элементы, вешаем сразу) —
+document.addEventListener("click", async e => {
+  if (e.target.id === "budget-clear-month") {
+    const { year, month } = budgetState;
+    const MONTHS = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+    if (!confirm(`Удалить все расходы за ${MONTHS[month]} ${year}?`)) return;
+    try {
+      const res = await apiFetch(`/budget/expenses/month?year=${year}&month=${month}`, { method: "DELETE" });
+      loadBudget();
+      _showBudgetToast(`🗑️ Удалено ${res.deleted} операций`);
+    } catch (err) {
+      _showBudgetToast("Ошибка: " + (err?.detail || err?.message || "сервер недоступен"));
+    }
+  }
+  if (e.target.id === "budget-clear-all") {
+    if (!confirm("Удалить ВСЕ расходы за всё время?\nЭто действие нельзя отменить.")) return;
+    try {
+      const res = await apiFetch("/budget/expenses/all", { method: "DELETE" });
+      loadBudget();
+      _showBudgetToast(`🗑️ Удалено ${res.deleted} операций`);
+    } catch (err) {
+      _showBudgetToast("Ошибка: " + (err?.detail || err?.message || "сервер недоступен"));
+    }
+  }
+});
+
 // ─── openNotebookTab: вызывает нужный загрузчик ──────────────────────────────
 const _nbLoaders = {
   today:    () => loadNotebookToday(),
@@ -5667,42 +5693,12 @@ const _origLoadBudget = loadBudget;
 loadBudget = async function() {
   await _origLoadBudget();
   initBudgetImport();
-  initBudgetClearButtons();
 };
 
-function initBudgetClearButtons() {
-  const monthBtn = $("budget-clear-month");
-  if (monthBtn && !monthBtn._init) {
-    monthBtn._init = true;
-    monthBtn.addEventListener("click", async () => {
-      const { year, month } = budgetState;
-      const MONTHS = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
-      if (!confirm(`Удалить все расходы за ${MONTHS[month]} ${year}?`)) return;
-      try {
-        const res = await apiFetch(`/budget/expenses/month?year=${year}&month=${month}`, { method: "DELETE" });
-        loadBudget();
-        _showToast(`🗑️ Удалено ${res.deleted} операций`);
-      } catch {}
-    });
-  }
-  const allBtn = $("budget-clear-all");
-  if (allBtn && !allBtn._init) {
-    allBtn._init = true;
-    allBtn.addEventListener("click", async () => {
-      if (!confirm("Удалить ВСЕ расходы за всё время? Это нельзя отменить.")) return;
-      try {
-        const res = await apiFetch("/budget/expenses/all", { method: "DELETE" });
-        loadBudget();
-        _showToast(`🗑️ Удалено ${res.deleted} операций`);
-      } catch {}
-    });
-  }
-}
-
-function _showToast(msg) {
+function _showBudgetToast(msg) {
   const t = document.createElement("div");
   t.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:600;background:var(--terracotta);color:#fff;padding:12px 20px;border-radius:10px;font-family:'Fraunces',Georgia,serif;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.2)";
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
+  setTimeout(() => t.remove(), 3500);
 }

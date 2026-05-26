@@ -1,7 +1,7 @@
 import os
 import asyncio
 import httpx
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -1748,6 +1748,25 @@ async def get_budget_expenses(year: int, month: int, user_id: int = 1):
 @app.post("/budget/expenses")
 async def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
     return database.add_budget_expense(user_id, req.date, req.amount, req.category_id, req.note)
+
+@app.patch("/budget/expenses/{exp_id}")
+async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int = 1):
+    return database.update_budget_expense(
+        exp_id, user_id,
+        amount=req.get("amount"),
+        note=req.get("note"),
+        category_id=req.get("category_id"),
+    )
+
+@app.delete("/budget/expenses/month")
+async def delete_budget_expenses_month(year: int, month: int, user_id: int = 1):
+    deleted = database.delete_budget_expenses_month(user_id, year, month)
+    return {"deleted": deleted}
+
+@app.delete("/budget/expenses/all")
+async def delete_budget_expenses_all(user_id: int = 1):
+    deleted = database.delete_budget_expenses_all(user_id)
+    return {"deleted": deleted}
 
 @app.delete("/budget/expenses/{exp_id}")
 async def delete_budget_expense(exp_id: int, user_id: int = 1):
