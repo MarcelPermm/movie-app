@@ -4709,17 +4709,24 @@ function renderBudgetCategories(cats, expenses) {
   if (!el) return;
   el.innerHTML = "";
   cats.forEach(cat => {
-    const spent = expenses.filter(e => e.category_id === cat.id).reduce((s, e) => s + e.amount, 0);
+    const catExps = expenses.filter(e => e.category_id === cat.id);
+    const spent = catExps.reduce((s, e) => s + e.amount, 0);
     const pct   = cat.plan_monthly > 0 ? Math.min((spent / cat.plan_monthly) * 100, 100) : (spent > 0 ? 100 : 0);
     const over  = cat.plan_monthly > 0 && spent > cat.plan_monthly;
     const row = document.createElement("div");
     row.className = "budget-cat-row";
     row.innerHTML = `
       <span class="budget-cat-emoji">${cat.emoji}</span>
-      <span class="budget-cat-name">${cat.name}</span>
+      <span class="budget-cat-name budget-cat-clickable">${cat.name}</span>
       <div class="budget-cat-bar-wrap"><div class="budget-cat-bar ${over ? "over" : ""}" style="width:${pct}%"></div></div>
       <span class="budget-cat-nums ${over ? "over" : ""}">${spent.toLocaleString("ru")}${cat.plan_monthly ? ` / ${cat.plan_monthly.toLocaleString("ru")}` : ""}</span>
       <button class="budget-cat-delete" data-id="${cat.id}">×</button>`;
+
+    // Клик по названию — показываем детали расходов в этой категории
+    row.querySelector(".budget-cat-clickable").addEventListener("click", () => {
+      showCategoryDetail(cat, catExps);
+    });
+
     row.querySelector(".budget-cat-delete").addEventListener("click", async () => {
       try { await apiFetch(`/budget/categories/${cat.id}`, { method: "DELETE" }); loadBudget(); } catch {}
     });
@@ -4727,15 +4734,58 @@ function renderBudgetCategories(cats, expenses) {
   });
 }
 
+function showCategoryDetail(cat, expenses) {
+  const existing = document.querySelector(".cat-detail-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "cat-detail-overlay";
+
+  const sorted = [...expenses].sort((a, b) => b.amount - a.amount);
+  const total  = sorted.reduce((s, e) => s + e.amount, 0);
+
+  overlay.innerHTML = `
+    <div class="cat-detail-modal">
+      <div class="cat-detail-head">
+        <div>
+          <div class="cat-detail-title">${cat.emoji} ${cat.name}</div>
+          <div class="cat-detail-meta">${sorted.length} операций · ${total.toLocaleString("ru")} ₽</div>
+        </div>
+        <button class="import-modal-close" id="cat-detail-close">×</button>
+      </div>
+      <div class="cat-detail-list">
+        ${sorted.length === 0
+          ? `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:16px 0">нет операций в этом месяце</div>`
+          : sorted.map(e => {
+              const [y,m,d] = e.date.split("-");
+              return `<div class="cat-detail-row">
+                <span class="cat-detail-date">${d}.${m}</span>
+                <span class="cat-detail-note">${e.note || "расход"}</span>
+                <span class="cat-detail-amt">${e.amount.toLocaleString("ru")} ₽</span>
+              </div>`;
+            }).join("")
+        }
+      </div>
+    </div>`;
+
+  overlay.querySelector("#cat-detail-close").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 function renderBudgetExpenses(expenses, cats) {
   const el = $("budget-expenses-list");
   if (!el) return;
   el.innerHTML = "";
-  if (!expenses.length) { el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`; return; }
+  if (!expenses.length) {
+    el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`;
+    return;
+  }
   expenses.forEach(exp => {
     const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
     const row = document.createElement("div");
     row.className = "budget-exp-row";
+    row.dataset.expId = exp.id;
     row.innerHTML = `
       <span class="budget-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
       <div class="budget-exp-body">
@@ -4743,12 +4793,69 @@ function renderBudgetExpenses(expenses, cats) {
         ${exp.cat_name ? `<div class="budget-exp-cat">${exp.cat_emoji || ""} ${exp.cat_name}</div>` : ""}
       </div>
       <span class="budget-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span>
+      <button class="budget-exp-edit" title="Редактировать">✏️</button>
       <button class="budget-exp-delete" data-id="${exp.id}">×</button>`;
+
     row.querySelector(".budget-exp-delete").addEventListener("click", async () => {
-      try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+      try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); row.remove(); } catch {}
     });
+
+    row.querySelector(".budget-exp-edit").addEventListener("click", () => {
+      openBudgetExpEdit(row, exp, cats);
+    });
+
     el.appendChild(row);
   });
+}
+
+function openBudgetExpEdit(row, exp, cats) {
+  // Inline edit form replaces the row
+  const catOpts = cats.map(c =>
+    `<option value="${c.id}" ${c.id === exp.category_id ? "selected" : ""}>${c.emoji} ${c.name}</option>`
+  ).join("");
+  const [y, m, d] = String(exp.date).slice(0,10).split("-");
+
+  const form = document.createElement("div");
+  form.className = "budget-exp-edit-form";
+  form.innerHTML = `
+    <input class="nb-inline-input sm" id="bee-amt"  type="number" min="1" value="${exp.amount}" placeholder="Сумма ₽" />
+    <input class="nb-inline-input md" id="bee-note" value="${exp.note || ""}" placeholder="Описание…" />
+    <select class="nb-inline-select" id="bee-cat">
+      <option value="">— категория —</option>${catOpts}
+    </select>
+    <input class="nb-inline-input sm" id="bee-date" type="date" value="${y}-${m}-${d}" />
+    <button class="nb-inline-btn" id="bee-save">Сохранить</button>
+    <button class="nb-inline-btn" id="bee-cancel" style="background:transparent;color:var(--ink-2);border:1px solid var(--rule)">Отмена</button>`;
+
+  row.style.display = "none";
+  row.parentNode.insertBefore(form, row.nextSibling);
+
+  form.querySelector("#bee-cancel").addEventListener("click", () => {
+    form.remove(); row.style.display = "";
+  });
+
+  form.querySelector("#bee-save").addEventListener("click", async () => {
+    const amount      = parseInt(form.querySelector("#bee-amt").value);
+    const note        = form.querySelector("#bee-note").value.trim();
+    const category_id = form.querySelector("#bee-cat").value ? parseInt(form.querySelector("#bee-cat").value) : null;
+    const date        = form.querySelector("#bee-date").value;
+    if (!amount) return;
+    try {
+      await apiFetch(`/budget/expenses/${exp.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ amount, note, category_id, date }),
+      });
+      form.remove();
+      loadBudget();
+    } catch { form.remove(); row.style.display = ""; }
+  });
+
+  form.addEventListener("keydown", e => {
+    if (e.key === "Escape") { form.remove(); row.style.display = ""; }
+    if (e.key === "Enter")  form.querySelector("#bee-save").click();
+  });
+
+  form.querySelector("#bee-amt").focus();
 }
 
 function initBudgetAddButtons() {
@@ -5560,4 +5667,42 @@ const _origLoadBudget = loadBudget;
 loadBudget = async function() {
   await _origLoadBudget();
   initBudgetImport();
+  initBudgetClearButtons();
 };
+
+function initBudgetClearButtons() {
+  const monthBtn = $("budget-clear-month");
+  if (monthBtn && !monthBtn._init) {
+    monthBtn._init = true;
+    monthBtn.addEventListener("click", async () => {
+      const { year, month } = budgetState;
+      const MONTHS = ["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+      if (!confirm(`Удалить все расходы за ${MONTHS[month]} ${year}?`)) return;
+      try {
+        const res = await apiFetch(`/budget/expenses/month?year=${year}&month=${month}`, { method: "DELETE" });
+        loadBudget();
+        _showToast(`🗑️ Удалено ${res.deleted} операций`);
+      } catch {}
+    });
+  }
+  const allBtn = $("budget-clear-all");
+  if (allBtn && !allBtn._init) {
+    allBtn._init = true;
+    allBtn.addEventListener("click", async () => {
+      if (!confirm("Удалить ВСЕ расходы за всё время? Это нельзя отменить.")) return;
+      try {
+        const res = await apiFetch("/budget/expenses/all", { method: "DELETE" });
+        loadBudget();
+        _showToast(`🗑️ Удалено ${res.deleted} операций`);
+      } catch {}
+    });
+  }
+}
+
+function _showToast(msg) {
+  const t = document.createElement("div");
+  t.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:600;background:var(--terracotta);color:#fff;padding:12px 20px;border-radius:10px;font-family:'Fraunces',Georgia,serif;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.2)";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
