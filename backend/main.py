@@ -1766,7 +1766,8 @@ class TripCreate(BaseModel):
 
 class TripExpenseCreate(BaseModel):
     date: str
-    amount: int
+    amount: int = 0
+    planned_amount: Optional[int] = None
     category: str = ""
     note: str = ""
     emoji: str = ""
@@ -1790,7 +1791,11 @@ async def get_trip_expenses(trip_id: int, user_id: int = 1):
 
 @app.post("/trips/{trip_id}/expenses")
 async def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 1):
-    return database.add_trip_expense(trip_id, user_id, req.date, req.amount, req.category, req.note, req.emoji)
+    return database.add_trip_expense(trip_id, user_id, req.date, req.amount, req.planned_amount, req.category, req.note, req.emoji)
+
+@app.patch("/trip-expenses/{exp_id}/amount")
+async def set_trip_expense_amount(exp_id: int, amount: int, user_id: int = 1):
+    return database.update_trip_expense_amount(exp_id, user_id, amount)
 
 @app.delete("/trip-expenses/{exp_id}")
 async def delete_trip_expense(exp_id: int, user_id: int = 1):

@@ -4646,6 +4646,25 @@ document.addEventListener("click", e => {
 //  БЮДЖЕТ
 // ════════════════════════════════════════════════════════════════
 
+const CATEGORY_PRESETS = [
+  { emoji: "✈️",  name: "Билеты" },
+  { emoji: "🏨",  name: "Жильё" },
+  { emoji: "🍽️", name: "Кафе / Ресторан" },
+  { emoji: "🍺",  name: "Алкоголь" },
+  { emoji: "🎢",  name: "Развлечения" },
+  { emoji: "🛒",  name: "Продукты" },
+  { emoji: "🚕",  name: "Такси / Транспорт" },
+  { emoji: "💊",  name: "Аптека / Здоровье" },
+  { emoji: "👗",  name: "Одежда / Шопинг" },
+  { emoji: "☕",  name: "Кофе" },
+  { emoji: "🎁",  name: "Подарки" },
+  { emoji: "📱",  name: "Связь / Интернет" },
+  { emoji: "🎬",  name: "Кино / Театр" },
+  { emoji: "🏋️", name: "Спорт" },
+  { emoji: "🐾",  name: "Животные" },
+  { emoji: "💰",  name: "Другое" },
+];
+
 const budgetState = { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
 
 async function loadBudget() {
@@ -4740,14 +4759,49 @@ function initBudgetAddButtons() {
       catBtn.style.display = "none";
       const form = document.createElement("div");
       form.className = "nb-inline-form";
+      // name input обёрнут в .preset-wrap для позиционирования дропдауна
       form.innerHTML = `
-        <input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="💰" />
-        <input class="nb-inline-input lg" placeholder="Название…" />
-        <input class="nb-inline-input sm" placeholder="Бюджет ₽" type="number" min="0" />
-        <button class="nb-inline-btn">Добавить</button>`;
+        <input class="nb-inline-input sm" id="bcat-emoji" placeholder="Emoji" maxlength="4" value="💰" />
+        <div class="preset-wrap" style="flex:1">
+          <input class="nb-inline-input lg" id="bcat-name" placeholder="Название…" style="width:100%" autocomplete="off" />
+          <div class="preset-dropdown" id="bcat-dropdown" style="display:none"></div>
+        </div>
+        <input class="nb-inline-input sm" id="bcat-plan" placeholder="Бюджет ₽" type="number" min="0" />
+        <button class="nb-inline-btn" id="bcat-submit">Добавить</button>`;
       catBtn.parentNode.insertBefore(form, catBtn.nextSibling);
-      const [emojiI, nameI, planI] = form.querySelectorAll("input");
-      form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+      const emojiI  = form.querySelector("#bcat-emoji");
+      const nameI   = form.querySelector("#bcat-name");
+      const planI   = form.querySelector("#bcat-plan");
+      const dropdown = form.querySelector("#bcat-dropdown");
+
+      // ── Preset dropdown logic ──────────────────────────────────
+      function renderPresets(query) {
+        const q = query.trim().toLowerCase();
+        const filtered = q
+          ? CATEGORY_PRESETS.filter(p => p.name.toLowerCase().includes(q))
+          : CATEGORY_PRESETS;
+        if (!filtered.length) { dropdown.style.display = "none"; return; }
+        dropdown.innerHTML = filtered.map((p, i) =>
+          `<div class="preset-item" data-idx="${i}" data-emoji="${p.emoji}" data-name="${p.name}">
+            <span class="preset-item-emoji">${p.emoji}</span>${p.name}
+          </div>`).join("");
+        dropdown.style.display = "";
+      }
+
+      nameI.addEventListener("focus", () => renderPresets(nameI.value));
+      nameI.addEventListener("input", () => renderPresets(nameI.value));
+      nameI.addEventListener("blur", () => setTimeout(() => { dropdown.style.display = "none"; }, 200));
+
+      dropdown.addEventListener("mousedown", e => {
+        const item = e.target.closest(".preset-item");
+        if (!item) return;
+        emojiI.value = item.dataset.emoji;
+        nameI.value  = item.dataset.name;
+        dropdown.style.display = "none";
+        planI.focus();
+      });
+
+      form.querySelector("#bcat-submit").addEventListener("click", async () => {
         const name = nameI.value.trim(); if (!name) return;
         try {
           await apiFetch("/budget/categories", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value || "💰", plan_monthly: parseInt(planI.value) || 0 }) });
@@ -4755,7 +4809,7 @@ function initBudgetAddButtons() {
         } catch {}
       });
       const cancel = () => { form.remove(); catBtn.style.display = ""; };
-      form.addEventListener("keydown", e => { if (e.key === "Escape") cancel(); });
+      form.addEventListener("keydown", e => { if (e.key === "Escape") cancel(); if (e.key === "Enter" && e.target !== nameI) form.querySelector("#bcat-submit").click(); });
     });
   }
   const expBtn = $("budget-add-exp-btn");
@@ -4860,29 +4914,89 @@ async function openTripDetail(trip) {
   initTripAddExpBtn(trip.id, today);
 }
 
+function buildTripExpRow(exp, tripId) {
+  const dt  = new Date(String(exp.date).slice(0,10) + "T00:00:00");
+  const row = document.createElement("div");
+  row.className = "trip-exp-row";
+  row.dataset.expId = exp.id;
+
+  // Блок сумм: если есть planned_amount — показываем план (зачёркнут) + факт
+  // Если факт = 0 или null — кликабельная надпись «+ факт»
+  const hasPlanned = exp.planned_amount != null && exp.planned_amount > 0;
+  const hasFact    = exp.amount != null && exp.amount > 0;
+
+  let amountsHtml;
+  if (hasPlanned) {
+    amountsHtml = `
+      <div class="trip-exp-amounts">
+        <span class="trip-exp-planned">${exp.planned_amount.toLocaleString("ru")} ₽</span>
+        ${hasFact
+          ? `<span class="trip-exp-actual">${exp.amount.toLocaleString("ru")} ₽</span>`
+          : `<span class="trip-exp-actual not-set" data-exp-id="${exp.id}">+ факт</span>`
+        }
+      </div>`;
+  } else {
+    amountsHtml = `
+      <div class="trip-exp-amounts">
+        ${hasFact
+          ? `<span class="trip-exp-actual">${exp.amount.toLocaleString("ru")} ₽</span>`
+          : `<span class="trip-exp-actual not-set" data-exp-id="${exp.id}">+ сумма</span>`
+        }
+      </div>`;
+  }
+
+  row.innerHTML = `
+    <span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
+    <span class="trip-exp-emoji">${exp.emoji || "💸"}</span>
+    <div class="trip-exp-body">
+      <div class="trip-exp-note">${exp.note || "расход"}</div>
+      ${exp.category ? `<div class="trip-exp-cat">${exp.category}</div>` : ""}
+    </div>
+    ${amountsHtml}
+    <button class="trip-exp-delete">×</button>`;
+
+  // Клик «+ факт» / «+ сумма» — инлайн-ввод
+  const notSet = row.querySelector(".trip-exp-actual.not-set");
+  if (notSet) {
+    notSet.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "number"; inp.min = "1"; inp.placeholder = "₽";
+      inp.className = "trip-exp-actual-input";
+      notSet.replaceWith(inp);
+      inp.focus();
+      const save = async () => {
+        const val = parseInt(inp.value);
+        if (!val) { inp.replaceWith(notSet); return; }
+        try {
+          const updated = await apiFetch(`/trip-expenses/${exp.id}/amount?amount=${val}`, { method: "PATCH" });
+          exp.amount = updated.amount || val;
+          const newRow = buildTripExpRow(exp, tripId);
+          row.replaceWith(newRow);
+        } catch { inp.replaceWith(notSet); }
+      };
+      inp.addEventListener("blur", save);
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") save(); if (e.key === "Escape") inp.replaceWith(notSet); });
+    });
+  }
+
+  row.querySelector(".trip-exp-delete").addEventListener("click", async () => {
+    try {
+      await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" });
+      row.remove();
+    } catch {}
+  });
+  return row;
+}
+
 function renderTripExpenses(expenses, tripId, today) {
   const el = $("trip-exp-list");
   if (!el) return;
   el.innerHTML = "";
-  if (!expenses.length) { el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`; return; }
-  expenses.forEach(exp => {
-    const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
-    const row = document.createElement("div");
-    row.className = "trip-exp-row";
-    row.innerHTML = `
-      <span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
-      <span class="trip-exp-emoji">${exp.emoji || "💸"}</span>
-      <div class="trip-exp-body">
-        <div class="trip-exp-note">${exp.note || "расход"}</div>
-        ${exp.category ? `<div class="trip-exp-cat">${exp.category}</div>` : ""}
-      </div>
-      <span class="trip-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span>
-      <button class="trip-exp-delete">×</button>`;
-    row.querySelector(".trip-exp-delete").addEventListener("click", async () => {
-      try { await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" }); openTripDetail({ ...{}, id: tripId, emoji: "", name: "" }); } catch {}
-    });
-    el.appendChild(row);
-  });
+  if (!expenses.length) {
+    el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`;
+    return;
+  }
+  expenses.forEach(exp => el.appendChild(buildTripExpRow(exp, tripId)));
 }
 
 function initTripAddExpBtn(tripId, today) {
@@ -4893,26 +5007,73 @@ function initTripAddExpBtn(tripId, today) {
     const form = document.createElement("div");
     form.className = "nb-inline-form";
     form.innerHTML = `
-      <input class="nb-inline-input sm" placeholder="Emoji" maxlength="4" value="💸" />
-      <input class="nb-inline-input md" placeholder="Заметка…" />
-      <input class="nb-inline-input sm" placeholder="Категория" />
-      <input class="nb-inline-input sm" placeholder="Сумма ₽" type="number" min="1" />
-      <input class="nb-inline-input sm" type="date" value="${today}" />
-      <button class="nb-inline-btn">Добавить</button>`;
+      <input class="nb-inline-input sm" id="texp-emoji" placeholder="Emoji" maxlength="4" value="💸" />
+      <input class="nb-inline-input md" id="texp-note" placeholder="Заметка…" />
+      <div class="preset-wrap" style="flex:1">
+        <input class="nb-inline-input sm" id="texp-cat" placeholder="Категория" style="width:100%" autocomplete="off" />
+        <div class="preset-dropdown" id="texp-dropdown" style="display:none"></div>
+      </div>
+      <input class="nb-inline-input sm" id="texp-plan" placeholder="План ₽" type="number" min="0" />
+      <input class="nb-inline-input sm" id="texp-amt"  placeholder="Факт ₽"  type="number" min="0" />
+      <input class="nb-inline-input sm" id="texp-date" type="date" value="${today}" />
+      <button class="nb-inline-btn" id="texp-submit">Добавить</button>`;
     btn.parentNode.insertBefore(form, btn.nextSibling);
-    const [emojiI, noteI, catI, amtI, dateI] = form.querySelectorAll("input");
-    form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
-      const amount = parseInt(amtI.value); if (!amount) return;
+    const emojiI   = form.querySelector("#texp-emoji");
+    const noteI    = form.querySelector("#texp-note");
+    const catI     = form.querySelector("#texp-cat");
+    const planI    = form.querySelector("#texp-plan");
+    const amtI     = form.querySelector("#texp-amt");
+    const dateI    = form.querySelector("#texp-date");
+    const dropdown = form.querySelector("#texp-dropdown");
+
+    // ── Preset dropdown для категории поездки ─────────────────
+    function renderTripPresets(query) {
+      const q = query.trim().toLowerCase();
+      const filtered = q
+        ? CATEGORY_PRESETS.filter(p => p.name.toLowerCase().includes(q))
+        : CATEGORY_PRESETS;
+      if (!filtered.length) { dropdown.style.display = "none"; return; }
+      dropdown.innerHTML = filtered.map(p =>
+        `<div class="preset-item" data-emoji="${p.emoji}" data-name="${p.name}">
+          <span class="preset-item-emoji">${p.emoji}</span>${p.name}
+        </div>`).join("");
+      dropdown.style.display = "";
+    }
+    catI.addEventListener("focus", () => renderTripPresets(catI.value));
+    catI.addEventListener("input", () => renderTripPresets(catI.value));
+    catI.addEventListener("blur",  () => setTimeout(() => { dropdown.style.display = "none"; }, 200));
+    dropdown.addEventListener("mousedown", e => {
+      const item = e.target.closest(".preset-item");
+      if (!item) return;
+      emojiI.value = item.dataset.emoji;
+      catI.value   = item.dataset.name;
+      dropdown.style.display = "none";
+      planI.focus();
+    });
+
+    form.querySelector("#texp-submit").addEventListener("click", async () => {
+      const planned = parseInt(planI.value) || 0;
+      const amount  = parseInt(amtI.value)  || 0;
+      // Нужна хотя бы одна сумма или заметка
+      if (!amount && !planned && !noteI.value.trim()) return;
       try {
-        const exp = await apiFetch(`/trips/${tripId}/expenses`, { method: "POST", body: JSON.stringify({ amount, note: noteI.value||"", category: catI.value||"", emoji: emojiI.value||"💸", date: dateI.value||today }) });
+        const exp = await apiFetch(`/trips/${tripId}/expenses`, {
+          method: "POST",
+          body: JSON.stringify({
+            amount,
+            planned_amount: planned || null,
+            note: noteI.value || "",
+            category: catI.value || "",
+            emoji: emojiI.value || "💸",
+            date: dateI.value || today,
+          })
+        });
         form.remove(); btn.style.display = "";
         const list = $("trip-exp-list");
-        const dt = new Date(String(exp.date).slice(0,10) + "T00:00:00");
-        const row = document.createElement("div");
-        row.className = "trip-exp-row";
-        row.innerHTML = `<span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span><span class="trip-exp-emoji">${exp.emoji||"💸"}</span><div class="trip-exp-body"><div class="trip-exp-note">${exp.note||"расход"}</div>${exp.category?`<div class="trip-exp-cat">${exp.category}</div>`:""}</div><span class="trip-exp-amount">${exp.amount.toLocaleString("ru")} ₽</span><button class="trip-exp-delete">×</button>`;
-        row.querySelector(".trip-exp-delete").addEventListener("click", async () => { try { await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" }); row.remove(); } catch {} });
-        list.appendChild(row);
+        // убираем «нет расходов» если было
+        const empty = list.querySelector("[style*='нет расходов']");
+        if (empty) empty.remove();
+        list.appendChild(buildTripExpRow(exp, tripId));
       } catch {}
     });
     form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });

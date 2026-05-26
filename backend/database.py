@@ -1232,17 +1232,20 @@ def init_trips_tables():
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS trip_expenses (
-                id         SERIAL PRIMARY KEY,
-                trip_id    INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-                user_id    INTEGER NOT NULL DEFAULT 1,
-                date       DATE NOT NULL,
-                amount     INTEGER NOT NULL,
-                category   TEXT DEFAULT '',
-                note       TEXT DEFAULT '',
-                emoji      VARCHAR(10) DEFAULT '',
-                created_at TIMESTAMPTZ DEFAULT NOW()
+                id             SERIAL PRIMARY KEY,
+                trip_id        INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+                user_id        INTEGER NOT NULL DEFAULT 1,
+                date           DATE NOT NULL,
+                amount         INTEGER NOT NULL DEFAULT 0,
+                planned_amount INTEGER,
+                category       TEXT DEFAULT '',
+                note           TEXT DEFAULT '',
+                emoji          VARCHAR(10) DEFAULT '',
+                created_at     TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Миграция: добавить колонку если таблица уже существует без неё
+        cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS planned_amount INTEGER")
         conn.commit()
     finally:
         conn.close()
@@ -1293,15 +1296,27 @@ def get_trip_expenses(trip_id: int, user_id: int) -> list:
         conn.close()
 
 def add_trip_expense(trip_id: int, user_id: int, date: str, amount: int,
-                     category: str = "", note: str = "", emoji: str = "") -> dict:
+                     planned_amount: int = None, category: str = "", note: str = "", emoji: str = "") -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO trip_expenses (trip_id,user_id,date,amount,category,note,emoji) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
-                    (trip_id, user_id, date, amount, category, note, emoji))
+        cur.execute("INSERT INTO trip_expenses (trip_id,user_id,date,amount,planned_amount,category,note,emoji) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+                    (trip_id, user_id, date, amount, planned_amount, category, note, emoji))
         row = dict(cur.fetchone())
         conn.commit()
         return row
+    finally:
+        conn.close()
+
+def update_trip_expense_amount(exp_id: int, user_id: int, amount: int) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE trip_expenses SET amount=%s WHERE id=%s AND user_id=%s RETURNING *",
+                    (amount, exp_id, user_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
     finally:
         conn.close()
 

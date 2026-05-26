@@ -3937,6 +3937,31 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .nb-inline-btn { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--paper); background: var(--terracotta); border: none; border-radius: 4px; padding: 5px 12px; cursor: pointer; }
 .nb-inline-btn:hover { background: var(--terracotta-2); }
 
+/* ── Пресеты категорий — дропдаун ──────────────────────────── */
+.preset-wrap { position: relative; display: inline-flex; align-items: center; gap: 0; }
+.preset-dropdown {
+  position: absolute; top: 100%; left: 0; z-index: 200;
+  background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 6px; box-shadow: 0 6px 20px rgba(31,26,20,.12);
+  min-width: 220px; max-height: 260px; overflow-y: auto;
+  margin-top: 4px;
+}
+.preset-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; cursor: pointer; transition: background .1s;
+  font-family: 'Fraunces', Georgia, serif; font-size: 14px; color: var(--ink);
+}
+.preset-item:hover { background: var(--paper-shade); }
+.preset-item-emoji { font-size: 16px; flex-shrink: 0; width: 22px; text-align: center; }
+
+/* ── Факт/план в поездках ──────────────────────────────────── */
+.trip-exp-amounts { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+.trip-exp-planned { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3); text-decoration: line-through; }
+.trip-exp-actual { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.trip-exp-actual.not-set { color: var(--ink-3); font-style: italic; cursor: pointer; border-bottom: 1px dashed var(--ink-3); }
+.trip-exp-actual.not-set:hover { color: var(--terracotta); border-bottom-color: var(--terracotta); }
+.trip-exp-actual-input { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink); background: transparent; border: none; border-bottom: 1.5px solid var(--terracotta); outline: none; width: 70px; text-align: right; }
+
 /* ── Поездки ───────────────────────────────────────────────── */
 .trips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 16px; margin-top: 8px; }
 .trip-card { background: var(--paper-shade); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 20px; cursor: pointer; transition: all .15s; position: relative; }
