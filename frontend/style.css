@@ -4206,3 +4206,129 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   font-size: 14px; color: var(--ink-2); cursor: pointer;
 }
 .import-cancel-btn:hover { border-color: var(--ink-2); }
+
+/* ═══════════════════════════════════════════════════════
+   BUDGET ACCORDION
+═══════════════════════════════════════════════════════ */
+
+/* Категория */
+.bacc-cat { border-bottom: 1px solid var(--rule); }
+.bacc-cat-empty .bacc-cat-head { opacity: .6; }
+
+.bacc-cat-head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 4px; cursor: pointer; user-select: none;
+}
+.bacc-cat-head:hover { background: rgba(255,255,255,.02); }
+
+.bacc-toggle {
+  background: none; border: none; color: var(--ink-3);
+  font-size: 9px; cursor: pointer; padding: 2px 4px;
+  flex-shrink: 0; transition: transform .15s;
+}
+.bacc-toggle.sm { font-size: 8px; }
+
+.bacc-cat-emoji { font-size: 16px; flex-shrink: 0; }
+.bacc-cat-name  { font-family: 'Fraunces', Georgia, serif; font-size: 14px; color: var(--ink); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.bacc-plan-val {
+  background: none; border: 1px dashed var(--rule); border-radius: 6px;
+  padding: 2px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--ink-2); cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: border-color .15s, color .15s;
+}
+.bacc-plan-val:hover { border-color: var(--terracotta); color: var(--ink); }
+.bacc-plan-val.over  { color: var(--terracotta); border-color: var(--terracotta); }
+.bacc-plan-val.no-plan { border-style: dotted; color: var(--ink-3); }
+
+.bacc-plan-input {
+  width: 100px; background: none; border: 1px solid var(--terracotta);
+  border-radius: 6px; padding: 2px 8px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink);
+  outline: none;
+}
+
+.bacc-cat-delete {
+  background: none; border: none; color: var(--ink-3); font-size: 16px;
+  cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity .15s;
+}
+.bacc-cat-head:hover .bacc-cat-delete { opacity: .7; }
+.bacc-cat-delete:hover { color: var(--terracotta) !important; opacity: 1 !important; }
+
+/* Тело категории */
+.bacc-cat-body { padding-left: 24px; }
+
+/* Место / заведение */
+.bacc-merchant { border-left: 2px solid var(--rule); margin: 2px 0; }
+.bacc-merchant-head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 8px; cursor: pointer; user-select: none;
+}
+.bacc-merchant-head:hover { background: rgba(255,255,255,.02); }
+.bacc-merchant-name  { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); flex: 1; }
+.bacc-merchant-total { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink); flex-shrink: 0; }
+
+/* Тело заведения */
+.bacc-merchant-body { padding-left: 20px; }
+
+/* Транзакция */
+.bacc-exp-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px; border-radius: 4px;
+}
+.bacc-exp-row:hover { background: rgba(255,255,255,.03); }
+.bacc-exp-date  { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); flex-shrink: 0; width: 38px; }
+.bacc-exp-desc  { font-size: 12px; color: var(--ink-2); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bacc-exp-amt   { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink); flex-shrink: 0; }
+.bacc-exp-edit  { background: none; border: none; cursor: pointer; font-size: 12px; opacity: 0; padding: 0 2px; }
+.bacc-exp-del   { background: none; border: none; color: var(--ink-3); font-size: 14px; cursor: pointer; opacity: 0; padding: 0 2px; }
+.bacc-exp-row:hover .bacc-exp-edit,
+.bacc-exp-row:hover .bacc-exp-del { opacity: .7; }
+.bacc-exp-del:hover { color: var(--terracotta); opacity: 1 !important; }
+
+/* ═══════════════════════════════════════════════════════
+   TRIP CITY SECTIONS
+═══════════════════════════════════════════════════════ */
+
+.trip-city-header {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase;
+  padding: 14px 0 4px; border-top: 1px solid var(--rule);
+  margin-top: 6px;
+}
+.trip-city-header:first-child { border-top: none; margin-top: 0; }
+
+/* ═══════════════════════════════════════════════════════
+   RECURRING TASKS
+═══════════════════════════════════════════════════════ */
+
+.task-recur-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: var(--ink-3); background: rgba(255,255,255,.05);
+  border-radius: 4px; padding: 1px 5px;
+}
+
+.task-recur-opts {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  padding: 6px 0 4px; align-items: center;
+}
+
+.task-recur-btn {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+  background: none; border: 1px solid var(--rule); border-radius: 5px;
+  padding: 3px 9px; color: var(--ink-3); cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.task-recur-btn:hover  { border-color: var(--ink-2); color: var(--ink); }
+.task-recur-btn.active { border-color: var(--terracotta); color: var(--terracotta); }
+
+.task-recur-days { display: flex; gap: 4px; flex-wrap: wrap; width: 100%; padding-top: 4px; }
+
+.task-day-btn {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  background: none; border: 1px solid var(--rule); border-radius: 4px;
+  padding: 2px 7px; color: var(--ink-3); cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.task-day-btn:hover  { border-color: var(--ink-2); color: var(--ink); }
+.task-day-btn.active { border-color: var(--terracotta); color: var(--terracotta); background: rgba(180,80,60,.1); }

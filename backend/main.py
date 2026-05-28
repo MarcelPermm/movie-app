@@ -1600,6 +1600,7 @@ class TaskCreate(BaseModel):
     time_str: Optional[str] = None
     tag: Optional[str] = None
     priority: Optional[str] = "normal"
+    recurrence: Optional[str] = None   # null | 'daily' | 'weekly:0,2,4'
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -1608,6 +1609,7 @@ class TaskUpdate(BaseModel):
     time_str: Optional[str] = None
     tag: Optional[str] = None
     date: Optional[str] = None
+    recurrence: Optional[str] = None
 
 @app.get("/tasks")
 async def get_tasks(date: str, user_id: int = 1):
@@ -1619,7 +1621,10 @@ async def get_tasks_week(date_from: str, date_to: str, user_id: int = 1):
 
 @app.post("/tasks")
 async def create_task(req: TaskCreate, user_id: int = 1):
-    return database.add_task(user_id, req.title, req.date, req.time_str, req.tag, req.priority)
+    return database.add_task(
+        user_id, req.title, req.date,
+        req.time_str, req.tag, req.priority, req.recurrence
+    )
 
 @app.patch("/tasks/{task_id}")
 async def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
@@ -1632,6 +1637,16 @@ async def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
 @app.delete("/tasks/{task_id}")
 async def remove_task(task_id: int, user_id: int = 1):
     database.delete_task(task_id, user_id)
+    return {"ok": True}
+
+@app.post("/tasks/{task_id}/complete")
+async def complete_task(task_id: int, date: str, user_id: int = 1):
+    database.add_task_completion(task_id, date)
+    return {"ok": True}
+
+@app.delete("/tasks/{task_id}/complete")
+async def uncomplete_task(task_id: int, date: str, user_id: int = 1):
+    database.remove_task_completion(task_id, date)
     return {"ok": True}
 
 
@@ -1723,6 +1738,7 @@ class BudgetExpenseCreate(BaseModel):
     amount: int
     category_id: Optional[int] = None
     note: Optional[str] = None
+    merchant: Optional[str] = None
 
 @app.get("/budget/categories")
 async def get_budget_categories(user_id: int = 1):
@@ -1745,9 +1761,15 @@ async def delete_budget_category(cat_id: int, user_id: int = 1):
 async def get_budget_expenses(year: int, month: int, user_id: int = 1):
     return database.get_budget_expenses(user_id, year, month)
 
+@app.get("/budget/merchants")
+async def get_budget_merchants(user_id: int = 1):
+    return database.get_merchant_suggestions(user_id)
+
 @app.post("/budget/expenses")
 async def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
-    return database.add_budget_expense(user_id, req.date, req.amount, req.category_id, req.note)
+    return database.add_budget_expense(
+        user_id, req.date, req.amount, req.category_id, req.note, req.merchant
+    )
 
 @app.patch("/budget/expenses/{exp_id}")
 async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int = 1):
@@ -1756,6 +1778,7 @@ async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int
         amount=req.get("amount"),
         note=req.get("note"),
         category_id=req.get("category_id"),
+        merchant=req.get("merchant"),
     )
 
 @app.delete("/budget/expenses/month")
@@ -1812,7 +1835,8 @@ async def import_expenses(req: dict, user_id: int = 1):
                 t["date"],
                 int(t["amount"]),
                 cat_id,
-                t.get("description", "")
+                t.get("description", ""),
+                t.get("merchant", ""),
             )
             saved += 1
         except Exception:
@@ -1836,6 +1860,7 @@ class TripExpenseCreate(BaseModel):
     category: str = ""
     note: str = ""
     emoji: str = ""
+    city: str = ""
 
 @app.get("/trips")
 async def get_trips(user_id: int = 1):
@@ -1856,7 +1881,10 @@ async def get_trip_expenses(trip_id: int, user_id: int = 1):
 
 @app.post("/trips/{trip_id}/expenses")
 async def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 1):
-    return database.add_trip_expense(trip_id, user_id, req.date, req.amount, req.planned_amount, req.category, req.note, req.emoji)
+    return database.add_trip_expense(
+        trip_id, user_id, req.date, req.amount,
+        req.planned_amount, req.category, req.note, req.emoji, req.city
+    )
 
 @app.patch("/trip-expenses/{exp_id}/amount")
 async def set_trip_expense_amount(exp_id: int, amount: int, user_id: int = 1):

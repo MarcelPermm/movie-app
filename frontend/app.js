@@ -4178,8 +4178,8 @@ function renderTodayTasks(tasks) {
 }
 
 function updateTodayMeta(tasks) {
-  const done   = tasks.filter(t => t.status === "done").length;
-  const cancel = tasks.filter(t => t.status === "cancel").length;
+  const done   = tasks.filter(t => t.recurrence ? (t.done_today === true || t.done_today === "true") : t.status === "done").length;
+  const cancel = tasks.filter(t => !t.recurrence && t.status === "cancel").length;
   const total  = tasks.length;
   const metaEl = $("nb-today-meta");
   if (metaEl) metaEl.textContent = total
@@ -4187,18 +4187,35 @@ function updateTodayMeta(tasks) {
     : "◐ нет задач на сегодня";
 }
 
+function formatRecurrence(r) {
+  if (!r || r === "daily") return "каждый день";
+  if (r.startsWith("weekly:")) {
+    const names = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+    return r.split(":")[1].split(",").map(d => names[+d] || d).join(", ");
+  }
+  return r;
+}
+
 function buildTaskEl(task) {
+  const isRecurring  = !!task.recurrence;
+  const isDoneToday  = task.done_today === true || task.done_today === "true";
+  const effectiveStatus = isRecurring ? (isDoneToday ? "done" : "todo") : task.status;
+
   const div = document.createElement("div");
-  div.className = `task-item status-${task.status}`;
+  div.className = `task-item status-${effectiveStatus}`;
   div.dataset.id = task.id;
 
-  const cancelBlock = task.status === "cancel"
+  const cancelBlock = (!isRecurring && task.status === "cancel")
     ? `<div class="task-cancel-block">
          <span class="cancel-label">ПРИЧИНА:</span>
          ${task.cancel_reason
            ? `<span class="cancel-reason-text">${task.cancel_reason}</span>`
            : `<input class="cancel-input" placeholder="почему отменил…" />`}
        </div>`
+    : "";
+
+  const recurBadge = isRecurring
+    ? `<span class="task-recur-badge">🔄 ${formatRecurrence(task.recurrence)}</span>`
     : "";
 
   div.innerHTML = `
@@ -4208,12 +4225,16 @@ function buildTaskEl(task) {
       <div class="task-meta">
         ${task.time_str ? `<span class="task-time">${task.time_str}</span>` : ""}
         ${task.tag ? `<span class="task-tag">#${task.tag}</span>` : ""}
+        ${recurBadge}
       </div>
       ${cancelBlock}
     </div>
     <button class="task-delete-btn" title="Удалить">×</button>`;
 
-  div.querySelector(".task-cb").addEventListener("click", () => cycleTaskStatus(task, div));
+  div.querySelector(".task-cb").addEventListener("click", () => {
+    if (isRecurring) toggleRecurringTask(task, div, isDoneToday);
+    else cycleTaskStatus(task, div);
+  });
 
   const cancelInput = div.querySelector(".cancel-input");
   if (cancelInput) bindCancelInput(cancelInput, task);
@@ -4228,6 +4249,22 @@ function buildTaskEl(task) {
   });
 
   return div;
+}
+
+async function toggleRecurringTask(task, div, wasDone) {
+  const date = state.notebookDate;
+  try {
+    if (wasDone) {
+      await apiFetch(`/tasks/${task.id}/complete?date=${date}`, { method: "DELETE" });
+      task.done_today = false;
+      div.className = "task-item status-todo";
+    } else {
+      await apiFetch(`/tasks/${task.id}/complete?date=${date}`, { method: "POST" });
+      task.done_today = true;
+      div.className = "task-item status-done";
+    }
+    syncMetaFromDOM();
+  } catch {}
 }
 
 function bindCancelInput(inp, task) {
@@ -4343,22 +4380,58 @@ function initAddTaskBtn() {
   btn._nbInit = true;
   btn.addEventListener("click", () => {
     btn.style.display = "none";
+    const DAY_NAMES = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
     const form = document.createElement("div");
     form.className = "task-add-form";
-    form.innerHTML = `<input class="task-add-input" placeholder="Новая задача…" />`;
+    form.innerHTML = `
+      <input class="task-add-input" placeholder="Новая задача…" />
+      <div class="task-recur-opts" style="display:none">
+        <button type="button" class="task-recur-btn active" data-recur="">Один раз</button>
+        <button type="button" class="task-recur-btn" data-recur="daily">Каждый день</button>
+        <button type="button" class="task-recur-btn" data-recur="weekly">По дням</button>
+        <div class="task-recur-days" style="display:none">
+          ${DAY_NAMES.map((n, i) => `<button type="button" class="task-day-btn" data-dow="${i}">${n}</button>`).join("")}
+        </div>
+      </div>`;
     btn.parentNode.insertBefore(form, btn.nextSibling);
-    const inp = form.querySelector("input");
+    const inp      = form.querySelector(".task-add-input");
+    const recurOpts = form.querySelector(".task-recur-opts");
+    const recurBtns = form.querySelectorAll(".task-recur-btn");
+    const daysDiv   = form.querySelector(".task-recur-days");
+    const dayBtns   = form.querySelectorAll(".task-day-btn");
     inp.focus();
+
+    let selectedRecur = "";
+    const selectedDays = new Set();
+
+    inp.addEventListener("input", () => {
+      recurOpts.style.display = inp.value.trim() ? "" : "none";
+    });
+    recurBtns.forEach(b => b.addEventListener("click", () => {
+      recurBtns.forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      selectedRecur = b.dataset.recur;
+      daysDiv.style.display = selectedRecur === "weekly" ? "" : "none";
+    }));
+    dayBtns.forEach(b => b.addEventListener("click", () => {
+      const dow = b.dataset.dow;
+      if (selectedDays.has(dow)) { selectedDays.delete(dow); b.classList.remove("active"); }
+      else { selectedDays.add(dow); b.classList.add("active"); }
+    }));
 
     const submit = async () => {
       const title = inp.value.trim();
       form.remove();
       btn.style.display = "";
       if (!title) return;
+      let recurrence = null;
+      if (selectedRecur === "daily") recurrence = "daily";
+      else if (selectedRecur === "weekly" && selectedDays.size > 0)
+        recurrence = `weekly:${[...selectedDays].sort().join(",")}`;
       try {
         const task = await apiFetch("/tasks", {
           method: "POST",
-          body: JSON.stringify({ title, date: state.notebookDate }),
+          body: JSON.stringify({ title, date: state.notebookDate, recurrence }),
         });
         $("task-list-today").appendChild(buildTaskEl(task));
         syncMetaFromDOM();
@@ -4367,10 +4440,9 @@ function initAddTaskBtn() {
     };
 
     inp.addEventListener("keydown", e => {
-      if (e.key === "Enter")  submit();
+      if (e.key === "Enter" && recurOpts.style.display === "none") submit();
       if (e.key === "Escape") { form.remove(); btn.style.display = ""; }
     });
-    inp.addEventListener("blur", () => setTimeout(() => { if (form.parentNode) { form.remove(); btn.style.display = ""; } }, 180));
   });
 }
 
@@ -4701,8 +4773,9 @@ async function loadBudget() {
       apiFetch("/budget/categories"),
       apiFetch(`/budget/expenses?year=${year}&month=${month}`),
     ]);
-    renderBudgetCategories(cats, expenses);
-    renderBudgetExpenses(expenses, cats);
+    renderBudgetAccordion(cats, expenses);
+    const expEl = $("budget-expenses-list");
+    if (expEl) expEl.innerHTML = "";
     renderBudgetSummary(cats, expenses);
   } catch {}
   initBudgetAddButtons();
@@ -4730,6 +4803,184 @@ function renderBudgetSummary(cats, expenses) {
     <div class="budget-total-bar"><div class="budget-total-bar-fill ${actual > plan ? "over" : ""}" style="width:${pct}%"></div></div>`;
 }
 
+// ─── Accordion: Категория → Место → Транзакция ───────────────────────────────
+
+function renderBudgetAccordion(cats, expenses) {
+  const el = $("budget-categories-list");
+  if (!el) return;
+  el.innerHTML = "";
+
+  const catMap = {};
+  for (const cat of cats) catMap[cat.id] = cat;
+
+  // Группируем расходы по категории
+  const byCat = {};
+  for (const exp of expenses) {
+    const key = exp.category_id || 0;
+    if (!byCat[key]) byCat[key] = { cat: catMap[key] || null, exps: [], total: 0 };
+    byCat[key].exps.push(exp);
+    byCat[key].total += exp.amount;
+  }
+
+  // Сортируем по сумме убыв.
+  const sortedGroups = Object.values(byCat).sort((a, b) => b.total - a.total);
+
+  for (const group of sortedGroups) {
+    const cat      = group.cat;
+    const catId    = cat ? cat.id : 0;
+    const emoji    = cat ? cat.emoji : "💰";
+    const catName  = cat ? cat.name : "Без категории";
+    const plan     = cat ? (cat.plan_monthly || 0) : 0;
+    const over     = plan > 0 && group.total > plan;
+
+    // Подгруппа по merchant (место / заведение)
+    const byMerchant = {};
+    for (const exp of group.exps) {
+      const mk = exp.merchant || "—";
+      if (!byMerchant[mk]) byMerchant[mk] = { exps: [], total: 0 };
+      byMerchant[mk].exps.push(exp);
+      byMerchant[mk].total += exp.amount;
+    }
+    const merchantGroups = Object.entries(byMerchant).sort((a, b) => b[1].total - a[1].total);
+
+    const catDiv = document.createElement("div");
+    catDiv.className = "bacc-cat";
+
+    const spentFmt = group.total.toLocaleString("ru");
+    const planFmt  = plan > 0 ? ` / ${plan.toLocaleString("ru")} ₽` : "";
+    catDiv.innerHTML = `
+      <div class="bacc-cat-head">
+        <button class="bacc-toggle">▶</button>
+        <span class="bacc-cat-emoji">${emoji}</span>
+        <span class="bacc-cat-name">${catName}</span>
+        <button class="bacc-plan-val ${over ? "over" : ""}" data-cat-id="${catId}" title="Изменить план">${spentFmt} ₽${planFmt}</button>
+        ${cat ? `<button class="bacc-cat-delete" data-id="${catId}">×</button>` : ""}
+      </div>
+      <div class="bacc-cat-body" style="display:none"></div>`;
+
+    const head   = catDiv.querySelector(".bacc-cat-head");
+    const body   = catDiv.querySelector(".bacc-cat-body");
+    const toggle = catDiv.querySelector(".bacc-toggle");
+
+    catDiv.querySelector(".bacc-plan-val").addEventListener("click", e => {
+      e.stopPropagation();
+      if (cat) openPlanEdit(catDiv, cat);
+    });
+    if (cat) {
+      catDiv.querySelector(".bacc-cat-delete").addEventListener("click", async e => {
+        e.stopPropagation();
+        try { await apiFetch(`/budget/categories/${catId}`, { method: "DELETE" }); loadBudget(); } catch {}
+      });
+    }
+    head.addEventListener("click", e => {
+      if (e.target.tagName === "BUTTON") return;
+      const open = body.style.display !== "none";
+      body.style.display = open ? "none" : "";
+      toggle.textContent = open ? "▶" : "▼";
+    });
+
+    // Уровень: место/заведение
+    for (const [mName, mg] of merchantGroups) {
+      const mDiv = document.createElement("div");
+      mDiv.className = "bacc-merchant";
+      mDiv.innerHTML = `
+        <div class="bacc-merchant-head">
+          <button class="bacc-toggle sm">▶</button>
+          <span class="bacc-merchant-name">${mName}</span>
+          <span class="bacc-merchant-total">${mg.total.toLocaleString("ru")} ₽</span>
+        </div>
+        <div class="bacc-merchant-body" style="display:none"></div>`;
+
+      const mHead   = mDiv.querySelector(".bacc-merchant-head");
+      const mBody   = mDiv.querySelector(".bacc-merchant-body");
+      const mToggle = mDiv.querySelector(".bacc-toggle");
+      mHead.addEventListener("click", e => {
+        if (e.target.tagName === "BUTTON") return;
+        const open = mBody.style.display !== "none";
+        mBody.style.display = open ? "none" : "";
+        mToggle.textContent = open ? "▶" : "▼";
+      });
+
+      // Уровень: отдельные транзакции (сортируем по сумме убыв.)
+      const sortedExps = [...mg.exps].sort((a, b) => b.amount - a.amount);
+      for (const exp of sortedExps) {
+        const [, mo, d] = String(exp.date).slice(0, 10).split("-");
+        const row = document.createElement("div");
+        row.className = "bacc-exp-row";
+        row.dataset.expId = exp.id;
+        const noteText = exp.note && exp.note.trim() ? exp.note : (exp.merchant || "расход");
+        row.innerHTML = `
+          <span class="bacc-exp-date">${d}.${mo}</span>
+          <span class="bacc-exp-desc" title="${exp.note || ""}">${noteText}</span>
+          <span class="bacc-exp-amt">${exp.amount.toLocaleString("ru")} ₽</span>
+          <button class="bacc-exp-edit" title="Редактировать">✏️</button>
+          <button class="bacc-exp-del">×</button>`;
+
+        row.querySelector(".bacc-exp-del").addEventListener("click", async () => {
+          try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+        });
+        row.querySelector(".bacc-exp-edit").addEventListener("click", () => {
+          openBudgetExpEdit(row, exp, cats);
+        });
+        mBody.appendChild(row);
+      }
+      body.appendChild(mDiv);
+    }
+    el.appendChild(catDiv);
+  }
+
+  // Категории без расходов (чтобы можно было задать план)
+  const usedIds = new Set(Object.keys(byCat).map(Number));
+  for (const cat of cats) {
+    if (usedIds.has(cat.id)) continue;
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className = "bacc-cat bacc-cat-empty";
+    const plan = cat.plan_monthly || 0;
+    emptyDiv.innerHTML = `
+      <div class="bacc-cat-head">
+        <button class="bacc-toggle" disabled style="opacity:.25">▶</button>
+        <span class="bacc-cat-emoji">${cat.emoji}</span>
+        <span class="bacc-cat-name">${cat.name}</span>
+        <button class="bacc-plan-val no-plan" title="Задать план">0 ₽${plan ? ` / ${plan.toLocaleString("ru")} ₽` : ""}</button>
+        <button class="bacc-cat-delete" data-id="${cat.id}">×</button>
+      </div>`;
+    emptyDiv.querySelector(".bacc-plan-val").addEventListener("click", e => {
+      e.stopPropagation(); openPlanEdit(emptyDiv, cat);
+    });
+    emptyDiv.querySelector(".bacc-cat-delete").addEventListener("click", async e => {
+      e.stopPropagation();
+      try { await apiFetch(`/budget/categories/${cat.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+    });
+    el.appendChild(emptyDiv);
+  }
+}
+
+function openPlanEdit(catDiv, cat) {
+  const planBtn = catDiv.querySelector(".bacc-plan-val");
+  if (!planBtn) return;
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.min = "0"; inp.value = cat.plan_monthly || "";
+  inp.className = "bacc-plan-input"; inp.placeholder = "план ₽";
+  planBtn.replaceWith(inp);
+  inp.focus(); inp.select();
+
+  const save = async () => {
+    const val = parseInt(inp.value) || 0;
+    try {
+      await apiFetch(`/budget/categories/${cat.id}`, {
+        method: "PATCH", body: JSON.stringify({ plan_monthly: val }),
+      });
+    } catch {}
+    loadBudget();
+  };
+  inp.addEventListener("blur", save);
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") inp.blur();
+    if (e.key === "Escape") loadBudget();
+  });
+}
+
+// (Legacy — больше не используются, но оставляем чтобы не сломать старые вызовы)
 function renderBudgetCategories(cats, expenses) {
   const el = $("budget-categories-list");
   if (!el) return;
@@ -4844,12 +5095,11 @@ function openBudgetExpEdit(row, exp, cats) {
   const form = document.createElement("div");
   form.className = "budget-exp-edit-form";
   form.innerHTML = `
-    <input class="nb-inline-input sm" id="bee-amt"  type="number" min="1" value="${exp.amount}" placeholder="Сумма ₽" />
-    <input class="nb-inline-input md" id="bee-note" value="${exp.note || ""}" placeholder="Описание…" />
-    <select class="nb-inline-select" id="bee-cat">
-      <option value="">— категория —</option>${catOpts}
-    </select>
-    <input class="nb-inline-input sm" id="bee-date" type="date" value="${y}-${m}-${d}" />
+    <input class="nb-inline-input sm"  id="bee-amt"      type="number" min="1" value="${exp.amount}" placeholder="Сумма ₽" />
+    <input class="nb-inline-input md"  id="bee-merchant" value="${exp.merchant || ""}" placeholder="Место / заведение…" />
+    <input class="nb-inline-input md"  id="bee-note"     value="${exp.note || ""}" placeholder="Дополнение…" />
+    <select class="nb-inline-select"   id="bee-cat"><option value="">— категория —</option>${catOpts}</select>
+    <input class="nb-inline-input sm"  id="bee-date" type="date" value="${y}-${m}-${d}" />
     <button class="nb-inline-btn" id="bee-save">Сохранить</button>
     <button class="nb-inline-btn" id="bee-cancel" style="background:transparent;color:var(--ink-2);border:1px solid var(--rule)">Отмена</button>`;
 
@@ -4862,6 +5112,7 @@ function openBudgetExpEdit(row, exp, cats) {
 
   form.querySelector("#bee-save").addEventListener("click", async () => {
     const amount      = parseInt(form.querySelector("#bee-amt").value);
+    const merchant    = form.querySelector("#bee-merchant").value.trim() || null;
     const note        = form.querySelector("#bee-note").value.trim();
     const category_id = form.querySelector("#bee-cat").value ? parseInt(form.querySelector("#bee-cat").value) : null;
     const date        = form.querySelector("#bee-date").value;
@@ -4869,7 +5120,7 @@ function openBudgetExpEdit(row, exp, cats) {
     try {
       await apiFetch(`/budget/expenses/${exp.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ amount, note, category_id, date }),
+        body: JSON.stringify({ amount, note, category_id, date, merchant }),
       });
       form.remove();
       loadBudget();
@@ -4950,25 +5201,64 @@ function initBudgetAddButtons() {
     expBtn._init = true;
     expBtn.addEventListener("click", async () => {
       expBtn.style.display = "none";
-      const cats = await apiFetch("/budget/categories").catch(() => []);
+      const [cats, merchants] = await Promise.all([
+        apiFetch("/budget/categories").catch(() => []),
+        apiFetch("/budget/merchants").catch(() => []),
+      ]);
       const catOpts = cats.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join("");
       const today = new Date().toISOString().slice(0, 10);
       const form = document.createElement("div");
       form.className = "nb-inline-form";
       form.innerHTML = `
-        <input class="nb-inline-input sm" placeholder="Сумма ₽" type="number" min="1" />
-        <input class="nb-inline-input md" placeholder="Заметка…" />
-        <select class="nb-inline-select"><option value="">— категория —</option>${catOpts}</select>
-        <input class="nb-inline-input sm" type="date" value="${today}" />
-        <button class="nb-inline-btn">Добавить</button>`;
+        <input class="nb-inline-input sm" id="bexp-amt"      placeholder="Сумма ₽" type="number" min="1" />
+        <div class="preset-wrap" style="flex:1.2">
+          <input class="nb-inline-input md" id="bexp-merchant" placeholder="Место / заведение…" style="width:100%" autocomplete="off" />
+          <div class="preset-dropdown" id="bexp-m-dd" style="display:none"></div>
+        </div>
+        <input class="nb-inline-input md" id="bexp-note"     placeholder="Дополнение…" />
+        <select class="nb-inline-select"   id="bexp-cat"><option value="">— категория —</option>${catOpts}</select>
+        <input class="nb-inline-input sm"  id="bexp-date" type="date" value="${today}" />
+        <button class="nb-inline-btn" id="bexp-submit">Добавить</button>`;
       expBtn.parentNode.insertBefore(form, expBtn.nextSibling);
-      const [amtI, noteI] = form.querySelectorAll("input");
-      const selCat = form.querySelector("select");
-      const dateI  = form.querySelectorAll("input")[3];
-      form.querySelector(".nb-inline-btn").addEventListener("click", async () => {
+
+      const amtI      = form.querySelector("#bexp-amt");
+      const merchantI = form.querySelector("#bexp-merchant");
+      const noteI     = form.querySelector("#bexp-note");
+      const selCat    = form.querySelector("#bexp-cat");
+      const dateI     = form.querySelector("#bexp-date");
+      const mDd       = form.querySelector("#bexp-m-dd");
+
+      // Dropdown из истории мест
+      function renderMerchantDd(q) {
+        const filtered = q
+          ? merchants.filter(m => m.toLowerCase().includes(q.toLowerCase()))
+          : merchants.slice(0, 10);
+        if (!filtered.length) { mDd.style.display = "none"; return; }
+        mDd.innerHTML = filtered.map(m =>
+          `<div class="preset-item" data-name="${m}">${m}</div>`).join("");
+        mDd.style.display = "";
+      }
+      merchantI.addEventListener("focus", () => renderMerchantDd(merchantI.value));
+      merchantI.addEventListener("input", () => renderMerchantDd(merchantI.value));
+      merchantI.addEventListener("blur",  () => setTimeout(() => { mDd.style.display = "none"; }, 200));
+      mDd.addEventListener("mousedown", e => {
+        const item = e.target.closest(".preset-item");
+        if (!item) return;
+        merchantI.value = item.dataset.name;
+        mDd.style.display = "none";
+        noteI.focus();
+      });
+
+      form.querySelector("#bexp-submit").addEventListener("click", async () => {
         const amount = parseInt(amtI.value); if (!amount) return;
         try {
-          await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({ amount, note: noteI.value || null, category_id: selCat.value ? parseInt(selCat.value) : null, date: dateI.value || today }) });
+          await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({
+            amount,
+            merchant: merchantI.value.trim() || null,
+            note: noteI.value || null,
+            category_id: selCat.value ? parseInt(selCat.value) : null,
+            date: dateI.value || today,
+          })});
           form.remove(); expBtn.style.display = ""; loadBudget();
         } catch {}
       });
@@ -5129,7 +5419,25 @@ function renderTripExpenses(expenses, tripId, today) {
     el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`;
     return;
   }
-  expenses.forEach(exp => el.appendChild(buildTripExpRow(exp, tripId)));
+  // Группируем по городу (порядок первого появления)
+  const byCityMap = {};
+  const cityOrder = [];
+  for (const exp of expenses) {
+    const city = (exp.city || "").trim();
+    if (!byCityMap[city]) { byCityMap[city] = []; cityOrder.push(city); }
+    byCityMap[city].push(exp);
+  }
+  for (const city of cityOrder) {
+    if (city) {
+      const header = document.createElement("div");
+      header.className = "trip-city-header";
+      header.textContent = `📍 ${city}`;
+      el.appendChild(header);
+    }
+    for (const exp of byCityMap[city]) {
+      el.appendChild(buildTripExpRow(exp, tripId));
+    }
+  }
 }
 
 function initTripAddExpBtn(tripId, today) {
@@ -5139,13 +5447,24 @@ function initTripAddExpBtn(tripId, today) {
     btn.style.display = "none";
     const form = document.createElement("div");
     form.className = "nb-inline-form";
+    // Уникальные города уже в этой поездке
+    const existingCities = [...new Set(
+      Array.from(document.querySelectorAll(".trip-city-header"))
+        .map(h => h.textContent.replace("📍 ", "").trim())
+        .filter(Boolean)
+    )];
+    const cityDatalist = existingCities.length
+      ? `<datalist id="texp-cities">${existingCities.map(c => `<option value="${c}">`).join("")}</datalist>`
+      : "";
     form.innerHTML = `
+      ${cityDatalist}
       <input class="nb-inline-input sm" id="texp-emoji" placeholder="Emoji" maxlength="4" value="💸" />
       <input class="nb-inline-input md" id="texp-note" placeholder="Заметка…" />
       <div class="preset-wrap" style="flex:1">
         <input class="nb-inline-input sm" id="texp-cat" placeholder="Категория" style="width:100%" autocomplete="off" />
         <div class="preset-dropdown" id="texp-dropdown" style="display:none"></div>
       </div>
+      <input class="nb-inline-input sm" id="texp-city" placeholder="Город…" list="texp-cities" />
       <input class="nb-inline-input sm" id="texp-plan" placeholder="План ₽" type="number" min="0" />
       <input class="nb-inline-input sm" id="texp-amt"  placeholder="Факт ₽"  type="number" min="0" />
       <input class="nb-inline-input sm" id="texp-date" type="date" value="${today}" />
@@ -5154,6 +5473,7 @@ function initTripAddExpBtn(tripId, today) {
     const emojiI   = form.querySelector("#texp-emoji");
     const noteI    = form.querySelector("#texp-note");
     const catI     = form.querySelector("#texp-cat");
+    const cityI    = form.querySelector("#texp-city");
     const planI    = form.querySelector("#texp-plan");
     const amtI     = form.querySelector("#texp-amt");
     const dateI    = form.querySelector("#texp-date");
@@ -5198,6 +5518,7 @@ function initTripAddExpBtn(tripId, today) {
             note: noteI.value || "",
             category: catI.value || "",
             emoji: emojiI.value || "💸",
+            city: cityI ? cityI.value.trim() : "",
             date: dateI.value || today,
           })
         });

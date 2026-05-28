@@ -852,17 +852,71 @@ def init_tasks_table():
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_date ON tasks(user_id, date)")
+        # Recurring tasks support
+        cur.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence TEXT DEFAULT NULL")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS task_completions (
+                id         SERIAL PRIMARY KEY,
+                task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                date       DATE    NOT NULL,
+                UNIQUE(task_id, date)
+            )
+        """)
         conn.commit()
     finally:
         conn.close()
 
 
 def get_tasks(user_id: int, date: str) -> list:
+    """Returns one-time tasks for date + recurring tasks that apply to this weekday."""
+    import datetime
+    d = datetime.date.fromisoformat(date)
+    dow = d.weekday()  # 0=Mon, 6=Sun
+
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+
+        # One-time tasks for this date
+        cur.execute(
+            "SELECT *, NULL::boolean as done_today FROM tasks "
+            "WHERE user_id=%s AND date=%s AND recurrence IS NULL "
+            "ORDER BY created_at ASC",
+            (user_id, date)
+        )
+        one_time = [dict(r) for r in cur.fetchall()]
+
+        # Daily recurring tasks
+        cur.execute(
+            "SELECT t.*, (tc.task_id IS NOT NULL) as done_today FROM tasks t "
+            "LEFT JOIN task_completions tc ON tc.task_id = t.id AND tc.date = %s "
+            "WHERE t.user_id=%s AND t.recurrence = 'daily' ORDER BY t.created_at ASC",
+            (date, user_id)
+        )
+        daily = [dict(r) for r in cur.fetchall()]
+
+        # Weekly recurring tasks — fetch all, filter in Python by weekday
+        cur.execute(
+            "SELECT t.*, (tc.task_id IS NOT NULL) as done_today FROM tasks t "
+            "LEFT JOIN task_completions tc ON tc.task_id = t.id AND tc.date = %s "
+            "WHERE t.user_id=%s AND t.recurrence LIKE 'weekly:%%' ORDER BY t.created_at ASC",
+            (date, user_id)
+        )
+        weekly_all = [dict(r) for r in cur.fetchall()]
+        weekly = [r for r in weekly_all if str(dow) in r['recurrence'].split(':', 1)[1].split(',')]
+
+        return one_time + daily + weekly
+    finally:
+        conn.close()
+
+
+# Keep legacy signature for range queries
+def get_tasks_one_time(user_id: int, date: str) -> list:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM tasks WHERE user_id=%s AND date=%s ORDER BY created_at ASC",
+            "SELECT * FROM tasks WHERE user_id=%s AND date=%s AND recurrence IS NULL ORDER BY created_at ASC",
             (user_id, date)
         )
         return [dict(r) for r in cur.fetchall()]
@@ -884,13 +938,15 @@ def get_tasks_range(user_id: int, date_from: str, date_to: str) -> list:
 
 
 def add_task(user_id: int, title: str, date: str, time_str: str = None,
-             tag: str = None, priority: str = "normal") -> dict:
+             tag: str = None, priority: str = "normal",
+             recurrence: str = None) -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO tasks (user_id,title,date,time_str,tag,priority) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
-            (user_id, title, date, time_str, tag, priority)
+            "INSERT INTO tasks (user_id,title,date,time_str,tag,priority,recurrence) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (user_id, title, date, time_str, tag, priority, recurrence)
         )
         row = dict(cur.fetchone())
         conn.commit()
@@ -899,8 +955,31 @@ def add_task(user_id: int, title: str, date: str, time_str: str = None,
         conn.close()
 
 
+def add_task_completion(task_id: int, date: str):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO task_completions (task_id, date) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (task_id, date)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_task_completion(task_id: int, date: str):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM task_completions WHERE task_id=%s AND date=%s", (task_id, date))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def update_task(task_id: int, user_id: int, **fields) -> dict:
-    allowed = {"title", "status", "cancel_reason", "time_str", "tag", "priority", "date"}
+    allowed = {"title", "status", "cancel_reason", "time_str", "tag", "priority", "date", "recurrence"}
     fields = {k: v for k, v in fields.items() if k in allowed}
     if not fields:
         raise ValueError("No valid fields")
@@ -1124,6 +1203,7 @@ def init_budget_tables():
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        cur.execute("ALTER TABLE budget_expenses ADD COLUMN IF NOT EXISTS merchant TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -1189,15 +1269,36 @@ def get_budget_expenses(user_id: int, year: int, month: int) -> list:
     finally:
         conn.close()
 
-def add_budget_expense(user_id: int, date: str, amount: int, category_id: int = None, note: str = None) -> dict:
+def add_budget_expense(user_id: int, date: str, amount: int,
+                       category_id: int = None, note: str = None,
+                       merchant: str = None) -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO budget_expenses (user_id,date,amount,category_id,note) VALUES (%s,%s,%s,%s,%s) RETURNING *",
-                    (user_id, date, amount, category_id, note))
+        cur.execute(
+            "INSERT INTO budget_expenses (user_id,date,amount,category_id,note,merchant) "
+            "VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+            (user_id, date, amount, category_id, note, merchant)
+        )
         row = dict(cur.fetchone())
         conn.commit()
         return row
+    finally:
+        conn.close()
+
+
+def get_merchant_suggestions(user_id: int) -> list:
+    """Уникальные merchant-ы пользователя для автодополнения."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT DISTINCT merchant FROM budget_expenses "
+            "WHERE user_id=%s AND merchant IS NOT NULL AND merchant != '' "
+            "ORDER BY merchant ASC",
+            (user_id,)
+        )
+        return [row["merchant"] for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -1212,11 +1313,12 @@ def delete_budget_expense(exp_id: int, user_id: int):
 
 def update_budget_expense(exp_id: int, user_id: int,
                           amount: int = None, note: str = None,
-                          category_id: int = None) -> dict:
+                          category_id: int = None, merchant: str = None) -> dict:
     fields = {}
-    if amount is not None:  fields["amount"] = amount
-    if note is not None:    fields["note"]   = note
+    if amount is not None:      fields["amount"] = amount
+    if note is not None:        fields["note"]   = note
     if category_id is not None: fields["category_id"] = category_id
+    if merchant is not None:    fields["merchant"] = merchant
     if not fields:
         return {}
     conn = _get_conn()
@@ -1292,8 +1394,8 @@ def init_trips_tables():
                 created_at     TIMESTAMPTZ DEFAULT NOW()
             )
         """)
-        # Миграция: добавить колонку если таблица уже существует без неё
         cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS planned_amount INTEGER")
+        cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -1344,12 +1446,17 @@ def get_trip_expenses(trip_id: int, user_id: int) -> list:
         conn.close()
 
 def add_trip_expense(trip_id: int, user_id: int, date: str, amount: int,
-                     planned_amount: int = None, category: str = "", note: str = "", emoji: str = "") -> dict:
+                     planned_amount: int = None, category: str = "",
+                     note: str = "", emoji: str = "", city: str = "") -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO trip_expenses (trip_id,user_id,date,amount,planned_amount,category,note,emoji) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
-                    (trip_id, user_id, date, amount, planned_amount, category, note, emoji))
+        cur.execute(
+            "INSERT INTO trip_expenses "
+            "(trip_id,user_id,date,amount,planned_amount,category,note,emoji,city) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (trip_id, user_id, date, amount, planned_amount, category, note, emoji, city)
+        )
         row = dict(cur.fetchone())
         conn.commit()
         return row
