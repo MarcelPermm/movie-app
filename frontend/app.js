@@ -4145,28 +4145,105 @@ function openNotebookTab(tab) {
 }
 
 async function loadNotebookToday() {
-  const today = state.notebookDate;
+  const today   = state.notebookDate;
   const dateObj = new Date(today + "T00:00:00");
-  const days    = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
-  const months  = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+  const realToday = new Date().toISOString().slice(0, 10);
 
-  const subtitleEl = $("nb-today-subtitle");
-  if (subtitleEl) subtitleEl.textContent = `${days[dateObj.getDay()]}, ${dateObj.getDate()} ${months[dateObj.getMonth()]}`;
+  // ── Day-bar ───────────────────────────────────────────────────────
+  const jan1     = new Date(dateObj.getFullYear(), 0, 1);
+  const dayOfYear = Math.round((dateObj - jan1) / 86400000) + 1;
+  const isLeap   = y => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  const totalDays = isLeap(dateObj.getFullYear()) ? 366 : 365;
+  const tmpD = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+  const dow  = tmpD.getUTCDay() || 7;
+  tmpD.setUTCDate(tmpD.getUTCDate() + 4 - dow);
+  const ys   = new Date(Date.UTC(tmpD.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((tmpD - ys) / 86400000) + 1) / 7);
+
+  const DAY_FULL  = ["воскресенье","понедельник","вторник","среда","четверг","пятница","суббота"];
+  const MONTHS_GEN = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+
+  const lb = $("nb-daybar-left");
+  const cb = $("nb-daybar-center");
+  const rb = $("nb-daybar-right");
+  if (lb) lb.textContent = `ДЕНЬ ${dayOfYear} ИЗ ${totalDays}`;
+  if (cb) cb.textContent = `${DAY_FULL[dateObj.getDay()]}, ${dateObj.getDate()} ${MONTHS_GEN[dateObj.getMonth()]}`;
+  if (rb) rb.textContent = `НЕДЕЛЯ ${weekNum}`;
+
+  // ── Title (меняется если не сегодня) ─────────────────────────────
+  const titleEl = $("nb-title-today");
+  if (titleEl) {
+    if (today === realToday) {
+      titleEl.textContent = "Сегодня";
+    } else {
+      const mo = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+      titleEl.textContent = `${dateObj.getDate()} ${mo[dateObj.getMonth()]}`;
+    }
+  }
 
   const listEl = $("task-list-today");
   if (!listEl) return;
-  listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
+  listEl.innerHTML = `<div class="nb-loading">загружаем…</div>`;
+
+  // ── Yesterday ─────────────────────────────────────────────────────
+  const ydObj = new Date(dateObj);
+  ydObj.setDate(ydObj.getDate() - 1);
+  const ydStr = ydObj.toISOString().slice(0, 10);
 
   try {
-    const [tasks, weekTasks] = await Promise.all([
+    const [tasks, weekTasks, ydTasks] = await Promise.all([
       apiFetch(`/tasks?date=${today}`),
       loadWeekTasks(today),
+      apiFetch(`/tasks?date=${ydStr}`).catch(() => []),
     ]);
     renderTodayTasks(tasks);
     renderWeekGrid(weekTasks, today);
+    renderYesterday(ydTasks);
     initAddTaskBtn();
   } catch {
     listEl.innerHTML = `<div style="color:var(--nb-red);font-size:13px;padding:8px 0">Ошибка загрузки</div>`;
+  }
+}
+
+function renderYesterday(tasks) {
+  const listEl   = $("task-list-yesterday");
+  const badgesEl = $("nb-yesterday-badges");
+  if (!listEl) return;
+
+  const isDoneTask = t => t.recurrence
+    ? (t.done_today === true || t.done_today === "true")
+    : t.status === "done";
+  const isCancelTask = t => !t.recurrence && t.status === "cancel";
+
+  const done   = tasks.filter(isDoneTask).length;
+  const cancel = tasks.filter(isCancelTask).length;
+  const total  = tasks.length;
+
+  if (badgesEl) {
+    badgesEl.innerHTML = total
+      ? `<span class="nb-yday-badge nb-yday-done">${done}/${total} сделано</span>${cancel ? `<span class="nb-yday-badge nb-yday-cancel">${cancel} отменено</span>` : ""}`
+      : "";
+  }
+
+  listEl.innerHTML = "";
+  tasks.slice(0, 6).forEach(t => {
+    const done   = isDoneTask(t);
+    const cancel = isCancelTask(t);
+    const div = document.createElement("div");
+    div.className = `task-item-sm ${done ? "st-done" : cancel ? "st-cancel" : "st-todo"}`;
+    div.innerHTML = `
+      <span class="task-sm-cb">${done ? "✓" : cancel ? "✗" : ""}</span>
+      <div class="task-sm-body">
+        <span class="task-sm-title">${t.title}</span>
+        ${t.time_str ? `<span class="task-sm-time">${t.time_str}</span>` : ""}
+        ${t.tag      ? `<span class="task-sm-tag">#${t.tag}</span>`     : ""}
+        ${cancel && t.cancel_reason ? `<div class="task-sm-reason">причина: ${t.cancel_reason}</div>` : ""}
+      </div>`;
+    listEl.appendChild(div);
+  });
+
+  if (!tasks.length) {
+    listEl.innerHTML = `<div class="nb-empty-hint">вчера не было задач</div>`;
   }
 }
 
@@ -4181,10 +4258,18 @@ function updateTodayMeta(tasks) {
   const done   = tasks.filter(t => t.recurrence ? (t.done_today === true || t.done_today === "true") : t.status === "done").length;
   const cancel = tasks.filter(t => !t.recurrence && t.status === "cancel").length;
   const total  = tasks.length;
-  const metaEl = $("nb-today-meta");
+  const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  const metaEl  = $("nb-today-meta");
+  const countEl = $("nb-task-count");
+
   if (metaEl) metaEl.textContent = total
-    ? `◐ ${done}/${total} выполнено${cancel ? ` · ${cancel} отменено` : ""}`
+    ? `◐ ${pct}% выполнено${cancel ? ` · ${cancel} отменена` : ""}`
     : "◐ нет задач на сегодня";
+
+  if (countEl) countEl.textContent = total > 0
+    ? `${total} задач, ${done}✓${cancel ? `, ${cancel}✗` : ""}`
+    : "";
 }
 
 function formatRecurrence(r) {
@@ -4348,29 +4433,28 @@ function renderWeekGrid(tasks, todayStr) {
   const day = d.getDay();
   const mon = new Date(d);
   mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  const dayNames = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
   grid.innerHTML = "";
+
   for (let i = 0; i < 7; i++) {
-    const dt  = new Date(mon);
-    dt.setDate(mon.getDate() + i);
+    const dt  = new Date(mon); dt.setDate(mon.getDate() + i);
     const ds  = dt.toISOString().slice(0, 10);
     const isT = ds === todayStr;
-    const dayTasks = tasks.filter(t => {
-      const td = t.date instanceof Date ? t.date.toISOString().slice(0,10)
-               : String(t.date).slice(0, 10);
-      return td === ds;
-    }).slice(0, 3);
-    const row = document.createElement("div");
-    row.className = "week-day-row";
-    row.innerHTML = `
-      <div class="week-day-num ${isT ? "is-today" : ""}">${dt.getDate()}</div>
-      <div class="week-day-name">${dayNames[i]}</div>
-      <div class="week-day-tasks">
+    const dayTasks = tasks.filter(t => String(t.date).slice(0, 10) === ds).slice(0, 5);
+
+    const col = document.createElement("div");
+    col.className = `week-col${isT ? " week-col-today" : ""}`;
+    col.innerHTML = `
+      <div class="week-col-head">
+        <div class="week-col-name">${DAY_SHORT[i]}</div>
+        <div class="week-col-num">${dt.getDate()}</div>
+      </div>
+      <div class="week-col-tasks">
         ${dayTasks.length
-          ? dayTasks.map(t => `<div class="week-task-dot ${t.status}">${t.title}</div>`).join("")
-          : `<div class="week-task-dot" style="opacity:.3">—</div>`}
+          ? dayTasks.map(t => `<div class="week-col-task wct-${t.status || "todo"}">· ${t.title}</div>`).join("")
+          : `<div class="week-col-empty">—</div>`}
       </div>`;
-    grid.appendChild(row);
+    grid.appendChild(col);
   }
 }
 
@@ -4789,39 +4873,50 @@ function renderBudgetHeader() {
 }
 
 function renderBudgetSummary(cats, expenses, events = []) {
-  const planReg    = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
-  const actualReg  = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const planEv     = events.reduce((s, t) => s + (t.planned_total || 0), 0);
-  const actualEv   = events.reduce((s, t) => s + (Number(t.actual_total) || 0), 0);
-  const plan       = planReg + planEv;
-  const actual     = actualReg + actualEv;
-  const left       = plan - actual;
+  const planReg   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+  const actualReg = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const planEv    = events.reduce((s, t) => s + (t.planned_total || 0), 0);
+  const actualEv  = events.reduce((s, t) => s + (Number(t.actual_total) || 0), 0);
+  const plan      = planReg + planEv;
+  const actual    = actualReg + actualEv;
+  const left      = plan - actual;
+
+  // KPI row (в topbar справа)
   const el = $("budget-summary");
-  if (!el) return;
-  const pctReg = plan > 0 ? Math.min((actualReg / plan) * 100, 100) : 0;
-  const pctEv  = plan > 0 ? Math.min((actualEv  / plan) * 100, 100) : 0;
+  if (el) {
+    el.innerHTML = `
+      <div class="bud-kpi"><div class="bud-kpi-lbl">ПЛАН</div><div class="bud-kpi-val">${plan.toLocaleString("ru")} ₽</div></div>
+      <div class="bud-kpi-sep"></div>
+      <div class="bud-kpi"><div class="bud-kpi-lbl">ФАКТ</div><div class="bud-kpi-val ${actual > plan ? "over" : ""}">${actual.toLocaleString("ru")} ₽</div></div>
+      <div class="bud-kpi-sep"></div>
+      <div class="bud-kpi"><div class="bud-kpi-lbl">${left >= 0 ? "ОСТАЛОСЬ" : "ПЕРЕРАСХОД"}</div><div class="bud-kpi-val ${left < 0 ? "over" : "pos"}">${left < 0 ? "– " : "+ "}${Math.abs(left).toLocaleString("ru")} ₽</div></div>`;
+  }
 
-  // Событие с перерасходом
-  const overEvent = events.find(t => t.actual_total > t.planned_total && t.planned_total > 0);
-  const overNote  = overEvent
-    ? `<div class="budget-over-note">↑ ${overEvent.name} вышли за бюджет на ${(overEvent.actual_total - overEvent.planned_total).toLocaleString("ru")} ₽</div>`
-    : "";
+  // Subtitle под месяцем
+  const sub = $("budget-month-sub");
+  if (sub) sub.textContent = `регулярные траты · ${events.length ? events.length + " событий" : "нет событий"}`;
 
-  el.innerHTML = `
-    <div class="budget-summary-nums">
-      <div class="budget-kpi"><span class="budget-kpi-label">ПЛАН</span><span class="budget-kpi-val">${plan.toLocaleString("ru")} ₽</span></div>
-      <div class="budget-kpi"><span class="budget-kpi-label">ФАКТ</span><span class="budget-kpi-val ${actual > plan ? "over" : ""}">${actual.toLocaleString("ru")} ₽</span></div>
-      <div class="budget-kpi"><span class="budget-kpi-label">${left >= 0 ? "ОСТАЛОСЬ" : "ПЕРЕРАСХОД"}</span><span class="budget-kpi-val ${left < 0 ? "over" : ""}">${Math.abs(left).toLocaleString("ru")} ₽</span></div>
-    </div>
-    <div class="budget-dual-bar">
-      <div class="budget-dual-bar-reg ${actualReg > planReg && planReg > 0 ? "over" : ""}" style="width:${pctReg}%"></div>
-      <div class="budget-dual-bar-ev ${actualEv > planEv && planEv > 0 ? "over" : ""}" style="width:${pctEv}%"></div>
-    </div>
-    <div class="budget-bar-legend">
-      <span class="bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
-      <span class="bleg-ev">▪ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
-    </div>
-    ${overNote}`;
+  // Полоса (отдельный div под topbar)
+  const barRow = $("budget-bar-row");
+  if (barRow) {
+    const total = planReg + planEv;
+    const pctReg = total > 0 ? Math.min((actualReg / total) * 100, 100) : 0;
+    const pctEv  = total > 0 ? Math.min((actualEv  / total) * 100, 100) : 0;
+    const overReg = planReg > 0 && actualReg > planReg;
+    const overEv  = planEv  > 0 && actualEv  > planEv;
+    const overEvent = events.find(t => Number(t.actual_total) > t.planned_total && t.planned_total > 0);
+
+    barRow.innerHTML = `
+      <div class="bud-bar-track">
+        <div class="bud-bar-reg${overReg ? " over" : ""}" style="width:${pctReg}%"></div>
+        <div class="bud-bar-ev${overEv ? " over" : ""}" style="width:${pctEv}%"></div>
+      </div>
+      <div class="bud-bar-legend">
+        <span class="bud-bleg bud-bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
+        <span class="bud-bleg bud-bleg-ev">□ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
+        ${overEvent ? `<span class="bud-bleg bud-bleg-warn">↑ ${overEvent.name} вышли за бюджет на ${(Number(overEvent.actual_total) - overEvent.planned_total).toLocaleString("ru")} ₽</span>` : ""}
+      </div>`;
+  }
 }
 
 // ─── Accordion: Категория → Место → Транзакция ───────────────────────────────
@@ -4867,16 +4962,19 @@ function renderBudgetAccordion(cats, expenses) {
     const catDiv = document.createElement("div");
     catDiv.className = "bacc-cat";
 
-    const spentFmt = group.total.toLocaleString("ru");
-    const planFmt  = plan > 0 ? ` / ${plan.toLocaleString("ru")} ₽` : "";
+    const pct       = plan > 0 ? Math.min((group.total / plan) * 100, 100) : (group.total > 0 ? 100 : 0);
+    const spentFmt  = group.total.toLocaleString("ru");
+    const planFmt   = plan > 0 ? ` / ${plan.toLocaleString("ru")} ₽` : "";
+    const overSign  = over ? " ↑" : "";
     catDiv.innerHTML = `
       <div class="bacc-cat-head">
-        <button class="bacc-toggle">▶</button>
         <span class="bacc-cat-emoji">${emoji}</span>
         <span class="bacc-cat-name">${catName}</span>
-        <button class="bacc-plan-val ${over ? "over" : ""}" data-cat-id="${catId}" title="Изменить план">${spentFmt} ₽${planFmt}</button>
+        <button class="bacc-plan-val ${over ? "over" : ""}" data-cat-id="${catId}" title="Нажми чтобы изменить план">${spentFmt}${planFmt} ₽${overSign}</button>
+        <button class="bacc-toggle" title="Развернуть">›</button>
         ${cat ? `<button class="bacc-cat-delete" data-id="${catId}">×</button>` : ""}
       </div>
+      <div class="bacc-cat-bar"><div class="bacc-cat-bar-fill${over ? " over" : ""}" style="width:${pct}%"></div></div>
       <div class="bacc-cat-body" style="display:none"></div>`;
 
     const head   = catDiv.querySelector(".bacc-cat-head");
@@ -4894,10 +4992,12 @@ function renderBudgetAccordion(cats, expenses) {
       });
     }
     head.addEventListener("click", e => {
-      if (e.target.tagName === "BUTTON") return;
+      if (e.target.classList.contains("bacc-plan-val")) return;
+      if (e.target.classList.contains("bacc-cat-delete")) return;
       const open = body.style.display !== "none";
       body.style.display = open ? "none" : "";
-      toggle.textContent = open ? "▶" : "▼";
+      toggle.textContent = open ? "›" : "▾";
+      catDiv.classList.toggle("bacc-open", !open);
     });
 
     // Уровень: место/заведение
@@ -4958,13 +5058,14 @@ function renderBudgetAccordion(cats, expenses) {
     emptyDiv.className = "bacc-cat bacc-cat-empty";
     const plan = cat.plan_monthly || 0;
     emptyDiv.innerHTML = `
-      <div class="bacc-cat-head">
-        <button class="bacc-toggle" disabled style="opacity:.25">▶</button>
+      <div class="bacc-cat-head bacc-cat-head-empty">
         <span class="bacc-cat-emoji">${cat.emoji}</span>
-        <span class="bacc-cat-name">${cat.name}</span>
-        <button class="bacc-plan-val no-plan" title="Задать план">0 ₽${plan ? ` / ${plan.toLocaleString("ru")} ₽` : ""}</button>
+        <span class="bacc-cat-name" style="opacity:.5">${cat.name}</span>
+        <button class="bacc-plan-val no-plan" title="Задать план">0${plan ? ` / ${plan.toLocaleString("ru")}` : ""} ₽</button>
+        <button class="bacc-toggle" disabled style="opacity:.2">›</button>
         <button class="bacc-cat-delete" data-id="${cat.id}">×</button>
-      </div>`;
+      </div>
+      <div class="bacc-cat-bar"><div class="bacc-cat-bar-fill" style="width:0%"></div></div>`;
     emptyDiv.querySelector(".bacc-plan-val").addEventListener("click", e => {
       e.stopPropagation(); openPlanEdit(emptyDiv, cat);
     });
@@ -5032,50 +5133,55 @@ function buildEventCard(ev) {
   const over      = plan > 0 && actual > plan;
   const pct       = plan > 0 ? Math.min((actual / plan) * 100, 100) : (actual > 0 ? 100 : 0);
   const typeLabel = isTrip ? "поездка" : "событие";
+  const MONTHS    = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
 
-  // Даты
+  // Дата
   let dateStr = "";
   if (ev.start_date) {
     const sd = new Date(ev.start_date + "T00:00:00");
-    const days = ["вс","пн","вт","ср","чт","пт","сб"];
     if (ev.end_date && ev.end_date !== ev.start_date) {
       const ed = new Date(ev.end_date + "T00:00:00");
-      dateStr = `${sd.getDate()}–${ed.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][sd.getMonth()]}`;
+      dateStr = `${sd.getDate()}–${ed.getDate()} ${MONTHS[sd.getMonth()]}`;
     } else {
-      dateStr = `${sd.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][sd.getMonth()]}`;
+      dateStr = `${sd.getDate()} ${MONTHS[sd.getMonth()]}`;
     }
   }
 
-  const card = document.createElement("div");
-  card.className = `budget-event-card ${over ? "over" : ""}`;
-  card.innerHTML = `
-    <div class="bev-head">
-      <span class="bev-emoji">${ev.emoji}</span>
-      <div class="bev-info">
-        <div class="bev-name">${ev.name}</div>
-        <div class="bev-meta">
-          <span class="bev-type">${typeLabel}</span>
-          ${dateStr ? `<span class="bev-date">${dateStr}</span>` : ""}
-        </div>
-      </div>
-      <div class="bev-amounts">
-        <span class="bev-actual ${over ? "over" : ""}">${actual.toLocaleString("ru")} ₽</span>
-        ${plan ? `<span class="bev-plan">/ ${plan.toLocaleString("ru")} ₽</span>` : ""}
-      </div>
-      <button class="bev-delete">×</button>
-    </div>
-    ${plan > 0 ? `<div class="bev-bar"><div class="bev-bar-fill ${over ? "over" : ""}" style="width:${pct}%"></div></div>` : ""}`;
+  // Идёт сейчас?
+  const todayS = new Date().toISOString().slice(0, 10);
+  const isNow  = ev.start_date && ev.end_date
+    ? (todayS >= ev.start_date && todayS <= ev.end_date)
+    : ev.start_date === todayS;
 
-  card.querySelector(".bev-head").addEventListener("click", e => {
-    if (e.target.classList.contains("bev-delete")) return;
-    openEventDetail(ev);
-  });
-  card.querySelector(".bev-delete").addEventListener("click", async e => {
+  const row = document.createElement("div");
+  row.className = `bev-row${over ? " bev-over" : ""}`;
+  row.innerHTML = `
+    <span class="bev-row-emoji">${ev.emoji}</span>
+    <div class="bev-row-middle">
+      <div class="bev-row-top">
+        <span class="bev-row-name">${ev.name}</span>
+        ${isNow ? `<span class="bev-row-now">сейчас</span>` : ""}
+        <span class="bev-row-type">${typeLabel}</span>
+        ${dateStr ? `<span class="bev-row-date">${dateStr}</span>` : ""}
+      </div>
+      ${plan > 0 ? `<div class="bev-row-bar"><div class="bev-row-bar-fill${over ? " over" : ""}" style="width:${pct}%"></div></div>` : ""}
+    </div>
+    <div class="bev-row-right">
+      <span class="bev-row-actual${over ? " over" : ""}">${actual.toLocaleString("ru")} ₽</span>
+      ${plan ? `<span class="bev-row-plan">/ ${plan.toLocaleString("ru")} ₽</span>` : ""}
+      <button class="bev-row-link" title="Детали по дням">по дням →</button>
+    </div>
+    <button class="bev-row-del" title="Удалить">×</button>`;
+
+  row.querySelector(".bev-row-middle").addEventListener("click", () => openEventDetail(ev));
+  row.querySelector(".bev-row-name").addEventListener("click", () => openEventDetail(ev));
+  row.querySelector(".bev-row-link").addEventListener("click", e => { e.stopPropagation(); openEventDetail(ev); });
+  row.querySelector(".bev-row-del").addEventListener("click", async e => {
     e.stopPropagation();
     if (!confirm(`Удалить «${ev.name}»?`)) return;
     try { await apiFetch(`/trips/${ev.id}`, { method: "DELETE" }); loadBudget(); } catch {}
   });
-  return card;
+  return row;
 }
 
 // ─── Детальный вид поездки/события — по дням ────────────────────────────────

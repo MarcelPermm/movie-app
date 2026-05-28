@@ -369,11 +369,20 @@
         <div class="notebook-body">
           <!-- Сегодня -->
           <div class="ntab-panel" id="ntab-today">
+            <!-- Дневная шапка -->
+            <div class="nb-daybar">
+              <span class="nb-daybar-left" id="nb-daybar-left"></span>
+              <span class="nb-daybar-center" id="nb-daybar-center"></span>
+              <span class="nb-daybar-right" id="nb-daybar-right"></span>
+            </div>
             <div class="notebook-spread">
+              <!-- Левая страница: сегодня -->
               <div class="nb-page nb-page-today">
                 <div class="nb-page-head">
-                  <h1 class="nb-title">Сегодня</h1>
-                  <div class="nb-subtitle" id="nb-today-subtitle"></div>
+                  <div class="nb-title-row">
+                    <h1 class="nb-title" id="nb-title-today">Сегодня</h1>
+                    <span class="nb-task-count" id="nb-task-count"></span>
+                  </div>
                   <div class="nb-meta-line" id="nb-today-meta"></div>
                 </div>
                 <div class="nb-ruled-area">
@@ -381,11 +390,21 @@
                   <button class="task-add-btn" id="task-add-btn"><span class="task-add-line">+ новая задача…</span></button>
                 </div>
               </div>
-              <div class="nb-page nb-page-week">
-                <div class="nb-page-head">
-                  <h2 class="nb-title-sm">Эта неделя</h2>
+              <!-- Правая страница: вчера + неделя -->
+              <div class="nb-page nb-page-right">
+                <div class="nb-section-yesterday">
+                  <div class="nb-yesterday-head">
+                    <h2 class="nb-title-sm">Вчера</h2>
+                    <div class="nb-yday-badges" id="nb-yesterday-badges"></div>
+                  </div>
+                  <div class="nb-ruled-area nb-ruled-sm">
+                    <div class="task-list" id="task-list-yesterday"></div>
+                  </div>
                 </div>
-                <div class="week-grid" id="nb-week-grid"></div>
+                <div class="nb-section-week">
+                  <h2 class="nb-title-sm">Эта неделя</h2>
+                  <div class="week-grid-h" id="nb-week-grid"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -411,46 +430,46 @@
 
           <!-- Бюджет -->
           <div class="ntab-panel" id="ntab-budget" style="display:none">
-            <!-- Шапка: месяц + сводная полоса -->
+            <!-- Шапка: месяц + KPI -->
             <div class="budget-topbar">
-              <div class="cal-month-nav">
-                <button class="cal-nav-btn" id="budget-prev">‹</button>
-                <span class="nb-title" id="budget-month-label" style="font-size:32px"></span>
-                <button class="cal-nav-btn" id="budget-next">›</button>
+              <div class="budget-topbar-left">
+                <div class="cal-month-nav">
+                  <button class="cal-nav-btn" id="budget-prev">‹</button>
+                  <span class="budget-month-title" id="budget-month-label"></span>
+                  <button class="cal-nav-btn" id="budget-next">›</button>
+                </div>
+                <div class="budget-month-sub" id="budget-month-sub"></div>
               </div>
-              <div id="budget-summary"></div>
+              <div class="budget-kpi-row" id="budget-summary"></div>
             </div>
+            <!-- Полоса прогресса -->
+            <div class="budget-bar-row" id="budget-bar-row"></div>
             <!-- Двухпанельный вид -->
             <div class="budget-two-col">
               <!-- Левая: Регулярные -->
               <div class="budget-col" id="budget-col-regular">
                 <div class="budget-col-head">
                   <div>
-                    <div class="budget-col-title">Регулярные</div>
-                    <div class="budget-col-sub">что и так каждый месяц</div>
+                    <div class="budget-col-title">Регулярные <span class="budget-col-sub">· что и так каждый месяц</span></div>
                   </div>
-                  <div style="display:flex;gap:6px;align-items:center">
-                    <label class="import-btn" title="Загрузить выписку (PDF)">📂<input type="file" id="budget-import-file" accept=".pdf" style="display:none" /></label>
-                    <button class="import-btn" id="budget-clear-month" title="Удалить расходы за месяц">🗑️</button>
-                    <button class="import-btn" id="budget-clear-all" title="Удалить всё">🗑️✕</button>
+                  <div class="budget-col-actions">
+                    <label class="bud-icon-btn" title="Загрузить выписку (PDF)">📂<input type="file" id="budget-import-file" accept=".pdf" style="display:none" /></label>
+                    <button class="bud-icon-btn" id="budget-clear-month" title="Очистить месяц">🗑</button>
                   </div>
                 </div>
                 <div id="budget-categories-list"></div>
                 <div id="budget-expenses-list" style="display:none"></div>
-                <button class="task-add-btn" id="budget-add-cat-btn"><span class="task-add-line">+ категория…</span></button>
-                <button class="task-add-btn" id="budget-add-exp-btn" style="margin-top:4px"><span class="task-add-line">+ расход…</span></button>
+                <button class="bud-add-row" id="budget-add-cat-btn">+ добавить категорию</button>
+                <button class="bud-add-row" id="budget-add-exp-btn">+ расход без категории</button>
               </div>
-              <!-- Правая: События и поездки -->
+              <!-- Правая: События -->
               <div class="budget-col" id="budget-col-events">
                 <div class="budget-col-head">
-                  <div>
-                    <div class="budget-col-title">События</div>
-                    <div class="budget-col-sub">поездки, праздники, разовое</div>
-                  </div>
+                  <div class="budget-col-title">События <span class="budget-col-sub">· поездки, праздники, разовое</span></div>
                   <span class="budget-events-count" id="budget-events-count"></span>
                 </div>
                 <div id="budget-events-list"></div>
-                <button class="task-add-btn" id="budget-add-event-btn"><span class="task-add-line">+ событие или поездка…</span></button>
+                <button class="bud-add-row" id="budget-add-event-btn">+ новое событие или поездка</button>
               </div>
             </div>
           </div>
