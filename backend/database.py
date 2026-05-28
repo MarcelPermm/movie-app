@@ -1380,6 +1380,18 @@ def init_trips_tables():
                 created_at    TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        cur.execute("ALTER TABLE trips ADD COLUMN IF NOT EXISTS event_type TEXT DEFAULT 'trip'")
+        cur.execute("ALTER TABLE trips ADD COLUMN IF NOT EXISTS subtitle TEXT DEFAULT ''")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trip_day_notes (
+                id       SERIAL PRIMARY KEY,
+                trip_id  INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+                date     DATE NOT NULL,
+                note     TEXT DEFAULT '',
+                title    TEXT DEFAULT '',
+                UNIQUE(trip_id, date)
+            )
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS trip_expenses (
                 id             SERIAL PRIMARY KEY,
@@ -1413,13 +1425,62 @@ def get_trips(user_id: int) -> list:
     finally:
         conn.close()
 
-def add_trip(user_id: int, name: str, emoji: str = "✈️",
-             start_date: str = None, end_date: str = None, planned_total: int = 0) -> dict:
+def get_trips_for_month(user_id: int, year: int, month: int) -> list:
+    """Возвращает поездки/события, чьи даты пересекаются с указанным месяцем."""
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO trips (user_id,name,emoji,start_date,end_date,planned_total) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
-                    (user_id, name, emoji, start_date, end_date, planned_total))
+        cur.execute("""
+            SELECT t.*, COALESCE(SUM(e.amount),0) as actual_total
+            FROM trips t LEFT JOIN trip_expenses e ON e.trip_id = t.id
+            WHERE t.user_id=%s
+              AND (
+                  EXTRACT(YEAR FROM t.start_date) = %s AND EXTRACT(MONTH FROM t.start_date) = %s
+                  OR EXTRACT(YEAR FROM t.end_date) = %s AND EXTRACT(MONTH FROM t.end_date) = %s
+                  OR (t.start_date <= make_date(%s, %s, 28) AND t.end_date >= make_date(%s, %s, 1))
+              )
+            GROUP BY t.id ORDER BY t.start_date DESC NULLS LAST
+        """, (user_id, year, month, year, month, year, month, year, month))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_trip(user_id: int, name: str, emoji: str = "✈️",
+             start_date: str = None, end_date: str = None, planned_total: int = 0,
+             event_type: str = "trip", subtitle: str = "") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO trips (user_id,name,emoji,start_date,end_date,planned_total,event_type,subtitle) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (user_id, name, emoji, start_date, end_date, planned_total, event_type, subtitle)
+        )
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def get_trip_day_notes(trip_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM trip_day_notes WHERE trip_id=%s ORDER BY date ASC", (trip_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def upsert_trip_day_note(trip_id: int, date: str, note: str = "", title: str = "") -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO trip_day_notes (trip_id, date, note, title)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (trip_id, date) DO UPDATE SET note=EXCLUDED.note, title=EXCLUDED.title
+            RETURNING *
+        """, (trip_id, date, note, title))
         row = dict(cur.fetchone())
         conn.commit()
         return row

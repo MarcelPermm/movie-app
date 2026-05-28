@@ -4769,16 +4769,17 @@ async function loadBudget() {
   renderBudgetHeader();
   const { year, month } = budgetState;
   try {
-    const [cats, expenses] = await Promise.all([
+    const [cats, expenses, events] = await Promise.all([
       apiFetch("/budget/categories"),
       apiFetch(`/budget/expenses?year=${year}&month=${month}`),
+      apiFetch(`/budget/events?year=${year}&month=${month}`).catch(() => []),
     ]);
+    renderBudgetSummary(cats, expenses, events);
     renderBudgetAccordion(cats, expenses);
-    const expEl = $("budget-expenses-list");
-    if (expEl) expEl.innerHTML = "";
-    renderBudgetSummary(cats, expenses);
-  } catch {}
+    renderBudgetEvents(events);
+  } catch(e) { console.error(e); }
   initBudgetAddButtons();
+  initBudgetEventBtn();
 }
 
 function renderBudgetHeader() {
@@ -4787,20 +4788,40 @@ function renderBudgetHeader() {
   if (lbl) lbl.textContent = `${months[budgetState.month - 1]} ${budgetState.year}`;
 }
 
-function renderBudgetSummary(cats, expenses) {
-  const plan   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
-  const actual = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const left   = plan - actual;
+function renderBudgetSummary(cats, expenses, events = []) {
+  const planReg    = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+  const actualReg  = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const planEv     = events.reduce((s, t) => s + (t.planned_total || 0), 0);
+  const actualEv   = events.reduce((s, t) => s + (Number(t.actual_total) || 0), 0);
+  const plan       = planReg + planEv;
+  const actual     = actualReg + actualEv;
+  const left       = plan - actual;
   const el = $("budget-summary");
   if (!el) return;
-  const pct = plan > 0 ? Math.min((actual / plan) * 100, 100) : 0;
+  const pctReg = plan > 0 ? Math.min((actualReg / plan) * 100, 100) : 0;
+  const pctEv  = plan > 0 ? Math.min((actualEv  / plan) * 100, 100) : 0;
+
+  // Событие с перерасходом
+  const overEvent = events.find(t => t.actual_total > t.planned_total && t.planned_total > 0);
+  const overNote  = overEvent
+    ? `<div class="budget-over-note">↑ ${overEvent.name} вышли за бюджет на ${(overEvent.actual_total - overEvent.planned_total).toLocaleString("ru")} ₽</div>`
+    : "";
+
   el.innerHTML = `
     <div class="budget-summary-nums">
       <div class="budget-kpi"><span class="budget-kpi-label">ПЛАН</span><span class="budget-kpi-val">${plan.toLocaleString("ru")} ₽</span></div>
       <div class="budget-kpi"><span class="budget-kpi-label">ФАКТ</span><span class="budget-kpi-val ${actual > plan ? "over" : ""}">${actual.toLocaleString("ru")} ₽</span></div>
       <div class="budget-kpi"><span class="budget-kpi-label">${left >= 0 ? "ОСТАЛОСЬ" : "ПЕРЕРАСХОД"}</span><span class="budget-kpi-val ${left < 0 ? "over" : ""}">${Math.abs(left).toLocaleString("ru")} ₽</span></div>
     </div>
-    <div class="budget-total-bar"><div class="budget-total-bar-fill ${actual > plan ? "over" : ""}" style="width:${pct}%"></div></div>`;
+    <div class="budget-dual-bar">
+      <div class="budget-dual-bar-reg ${actualReg > planReg && planReg > 0 ? "over" : ""}" style="width:${pctReg}%"></div>
+      <div class="budget-dual-bar-ev ${actualEv > planEv && planEv > 0 ? "over" : ""}" style="width:${pctEv}%"></div>
+    </div>
+    <div class="budget-bar-legend">
+      <span class="bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
+      <span class="bleg-ev">▪ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
+    </div>
+    ${overNote}`;
 }
 
 // ─── Accordion: Категория → Место → Транзакция ───────────────────────────────
@@ -4977,6 +4998,342 @@ function openPlanEdit(catDiv, cat) {
   inp.addEventListener("keydown", e => {
     if (e.key === "Enter") inp.blur();
     if (e.key === "Escape") loadBudget();
+  });
+}
+
+// ─── События и поездки (правая колонка бюджета) ──────────────────────────────
+
+function renderBudgetEvents(events) {
+  const el    = $("budget-events-list");
+  const count = $("budget-events-count");
+  if (!el) return;
+  if (count) count.textContent = events.length ? `${events.length} шт.` : "";
+  el.innerHTML = "";
+  if (!events.length) {
+    el.innerHTML = `<div class="budget-events-empty">нет событий в этом месяце</div>`;
+    return;
+  }
+  // Сортируем: сначала активные, по дате
+  const sorted = [...events].sort((a, b) => {
+    const da = a.start_date || "9999";
+    const db = b.start_date || "9999";
+    return da < db ? 1 : -1;
+  });
+  for (const ev of sorted) {
+    const card = buildEventCard(ev);
+    el.appendChild(card);
+  }
+}
+
+function buildEventCard(ev) {
+  const isTrip    = ev.event_type !== "event";
+  const actual    = Number(ev.actual_total) || 0;
+  const plan      = ev.planned_total || 0;
+  const over      = plan > 0 && actual > plan;
+  const pct       = plan > 0 ? Math.min((actual / plan) * 100, 100) : (actual > 0 ? 100 : 0);
+  const typeLabel = isTrip ? "поездка" : "событие";
+
+  // Даты
+  let dateStr = "";
+  if (ev.start_date) {
+    const sd = new Date(ev.start_date + "T00:00:00");
+    const days = ["вс","пн","вт","ср","чт","пт","сб"];
+    if (ev.end_date && ev.end_date !== ev.start_date) {
+      const ed = new Date(ev.end_date + "T00:00:00");
+      dateStr = `${sd.getDate()}–${ed.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][sd.getMonth()]}`;
+    } else {
+      dateStr = `${sd.getDate()} ${["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][sd.getMonth()]}`;
+    }
+  }
+
+  const card = document.createElement("div");
+  card.className = `budget-event-card ${over ? "over" : ""}`;
+  card.innerHTML = `
+    <div class="bev-head">
+      <span class="bev-emoji">${ev.emoji}</span>
+      <div class="bev-info">
+        <div class="bev-name">${ev.name}</div>
+        <div class="bev-meta">
+          <span class="bev-type">${typeLabel}</span>
+          ${dateStr ? `<span class="bev-date">${dateStr}</span>` : ""}
+        </div>
+      </div>
+      <div class="bev-amounts">
+        <span class="bev-actual ${over ? "over" : ""}">${actual.toLocaleString("ru")} ₽</span>
+        ${plan ? `<span class="bev-plan">/ ${plan.toLocaleString("ru")} ₽</span>` : ""}
+      </div>
+      <button class="bev-delete">×</button>
+    </div>
+    ${plan > 0 ? `<div class="bev-bar"><div class="bev-bar-fill ${over ? "over" : ""}" style="width:${pct}%"></div></div>` : ""}`;
+
+  card.querySelector(".bev-head").addEventListener("click", e => {
+    if (e.target.classList.contains("bev-delete")) return;
+    openEventDetail(ev);
+  });
+  card.querySelector(".bev-delete").addEventListener("click", async e => {
+    e.stopPropagation();
+    if (!confirm(`Удалить «${ev.name}»?`)) return;
+    try { await apiFetch(`/trips/${ev.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+  });
+  return card;
+}
+
+// ─── Детальный вид поездки/события — по дням ────────────────────────────────
+
+async function openEventDetail(ev) {
+  const panel = $("ntab-budget");
+  if (!panel) return;
+
+  const [expenses, dayNotes] = await Promise.all([
+    apiFetch(`/trips/${ev.id}/expenses`).catch(() => []),
+    apiFetch(`/trips/${ev.id}/day-notes`).catch(() => []),
+  ]);
+
+  const noteMap = {};
+  for (const dn of dayNotes) noteMap[String(dn.date).slice(0,10)] = dn;
+
+  // Собираем уникальные дни
+  const datesSet = new Set(expenses.map(e => String(e.date).slice(0,10)));
+  // Добавляем дни из диапазона поездки
+  if (ev.start_date && ev.end_date) {
+    let d = new Date(ev.start_date + "T00:00:00");
+    const end = new Date(ev.end_date + "T00:00:00");
+    while (d <= end) {
+      datesSet.add(d.toISOString().slice(0,10));
+      d.setDate(d.getDate() + 1);
+    }
+  } else if (ev.start_date) {
+    datesSet.add(ev.start_date);
+  }
+  const dates = [...datesSet].sort();
+
+  // Считаем категорийные итоги для прогресс-бара
+  const byCat = {};
+  for (const exp of expenses) {
+    const k = exp.category || "Прочее";
+    byCat[k] = (byCat[k] || 0) + exp.amount;
+  }
+  const catTotal = Object.values(byCat).reduce((s, v) => s + v, 0);
+  const PALETTE  = ["#b44840","#c9873a","#5a8a5a","#4a6da8","#8a5aaa","#6a6a6a"];
+  const catEntries = Object.entries(byCat).sort((a,b) => b[1]-a[1]);
+
+  const actual = Number(ev.actual_total) || expenses.reduce((s,e) => s+e.amount, 0);
+  const plan   = ev.planned_total || 0;
+  const perDay = dates.length > 0 ? Math.round(actual / dates.length) : 0;
+
+  panel.innerHTML = `
+    <div class="evd-wrap">
+      <div class="evd-topbar">
+        <button class="evd-back" id="evd-back">← бюджет ${["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"][budgetState.month]}</button>
+        <div class="evd-breadcrumb">события / ${ev.emoji} ${ev.name}</div>
+      </div>
+      <div class="evd-header">
+        <span class="evd-emoji">${ev.emoji}</span>
+        <div class="evd-header-info">
+          <div class="evd-title">${ev.name}</div>
+          ${ev.subtitle ? `<div class="evd-subtitle">${ev.subtitle}</div>` : ""}
+        </div>
+        <div class="evd-kpis">
+          ${plan ? `<div class="evd-kpi"><div class="evd-kpi-lbl">ПЛАН</div><div class="evd-kpi-val">${plan.toLocaleString("ru")} ₽</div></div>` : ""}
+          <div class="evd-kpi"><div class="evd-kpi-lbl">ФАКТ</div><div class="evd-kpi-val ${actual>plan&&plan>0?"over":""}">${actual.toLocaleString("ru")} ₽</div></div>
+          ${dates.length>1 ? `<div class="evd-kpi"><div class="evd-kpi-lbl">В ДЕНЬ</div><div class="evd-kpi-val">${perDay.toLocaleString("ru")} ₽</div></div>` : ""}
+        </div>
+      </div>
+      <!-- Категорийная полоса -->
+      ${catTotal > 0 ? `
+      <div class="evd-catbar">
+        ${catEntries.map(([cat, sum], i) =>
+          `<div class="evd-catbar-seg" style="width:${(sum/catTotal*100).toFixed(1)}%;background:${PALETTE[i%PALETTE.length]}" title="${cat}: ${sum.toLocaleString('ru')} ₽"></div>`
+        ).join("")}
+      </div>
+      <div class="evd-catbar-legend">
+        ${catEntries.map(([cat, sum], i) =>
+          `<span class="evd-catleg-item"><span class="evd-catleg-dot" style="background:${PALETTE[i%PALETTE.length]}"></span>${cat}: <b>${sum.toLocaleString("ru")} ₽</b></span>`
+        ).join("")}
+      </div>` : ""}
+      <!-- Дни -->
+      <div class="evd-days-label">По дням</div>
+      <div class="evd-days-scroll">
+        <div class="evd-days-row" id="evd-days-row"></div>
+      </div>
+    </div>`;
+
+  $("evd-back").addEventListener("click", () => loadBudget());
+
+  // Строим колонки дней
+  const row = $("evd-days-row");
+  const MONTH_NAMES = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+
+  for (const dateStr of dates) {
+    const dt    = new Date(dateStr + "T00:00:00");
+    const dayExps = expenses.filter(e => String(e.date).slice(0,10) === dateStr);
+    const dayTotal = dayExps.reduce((s,e) => s + e.amount, 0);
+    const dn    = noteMap[dateStr];
+    const dayTitle = dn?.title || "";
+    const dayNote  = dn?.note  || "";
+
+    const col = document.createElement("div");
+    col.className = "evd-day-col";
+    col.innerHTML = `
+      <div class="evd-day-head">
+        <div class="evd-day-date">${dt.getDate()} ${MONTH_NAMES[dt.getMonth()]}</div>
+        ${dayTotal ? `<div class="evd-day-total">${dayTotal.toLocaleString("ru")} ₽</div>` : ""}
+        <input class="evd-day-title-inp" value="${dayTitle}" placeholder="название дня…" data-date="${dateStr}" />
+      </div>
+      <div class="evd-day-exps">
+        ${dayExps.length ? dayExps.map(exp => `
+          <div class="evd-exp-row" data-id="${exp.id}">
+            <span class="evd-exp-emoji">${exp.emoji || "💸"}</span>
+            <div class="evd-exp-body">
+              <div class="evd-exp-note">${exp.note || exp.category || "расход"}</div>
+              ${exp.category ? `<div class="evd-exp-cat">${exp.category}</div>` : ""}
+            </div>
+            <span class="evd-exp-amt">${exp.amount.toLocaleString("ru")} ₽</span>
+            <button class="evd-exp-del" data-id="${exp.id}">×</button>
+          </div>`).join("") : ""}
+      </div>
+      <div class="evd-day-note-wrap">
+        <textarea class="evd-day-note" placeholder="заметка о дне…" data-date="${dateStr}">${dayNote}</textarea>
+      </div>
+      <button class="evd-day-add-btn" data-date="${dateStr}">+ расход</button>`;
+
+    // Сохранение заголовка дня
+    const titleInp = col.querySelector(".evd-day-title-inp");
+    titleInp.addEventListener("blur", async () => {
+      const title = titleInp.value.trim();
+      const note  = col.querySelector(".evd-day-note").value.trim();
+      await apiFetch(`/trips/${ev.id}/day-notes`, {
+        method: "POST", body: JSON.stringify({ date: dateStr, title, note }),
+      }).catch(()=>{});
+    });
+
+    // Сохранение заметки дня
+    const noteTA = col.querySelector(".evd-day-note");
+    noteTA.addEventListener("blur", async () => {
+      const title = titleInp.value.trim();
+      const note  = noteTA.value.trim();
+      await apiFetch(`/trips/${ev.id}/day-notes`, {
+        method: "POST", body: JSON.stringify({ date: dateStr, title, note }),
+      }).catch(()=>{});
+    });
+
+    // Удаление расхода
+    col.querySelectorAll(".evd-exp-del").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        try {
+          await apiFetch(`/trip-expenses/${id}`, { method: "DELETE" });
+          btn.closest(".evd-exp-row").remove();
+        } catch {}
+      });
+    });
+
+    // Добавить расход в день
+    col.querySelector(".evd-day-add-btn").addEventListener("click", () => {
+      openDayExpenseForm(col, ev.id, dateStr, () => openEventDetail(ev));
+    });
+
+    row.appendChild(col);
+  }
+}
+
+function openDayExpenseForm(col, tripId, dateStr, onSaved) {
+  const existing = col.querySelector(".evd-day-form");
+  if (existing) { existing.remove(); return; }
+  const form = document.createElement("div");
+  form.className = "evd-day-form";
+  form.innerHTML = `
+    <input class="nb-inline-input sm" id="edf-emoji" placeholder="Emoji" maxlength="4" value="💸" />
+    <div class="preset-wrap" style="flex:1">
+      <input class="nb-inline-input md" id="edf-cat" placeholder="Категория" style="width:100%" autocomplete="off" />
+      <div class="preset-dropdown" id="edf-dd" style="display:none"></div>
+    </div>
+    <input class="nb-inline-input md" id="edf-note" placeholder="Заметка…" />
+    <input class="nb-inline-input sm" id="edf-amt" type="number" min="0" placeholder="₽" />
+    <button class="nb-inline-btn" id="edf-ok">✓</button>`;
+
+  col.querySelector(".evd-day-exps").after(form);
+
+  const catI = form.querySelector("#edf-cat");
+  const dd   = form.querySelector("#edf-dd");
+  function renderP(q) {
+    const f = q ? CATEGORY_PRESETS.filter(p => p.name.toLowerCase().includes(q.toLowerCase())) : CATEGORY_PRESETS;
+    if (!f.length) { dd.style.display = "none"; return; }
+    dd.innerHTML = f.map(p => `<div class="preset-item" data-emoji="${p.emoji}" data-name="${p.name}"><span class="preset-item-emoji">${p.emoji}</span>${p.name}</div>`).join("");
+    dd.style.display = "";
+  }
+  catI.addEventListener("focus", () => renderP(catI.value));
+  catI.addEventListener("input", () => renderP(catI.value));
+  catI.addEventListener("blur",  () => setTimeout(() => { dd.style.display = "none"; }, 200));
+  dd.addEventListener("mousedown", e => {
+    const item = e.target.closest(".preset-item");
+    if (!item) return;
+    form.querySelector("#edf-emoji").value = item.dataset.emoji;
+    catI.value = item.dataset.name; dd.style.display = "none";
+  });
+
+  form.querySelector("#edf-ok").addEventListener("click", async () => {
+    const amount = parseInt(form.querySelector("#edf-amt").value); if (!amount) return;
+    try {
+      await apiFetch(`/trips/${tripId}/expenses`, {
+        method: "POST",
+        body: JSON.stringify({
+          date: dateStr, amount,
+          category: catI.value || "",
+          note: form.querySelector("#edf-note").value || "",
+          emoji: form.querySelector("#edf-emoji").value || "💸",
+          city: "",
+        }),
+      });
+      form.remove();
+      onSaved();
+    } catch {}
+  });
+  form.addEventListener("keydown", e => { if (e.key === "Escape") form.remove(); });
+  form.querySelector("#edf-amt").focus();
+}
+
+// ─── Добавление события/поездки ──────────────────────────────────────────────
+
+function initBudgetEventBtn() {
+  const btn = $("budget-add-event-btn");
+  if (!btn || btn._init) return;
+  btn._init = true;
+  btn.addEventListener("click", () => {
+    btn.style.display = "none";
+    const form = document.createElement("div");
+    form.className = "nb-inline-form";
+    form.innerHTML = `
+      <input class="nb-inline-input sm" id="bev-emoji" placeholder="Emoji" maxlength="4" value="✈️" />
+      <input class="nb-inline-input lg" id="bev-name" placeholder="Название события…" />
+      <select class="nb-inline-select" id="bev-type">
+        <option value="trip">✈️ Поездка</option>
+        <option value="event">🎉 Событие</option>
+      </select>
+      <input class="nb-inline-input sm" id="bev-d1" type="date" title="Начало" />
+      <input class="nb-inline-input sm" id="bev-d2" type="date" title="Конец" />
+      <input class="nb-inline-input sm" id="bev-plan" placeholder="Бюджет ₽" type="number" min="0" />
+      <button class="nb-inline-btn" id="bev-ok">Добавить</button>`;
+    btn.parentNode.insertBefore(form, btn.nextSibling);
+
+    form.querySelector("#bev-ok").addEventListener("click", async () => {
+      const name = form.querySelector("#bev-name").value.trim();
+      if (!name) return;
+      try {
+        await apiFetch("/trips", { method: "POST", body: JSON.stringify({
+          name,
+          emoji: form.querySelector("#bev-emoji").value || "✈️",
+          event_type: form.querySelector("#bev-type").value,
+          start_date: form.querySelector("#bev-d1").value || null,
+          end_date:   form.querySelector("#bev-d2").value || null,
+          planned_total: parseInt(form.querySelector("#bev-plan").value) || 0,
+        })});
+        form.remove(); btn.style.display = "";
+        loadBudget();
+      } catch {}
+    });
+    form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+    form.querySelector("#bev-name").focus();
   });
 }
 

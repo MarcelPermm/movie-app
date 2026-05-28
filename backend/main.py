@@ -1852,6 +1852,8 @@ class TripCreate(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     planned_total: int = 0
+    event_type: str = "trip"
+    subtitle: str = ""
 
 class TripExpenseCreate(BaseModel):
     date: str
@@ -1866,9 +1868,25 @@ class TripExpenseCreate(BaseModel):
 async def get_trips(user_id: int = 1):
     return database.get_trips(user_id)
 
+@app.get("/budget/events")
+async def get_budget_events(year: int, month: int, user_id: int = 1):
+    """Поездки и события пересекающиеся с указанным месяцем."""
+    return database.get_trips_for_month(user_id, year, month)
+
 @app.post("/trips")
 async def create_trip(req: TripCreate, user_id: int = 1):
-    return database.add_trip(user_id, req.name, req.emoji, req.start_date, req.end_date, req.planned_total)
+    return database.add_trip(
+        user_id, req.name, req.emoji, req.start_date, req.end_date,
+        req.planned_total, req.event_type, req.subtitle
+    )
+
+@app.get("/trips/{trip_id}/day-notes")
+async def get_day_notes(trip_id: int, user_id: int = 1):
+    return database.get_trip_day_notes(trip_id)
+
+@app.post("/trips/{trip_id}/day-notes")
+async def upsert_day_note(trip_id: int, req: dict = Body(...), user_id: int = 1):
+    return database.upsert_trip_day_note(trip_id, req["date"], req.get("note",""), req.get("title",""))
 
 @app.delete("/trips/{trip_id}")
 async def delete_trip(trip_id: int, user_id: int = 1):
