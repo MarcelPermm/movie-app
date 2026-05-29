@@ -4909,11 +4909,37 @@ function renderBudgetHeader() {
 function renderBudgetSummary(cats, expenses, events = []) {
   const planReg   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
   const actualReg = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-  const planEv    = events.reduce((s, t) => s + (t.planned_total || 0), 0);
-  const actualEv  = events.reduce((s, t) => s + (Number(t.actual_total) || 0), 0);
-  const plan      = planReg + planEv;
-  const actual    = actualReg + actualEv;
-  const left      = plan - actual;
+
+  // Только верхний уровень: группы + одиночные (без детей групп)
+  // Чтобы не было двойного счёта: group.planned_total уже = сумма детей при создании
+  const topEvents = events.filter(e => !e.parent_id);
+
+  // Для плана берём planned_total верхнего уровня.
+  // Для группы: если есть дети в events — суммируем их план (актуальнее чем grp.planned_total)
+  const getPlan = (ev) => {
+    if (ev.event_type === "group") {
+      const kids = events.filter(k => k.parent_id === ev.id);
+      const kidsSum = kids.reduce((s, k) => s + (k.planned_total || 0), 0);
+      return kidsSum || (ev.planned_total || 0);
+    }
+    return ev.planned_total || 0;
+  };
+
+  // Для факта: прямые расходы события + расходы детей
+  const getActual = (ev) => {
+    const direct = Number(ev.actual_total) || 0;
+    if (ev.event_type === "group") {
+      const kids = events.filter(k => k.parent_id === ev.id);
+      return direct + kids.reduce((s, k) => s + (Number(k.actual_total) || 0), 0);
+    }
+    return direct;
+  };
+
+  const planEv   = topEvents.reduce((s, t) => s + getPlan(t), 0);
+  const actualEv = topEvents.reduce((s, t) => s + getActual(t), 0);
+  const plan   = planReg + planEv;
+  const actual = actualReg + actualEv;
+  const left   = plan - actual;
 
   // KPI row (в topbar справа)
   const el = $("budget-summary");
@@ -4926,9 +4952,9 @@ function renderBudgetSummary(cats, expenses, events = []) {
       <div class="bud-kpi"><div class="bud-kpi-lbl">${left >= 0 ? "ОСТАЛОСЬ" : "ПЕРЕРАСХОД"}</div><div class="bud-kpi-val ${left < 0 ? "over" : "pos"}">${left < 0 ? "– " : "+ "}${Math.abs(left).toLocaleString("ru")} ₽</div></div>`;
   }
 
-  // Subtitle под месяцем
+  // Subtitle под месяцем (считаем только top-level события)
   const sub = $("budget-month-sub");
-  if (sub) sub.textContent = `регулярные траты · ${events.length ? events.length + " событий" : "нет событий"}`;
+  if (sub) sub.textContent = `регулярные траты · ${topEvents.length ? topEvents.length + " событий" : "нет событий"}`;
 
   // Полоса (отдельный div под topbar)
   const barRow = $("budget-bar-row");
@@ -4938,7 +4964,8 @@ function renderBudgetSummary(cats, expenses, events = []) {
     const pctEv  = total > 0 ? Math.min((actualEv  / total) * 100, 100) : 0;
     const overReg = planReg > 0 && actualReg > planReg;
     const overEv  = planEv  > 0 && actualEv  > planEv;
-    const overEvent = events.find(t => Number(t.actual_total) > t.planned_total && t.planned_total > 0);
+    // Находим проблемное событие (только top-level)
+    const overEvent = topEvents.find(t => getActual(t) > getPlan(t) && getPlan(t) > 0);
 
     barRow.innerHTML = `
       <div class="bud-bar-track">
@@ -4948,7 +4975,7 @@ function renderBudgetSummary(cats, expenses, events = []) {
       <div class="bud-bar-legend">
         <span class="bud-bleg bud-bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
         <span class="bud-bleg bud-bleg-ev">□ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
-        ${overEvent ? `<span class="bud-bleg bud-bleg-warn">↑ ${overEvent.name} вышли за бюджет на ${(Number(overEvent.actual_total) - overEvent.planned_total).toLocaleString("ru")} ₽</span>` : ""}
+        ${overEvent ? `<span class="bud-bleg bud-bleg-warn">↑ ${overEvent.name} вышли за бюджет на ${(getActual(overEvent) - getPlan(overEvent)).toLocaleString("ru")} ₽</span>` : ""}
       </div>`;
   }
 }

@@ -1427,21 +1427,55 @@ def get_trips(user_id: int) -> list:
         conn.close()
 
 def get_trips_for_month(user_id: int, year: int, month: int) -> list:
-    """Возвращает поездки/события, чьи даты пересекаются с указанным месяцем."""
+    """Возвращает поездки/события, чьи даты пересекаются с указанным месяцем.
+    Также включает дочерние поездки групп, которые попадают в месяц, даже если
+    у ребёнка нет точного совпадения дат — чтобы фронтенд мог корректно строить группы."""
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            SELECT t.*, COALESCE(SUM(e.amount),0) as actual_total
-            FROM trips t LEFT JOIN trip_expenses e ON e.trip_id = t.id
-            WHERE t.user_id=%s
-              AND (
-                  EXTRACT(YEAR FROM t.start_date) = %s AND EXTRACT(MONTH FROM t.start_date) = %s
-                  OR EXTRACT(YEAR FROM t.end_date) = %s AND EXTRACT(MONTH FROM t.end_date) = %s
-                  OR (t.start_date <= make_date(%s, %s, 28) AND t.end_date >= make_date(%s, %s, 1))
-              )
-            GROUP BY t.id ORDER BY t.start_date DESC NULLS LAST
-        """, (user_id, year, month, year, month, year, month, year, month))
+            WITH month_trips AS (
+                SELECT t.id
+                FROM trips t
+                WHERE t.user_id = %s
+                  AND t.event_type != 'group'
+                  AND t.parent_id IS NULL
+                  AND (
+                      EXTRACT(YEAR FROM t.start_date) = %s AND EXTRACT(MONTH FROM t.start_date) = %s
+                      OR EXTRACT(YEAR FROM t.end_date)   = %s AND EXTRACT(MONTH FROM t.end_date)   = %s
+                      OR (t.start_date <= make_date(%s, %s, 28) AND t.end_date >= make_date(%s, %s, 1))
+                  )
+            ),
+            month_groups AS (
+                SELECT t.id
+                FROM trips t
+                WHERE t.user_id = %s
+                  AND t.event_type = 'group'
+                  AND (
+                      EXTRACT(YEAR FROM t.start_date) = %s AND EXTRACT(MONTH FROM t.start_date) = %s
+                      OR EXTRACT(YEAR FROM t.end_date)   = %s AND EXTRACT(MONTH FROM t.end_date)   = %s
+                      OR (t.start_date <= make_date(%s, %s, 28) AND t.end_date >= make_date(%s, %s, 1))
+                  )
+            ),
+            relevant_ids AS (
+                SELECT id FROM month_trips
+                UNION
+                SELECT id FROM month_groups
+                UNION
+                -- Дети групп, попавших в месяц
+                SELECT t.id FROM trips t WHERE t.parent_id IN (SELECT id FROM month_groups) AND t.user_id = %s
+            )
+            SELECT t.*, COALESCE(SUM(e.amount), 0) AS actual_total
+            FROM trips t
+            LEFT JOIN trip_expenses e ON e.trip_id = t.id
+            WHERE t.id IN (SELECT id FROM relevant_ids)
+            GROUP BY t.id
+            ORDER BY t.start_date DESC NULLS LAST
+        """, (
+            user_id, year, month, year, month, year, month, year, month,  # month_trips (9)
+            user_id, year, month, year, month, year, month, year, month,  # month_groups (9)
+            user_id,                                                        # children of groups (1)
+        ))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -1531,6 +1565,15 @@ def group_trips(trip_id_a: int, trip_id_b: int, user_id: int, group_name: str = 
 
         # Добавляем child в группу
         cur.execute("UPDATE trips SET parent_id=%s WHERE id=%s AND user_id=%s", (group_id, child_id, user_id))
+
+        # Обновляем даты и бюджет группы: берём мин. start и макс. end всех детей
+        cur.execute("""
+            UPDATE trips SET
+              start_date = (SELECT MIN(c.start_date) FROM trips c WHERE c.parent_id = trips.id AND c.start_date IS NOT NULL),
+              end_date   = (SELECT MAX(c.end_date)   FROM trips c WHERE c.parent_id = trips.id AND c.end_date   IS NOT NULL),
+              planned_total = (SELECT COALESCE(SUM(c.planned_total), 0) FROM trips c WHERE c.parent_id = trips.id)
+            WHERE trips.id = %s
+        """, (group_id,))
         conn.commit()
 
         cur.execute("SELECT * FROM trips WHERE id=%s", (group_id,))
@@ -1539,11 +1582,26 @@ def group_trips(trip_id_a: int, trip_id_b: int, user_id: int, group_name: str = 
         conn.close()
 
 def ungroup_trip(trip_id: int, user_id: int):
-    """Убирает поездку из группы."""
+    """Убирает поездку из группы, обновляет даты и бюджет группы-родителя."""
     conn = _get_conn()
     try:
         cur = conn.cursor()
+        # Находим родителя перед разгруппировкой
+        cur.execute("SELECT parent_id FROM trips WHERE id=%s AND user_id=%s", (trip_id, user_id))
+        row = cur.fetchone()
+        parent_id = row["parent_id"] if row else None
+
         cur.execute("UPDATE trips SET parent_id=NULL WHERE id=%s AND user_id=%s", (trip_id, user_id))
+
+        # Обновляем группу-родителя если она есть
+        if parent_id:
+            cur.execute("""
+                UPDATE trips SET
+                  start_date = (SELECT MIN(c.start_date) FROM trips c WHERE c.parent_id = trips.id AND c.start_date IS NOT NULL),
+                  end_date   = (SELECT MAX(c.end_date)   FROM trips c WHERE c.parent_id = trips.id AND c.end_date   IS NOT NULL),
+                  planned_total = (SELECT COALESCE(SUM(c.planned_total), 0) FROM trips c WHERE c.parent_id = trips.id)
+                WHERE trips.id = %s
+            """, (parent_id,))
         conn.commit()
     finally:
         conn.close()
