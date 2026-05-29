@@ -977,7 +977,7 @@ Example: {example}"""
     client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
     try:
         response = await client.chat.completions.create(
-            model="llama-3.3-70b",
+            model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1200,
             temperature=0.7 if query else 0.9,
@@ -1392,7 +1392,7 @@ async def analyze_profile(user_id: int = 1):
 
     try:
         response = await client.chat.completions.create(
-            model="llama-3.3-70b",
+            model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=600,
             temperature=0.8,
@@ -1500,7 +1500,7 @@ Example output:
         # Без запроса — выше для разнообразия рекомендаций.
         temp = 0.4 if query else 0.8
         response = await ai_client.chat.completions.create(
-            model="llama-3.3-70b",
+            model="llama3.1-8b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1600,
             temperature=temp,
