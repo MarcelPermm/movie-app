@@ -1382,6 +1382,7 @@ def init_trips_tables():
         """)
         cur.execute("ALTER TABLE trips ADD COLUMN IF NOT EXISTS event_type TEXT DEFAULT 'trip'")
         cur.execute("ALTER TABLE trips ADD COLUMN IF NOT EXISTS subtitle TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE trips ADD COLUMN IF NOT EXISTS parent_id INTEGER DEFAULT NULL REFERENCES trips(id) ON DELETE SET NULL")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS trip_day_notes (
                 id       SERIAL PRIMARY KEY,
@@ -1484,6 +1485,66 @@ def upsert_trip_day_note(trip_id: int, date: str, note: str = "", title: str = "
         row = dict(cur.fetchone())
         conn.commit()
         return row
+    finally:
+        conn.close()
+
+def group_trips(trip_id_a: int, trip_id_b: int, user_id: int, group_name: str = None, group_emoji: str = "📁") -> dict:
+    """Объединяет две поездки в группу. Если одна из них уже группа — добавляет вторую к ней.
+    Иначе создаёт новую группу и помещает обе внутрь.
+    Возвращает dict группы."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        # Находим обе поездки
+        cur.execute("SELECT * FROM trips WHERE id=ANY(%s) AND user_id=%s", ([trip_id_a, trip_id_b], user_id))
+        rows = {r["id"]: dict(r) for r in cur.fetchall()}
+        if len(rows) < 2:
+            raise ValueError("Поездки не найдены")
+
+        trip_a, trip_b = rows[trip_id_a], rows[trip_id_b]
+
+        # Если одна уже группа — добавляем вторую в неё
+        if trip_a.get("event_type") == "group":
+            group_id = trip_id_a
+            child_id = trip_id_b
+        elif trip_b.get("event_type") == "group":
+            group_id = trip_id_b
+            child_id = trip_id_a
+        else:
+            # Создаём новую группу-папку
+            name = group_name or f"{trip_a['name']} · {trip_b['name']}"
+            # Диапазон дат — объединение
+            dates = [d for d in [trip_a.get("start_date"), trip_b.get("start_date")] if d]
+            ends  = [d for d in [trip_a.get("end_date"),   trip_b.get("end_date")]   if d]
+            sd = str(min(dates)) if dates else None
+            ed = str(max(ends))  if ends  else None
+            plan = (trip_a.get("planned_total") or 0) + (trip_b.get("planned_total") or 0)
+            cur.execute(
+                "INSERT INTO trips (user_id,name,emoji,start_date,end_date,planned_total,event_type) "
+                "VALUES (%s,%s,%s,%s,%s,%s,'group') RETURNING id",
+                (user_id, name, group_emoji, sd, ed, plan)
+            )
+            group_id = cur.fetchone()["id"]
+            # Добавляем trip_a в группу
+            cur.execute("UPDATE trips SET parent_id=%s WHERE id=%s AND user_id=%s", (group_id, trip_id_a, user_id))
+            child_id = trip_id_b
+
+        # Добавляем child в группу
+        cur.execute("UPDATE trips SET parent_id=%s WHERE id=%s AND user_id=%s", (group_id, child_id, user_id))
+        conn.commit()
+
+        cur.execute("SELECT * FROM trips WHERE id=%s", (group_id,))
+        return dict(cur.fetchone())
+    finally:
+        conn.close()
+
+def ungroup_trip(trip_id: int, user_id: int):
+    """Убирает поездку из группы."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE trips SET parent_id=NULL WHERE id=%s AND user_id=%s", (trip_id, user_id))
+        conn.commit()
     finally:
         conn.close()
 

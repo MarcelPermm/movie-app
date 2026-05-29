@@ -954,7 +954,7 @@ Example: {example}"""
     client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
     try:
         response = await client.chat.completions.create(
-            model="llama3.1-8b",
+            model="llama-3.3-70b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1200,
             temperature=0.7 if query else 0.9,
@@ -1374,7 +1374,7 @@ async def analyze_profile(user_id: int = 1):
 
     try:
         response = await client.chat.completions.create(
-            model="llama3.1-8b",
+            model="llama-3.3-70b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=600,
             temperature=0.8,
@@ -1482,7 +1482,7 @@ Example output:
         # Без запроса — выше для разнообразия рекомендаций.
         temp = 0.4 if query else 0.8
         response = await ai_client.chat.completions.create(
-            model="llama3.1-8b",
+            model="llama-3.3-70b",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1600,
             temperature=temp,
@@ -1891,6 +1891,40 @@ async def upsert_day_note(trip_id: int, req: dict = Body(...), user_id: int = 1)
 @app.delete("/trips/{trip_id}")
 async def delete_trip(trip_id: int, user_id: int = 1):
     database.delete_trip(trip_id, user_id)
+    return {"ok": True}
+
+@app.post("/trips/group")
+async def group_trips(body: dict, user_id: int = 1):
+    """Объединяет две поездки в группу (или добавляет в существующую)."""
+    trip_a = int(body["trip_a"])
+    trip_b = int(body["trip_b"])
+    name   = body.get("name")
+    emoji  = body.get("emoji", "📁")
+    return database.group_trips(trip_a, trip_b, user_id, name, emoji)
+
+@app.post("/trips/{trip_id}/ungroup")
+async def ungroup_trip(trip_id: int, user_id: int = 1):
+    """Убирает поездку из группы."""
+    database.ungroup_trip(trip_id, user_id)
+    return {"ok": True}
+
+@app.patch("/trips/{trip_id}")
+async def patch_trip(trip_id: int, body: dict, user_id: int = 1):
+    """Обновляет название/emoji/subtitle группы или поездки."""
+    conn = database._get_conn()
+    try:
+        cur = conn.cursor()
+        fields, vals = [], []
+        for f in ("name", "emoji", "subtitle", "planned_total"):
+            if f in body:
+                fields.append(f"{f}=%s"); vals.append(body[f])
+        if not fields:
+            return {"ok": True}
+        vals += [trip_id, user_id]
+        cur.execute(f"UPDATE trips SET {', '.join(fields)} WHERE id=%s AND user_id=%s", vals)
+        conn.commit()
+    finally:
+        conn.close()
     return {"ok": True}
 
 @app.get("/trips/{trip_id}/expenses")

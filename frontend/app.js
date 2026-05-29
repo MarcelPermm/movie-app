@@ -4321,6 +4321,40 @@ function buildTaskEl(task) {
     else cycleTaskStatus(task, div);
   });
 
+  // Двойной клик по названию → инлайн-редактирование
+  div.querySelector(".task-title").addEventListener("dblclick", () => {
+    const titleEl = div.querySelector(".task-title");
+    const oldVal  = task.title;
+    const inp = document.createElement("input");
+    inp.className = "task-edit-input";
+    inp.value = oldVal;
+    titleEl.replaceWith(inp);
+    inp.focus(); inp.select();
+    const save = async () => {
+      const newTitle = inp.value.trim() || oldVal;
+      const span = document.createElement("span");
+      span.className = "task-title";
+      span.textContent = newTitle;
+      inp.replaceWith(span);
+      span.addEventListener("dblclick", arguments.callee); // re-bind (handled by rebuild)
+      if (newTitle !== oldVal) {
+        try {
+          await apiFetch(`/tasks/${task.id}`, { method: "PATCH", body: JSON.stringify({ title: newTitle }) });
+          task.title = newTitle;
+          // Перестроим элемент чтобы dblclick снова работал
+          const newEl = buildTaskEl(task);
+          div.replaceWith(newEl);
+          syncMetaFromDOM();
+        } catch { span.textContent = oldVal; }
+      }
+    };
+    inp.addEventListener("blur", save);
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Enter")  { e.preventDefault(); inp.blur(); }
+      if (e.key === "Escape") { inp.value = oldVal; inp.blur(); }
+    });
+  });
+
   const cancelInput = div.querySelector(".cancel-input");
   if (cancelInput) bindCancelInput(cancelInput, task);
 
@@ -4524,7 +4558,7 @@ function initAddTaskBtn() {
     };
 
     inp.addEventListener("keydown", e => {
-      if (e.key === "Enter" && recurOpts.style.display === "none") submit();
+      if (e.key === "Enter") submit();  // Enter всегда сохраняет
       if (e.key === "Escape") { form.remove(); btn.style.display = ""; }
     });
   });
@@ -5108,22 +5142,38 @@ function renderBudgetEvents(events) {
   const el    = $("budget-events-list");
   const count = $("budget-events-count");
   if (!el) return;
-  if (count) count.textContent = events.length ? `${events.length} шт.` : "";
+
+  // Разбиваем на группы и одиночные
+  const groups  = events.filter(e => e.event_type === "group");
+  const children = new Set(events.filter(e => e.parent_id).map(e => e.id));
+  const singles  = events.filter(e => e.event_type !== "group" && !e.parent_id);
+  const total = groups.length + singles.length;
+
+  if (count) count.textContent = total ? `${total} шт.` : "";
   el.innerHTML = "";
+
   if (!events.length) {
     el.innerHTML = `<div class="budget-events-empty">нет событий в этом месяце</div>`;
     return;
   }
-  // Сортируем: сначала активные, по дате
-  const sorted = [...events].sort((a, b) => {
-    const da = a.start_date || "9999";
-    const db = b.start_date || "9999";
-    return da < db ? 1 : -1;
-  });
-  for (const ev of sorted) {
-    const card = buildEventCard(ev);
-    el.appendChild(card);
+
+  // Сортировка: по дате, свежие первые
+  const sortFn = (a, b) => ((b.start_date || "0") > (a.start_date || "0") ? 1 : -1);
+
+  // Сначала группы
+  for (const grp of [...groups].sort(sortFn)) {
+    const kids = events.filter(e => e.parent_id === grp.id).sort(sortFn);
+    const grpEl = buildGroupRow(grp, kids, events);
+    el.appendChild(grpEl);
   }
+  // Потом одиночные (не дети групп)
+  for (const ev of [...singles].sort(sortFn)) {
+    const row = buildEventCard(ev);
+    el.appendChild(row);
+  }
+
+  // ── Drag-and-drop для группировки ──────────────────────────────────
+  initEventDragDrop(el, events);
 }
 
 function buildEventCard(ev) {
@@ -5155,6 +5205,7 @@ function buildEventCard(ev) {
 
   const row = document.createElement("div");
   row.className = `bev-row${over ? " bev-over" : ""}`;
+  row.dataset.tripId = ev.id;
   row.innerHTML = `
     <span class="bev-row-emoji">${ev.emoji}</span>
     <div class="bev-row-middle">
@@ -5182,6 +5233,154 @@ function buildEventCard(ev) {
     try { await apiFetch(`/trips/${ev.id}`, { method: "DELETE" }); loadBudget(); } catch {}
   });
   return row;
+}
+
+// ─── Группа поездок ─────────────────────────────────────────────────────────
+
+function buildGroupRow(grp, kids, allEvents) {
+  const actualKids = kids.reduce((s, k) => s + (Number(k.actual_total) || 0), 0);
+  const planKids   = kids.reduce((s, k) => s + (k.planned_total || 0), 0);
+  const actual = (Number(grp.actual_total) || 0) + actualKids;
+  const plan   = (grp.planned_total || 0) || planKids;
+  const over   = plan > 0 && actual > plan;
+  const pct    = plan > 0 ? Math.min((actual / plan) * 100, 100) : (actual > 0 ? 100 : 0);
+
+  const MONTHS = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  let dateStr = "";
+  if (grp.start_date) {
+    const sd = new Date(grp.start_date + "T00:00:00");
+    if (grp.end_date && grp.end_date !== grp.start_date) {
+      const ed = new Date(grp.end_date + "T00:00:00");
+      dateStr = `${sd.getDate()}–${ed.getDate()} ${MONTHS[sd.getMonth()]}`;
+    } else {
+      dateStr = `${sd.getDate()} ${MONTHS[sd.getMonth()]}`;
+    }
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = `bev-group${over ? " bev-over" : ""}`;
+  wrap.dataset.tripId = grp.id;
+  wrap.innerHTML = `
+    <div class="bev-group-head">
+      <span class="bev-group-emoji">${grp.emoji || "📁"}</span>
+      <div class="bev-group-info">
+        <div class="bev-group-top">
+          <span class="bev-group-name">${grp.name}</span>
+          <span class="bev-group-type">группа · ${kids.length} поездок</span>
+          ${dateStr ? `<span class="bev-row-date">${dateStr}</span>` : ""}
+        </div>
+        ${plan > 0 ? `<div class="bev-row-bar"><div class="bev-row-bar-fill${over ? " over" : ""}" style="width:${pct}%"></div></div>` : ""}
+      </div>
+      <div class="bev-row-right">
+        <span class="bev-row-actual${over ? " over" : ""}">${actual.toLocaleString("ru")} ₽</span>
+        ${plan ? `<span class="bev-row-plan">/ ${plan.toLocaleString("ru")} ₽</span>` : ""}
+        <button class="bev-group-toggle" title="Свернуть/развернуть">▾</button>
+      </div>
+      <button class="bev-row-del" title="Расформировать группу">×</button>
+    </div>
+    <div class="bev-group-children" id="bev-gc-${grp.id}"></div>`;
+
+  const childrenEl = wrap.querySelector(`#bev-gc-${grp.id}`);
+  for (const kid of kids) {
+    const kidRow = buildEventCard(kid);
+    kidRow.classList.add("bev-row-child");
+    // Кнопка «убрать из группы»
+    const ungrpBtn = document.createElement("button");
+    ungrpBtn.className = "bev-ungroup-btn";
+    ungrpBtn.title = "Убрать из группы";
+    ungrpBtn.textContent = "↗";
+    ungrpBtn.addEventListener("click", async e => {
+      e.stopPropagation();
+      try { await apiFetch(`/trips/${kid.id}/ungroup`, { method: "POST" }); loadBudget(); } catch {}
+    });
+    kidRow.appendChild(ungrpBtn);
+    childrenEl.appendChild(kidRow);
+  }
+
+  // Сворачивание/разворачивание
+  const toggle = wrap.querySelector(".bev-group-toggle");
+  let open = true;
+  toggle.addEventListener("click", e => {
+    e.stopPropagation();
+    open = !open;
+    childrenEl.style.display = open ? "" : "none";
+    toggle.textContent = open ? "▾" : "▸";
+  });
+
+  // Удаление группы (расформировывает, не удаляет детей)
+  wrap.querySelector(".bev-row-del").addEventListener("click", async e => {
+    e.stopPropagation();
+    if (!confirm(`Расформировать группу «${grp.name}»?\nПоездки останутся, группа удалится.`)) return;
+    try {
+      // Убираем всех детей из группы, потом удаляем группу
+      await Promise.all(kids.map(k => apiFetch(`/trips/${k.id}/ungroup`, { method: "POST" })));
+      await apiFetch(`/trips/${grp.id}`, { method: "DELETE" });
+      loadBudget();
+    } catch {}
+  });
+
+  return wrap;
+}
+
+// ─── Drag-and-drop для объединения поездок в группу ─────────────────────────
+
+function initEventDragDrop(container, events) {
+  const rows = container.querySelectorAll(".bev-row:not(.bev-row-child)");
+  let dragId = null;
+
+  rows.forEach(row => {
+    const evId = parseInt(row.dataset.tripId);
+    if (!evId) return;
+
+    row.draggable = true;
+    row.style.cursor = "grab";
+
+    row.addEventListener("dragstart", e => {
+      dragId = evId;
+      row.classList.add("bev-dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      dragId = null;
+      row.classList.remove("bev-dragging");
+      container.querySelectorAll(".bev-drop-over").forEach(r => r.classList.remove("bev-drop-over"));
+    });
+    row.addEventListener("dragover", e => {
+      if (dragId === evId || !dragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      container.querySelectorAll(".bev-drop-over").forEach(r => r.classList.remove("bev-drop-over"));
+      row.classList.add("bev-drop-over");
+    });
+    row.addEventListener("dragleave", () => {
+      row.classList.remove("bev-drop-over");
+    });
+    row.addEventListener("drop", async e => {
+      e.preventDefault();
+      row.classList.remove("bev-drop-over");
+      if (!dragId || dragId === evId) return;
+
+      const targetEv = events.find(x => x.id === evId);
+      const sourceEv = events.find(x => x.id === dragId);
+      if (!targetEv || !sourceEv) return;
+
+      // Предлагаем название для группы
+      const defaultName = `${sourceEv.name} · ${targetEv.name}`;
+      const groupName = prompt(`Название группы:`, defaultName);
+      if (groupName === null) return; // отмена
+
+      try {
+        await apiFetch("/trips/group", {
+          method: "POST",
+          body: JSON.stringify({ trip_a: dragId, trip_b: evId, name: groupName || defaultName, emoji: "📁" })
+        });
+        loadBudget();
+        toast("Группа создана", "success");
+      } catch (err) {
+        toast("Ошибка: " + (err?.detail || "не удалось создать группу"), "error");
+      }
+    });
+  });
 }
 
 // ─── Детальный вид поездки/события — по дням ────────────────────────────────
@@ -5785,9 +5984,14 @@ function renderTripsGrid(trips) {
 async function openTripDetail(trip) {
   const panel = $("ntab-trips");
   if (!panel) return;
+
+  // Сохраняем оригинальный HTML страницы чтобы вернуть при нажатии «назад»
+  const page = panel.querySelector(".nb-page");
+  const originalHTML = page.innerHTML;
+
   const expenses = await apiFetch(`/trips/${trip.id}/expenses`).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
-  panel.querySelector(".nb-page").innerHTML = `
+  page.innerHTML = `
     <button class="trip-back-btn" id="trip-back">← Поездки</button>
     <div class="trip-detail-header">
       <div class="trip-detail-emoji">${trip.emoji}</div>
@@ -5795,7 +5999,13 @@ async function openTripDetail(trip) {
     </div>
     <div id="trip-exp-list"></div>
     <button class="task-add-btn" id="trip-add-exp-btn"><span class="task-add-line">+ расход…</span></button>`;
-  $("trip-back").addEventListener("click", () => loadTrips());
+
+  $("trip-back").addEventListener("click", () => {
+    page.innerHTML = originalHTML;
+    loadTrips();       // восстанавливает trips-grid и перезагружает данные
+    initTripsAddBtn(); // восстанавливает кнопку добавления
+  });
+
   renderTripExpenses(expenses, trip.id, today);
   initTripAddExpBtn(trip.id, today);
 }
