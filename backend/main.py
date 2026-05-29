@@ -992,7 +992,10 @@ Example: {example}"""
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(503, f"Ошибка AI: {str(e)}")
+        msg = str(e)
+        if "429" in msg or "too_many_requests" in msg or "queue_exceeded" in msg:
+            raise HTTPException(429, "AI сейчас перегружен — подожди минуту и попробуй снова 🙏")
+        raise HTTPException(503, f"Ошибка AI: {msg}")
 
     async def lookup(h, item):
         title = item.get("title", "").strip()
@@ -1519,7 +1522,10 @@ Example output:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
+        msg = str(e)
+        if "429" in msg or "too_many_requests" in msg or "queue_exceeded" in msg:
+            raise HTTPException(429, "AI сейчас перегружен — подожди минуту и попробуй снова 🙏")
+        raise HTTPException(status_code=503, detail=f"Ошибка AI: {msg}")
 
     # Нормализация названия для сравнения (убираем артикли, lowercase)
     def norm_title(t: str) -> str:
