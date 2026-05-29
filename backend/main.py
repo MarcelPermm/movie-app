@@ -86,6 +86,19 @@ async def startup():
         print(f"⚠️  IMDb недоступен: {e} — продолжаем без IMDb рейтингов")
 
 
+@app.get("/health")
+async def health_check():
+    """Пинг для поддержания Render + Neon живыми. Делает SELECT 1 к БД."""
+    try:
+        conn = database._get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        conn.close()
+        return {"ok": True, "db": "alive"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 async def tmdb_get(path: str, **params) -> dict:
     async with httpx.AsyncClient() as client:
         r = await client.get(
