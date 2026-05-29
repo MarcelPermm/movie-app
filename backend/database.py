@@ -48,6 +48,18 @@ def _get_pool():
     return _pool
 
 
+def _reset_pool():
+    """Сбрасывает пул соединений. Вызывается когда Neon закрыл соединения со своей стороны."""
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            try:
+                _pool.closeall()
+            except Exception:
+                pass
+            _pool = None
+
+
 class _Conn:
     """Контекст-менеджер: берёт соединение из пула, возвращает обратно."""
     def __enter__(self):
@@ -71,7 +83,14 @@ def _get_conn():
 class _LegacyConn:
     """Обратная совместимость со старым стилем conn = _get_conn() / conn.close()."""
     def __init__(self):
-        self._conn = _get_pool().getconn()
+        try:
+            self._conn = _get_pool().getconn()
+            # Проверяем что соединение живое
+            self._conn.cursor().execute("SELECT 1")
+        except Exception:
+            # Соединение мёртвое (Neon заснул) — сбрасываем пул и переподключаемся
+            _reset_pool()
+            self._conn = _get_pool().getconn()
     def cursor(self, *a, **kw):
         return self._conn.cursor(*a, **kw)
     def commit(self):

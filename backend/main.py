@@ -89,15 +89,24 @@ async def startup():
 
 @app.get("/health")
 async def health_check():
-    """Пинг для поддержания Render + Neon живыми. Делает SELECT 1 к БД."""
+    """Пинг для поддержания Render + Neon живыми. Делает SELECT 1 к БД.
+    При мёртвом соединении автоматически сбрасывает пул и переподключается."""
     try:
-        conn = database._get_conn()
+        conn = database._get_conn()  # внутри уже валидирует и переподключает при надобности
         cur = conn.cursor()
         cur.execute("SELECT 1")
         conn.close()
         return {"ok": True, "db": "alive"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        # Последняя попытка — полный сброс пула
+        try:
+            database._reset_pool()
+            conn = database._get_conn()
+            conn.cursor().execute("SELECT 1")
+            conn.close()
+            return {"ok": True, "db": "reconnected"}
+        except Exception as e2:
+            return {"ok": False, "error": str(e2)}
 
 
 async def tmdb_get(path: str, **params) -> dict:
