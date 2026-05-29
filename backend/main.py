@@ -979,7 +979,7 @@ Example: {example}"""
         response = await client.chat.completions.create(
             model="gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1200,
+            max_tokens=2500,
             temperature=0.7 if query else 0.9,
         )
         raw = response.choices[0].message.content.strip()
@@ -1502,7 +1502,7 @@ Example output:
         response = await ai_client.chat.completions.create(
             model="gpt-oss-120b",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=1600,
+            max_tokens=2500,
             temperature=temp,
         )
         raw = response.choices[0].message.content.strip()
