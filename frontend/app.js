@@ -1,4 +1,9 @@
-const API       = typeof API_BASE_URL !== "undefined" ? API_BASE_URL : "http://127.0.0.1:8000";
+// Локально → http://127.0.0.1:8000, на проде (Render) → тот же домен (относительные URL)
+const API = typeof API_BASE_URL !== "undefined"
+  ? API_BASE_URL
+  : (location.hostname === "127.0.0.1" || location.hostname === "localhost")
+    ? "http://127.0.0.1:8000"
+    : "";
 const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";   // полноразмерный — для модалок и hero
 const TMDB_CARD = "https://image.tmdb.org/t/p/w342";   // средний — для карточек и постеров в гриде
 const TMDB_SM   = "https://image.tmdb.org/t/p/w185";   // мелкий — для скролл-карточек на главной

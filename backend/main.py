@@ -3,6 +3,7 @@ import asyncio
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
@@ -1959,3 +1960,10 @@ async def set_trip_expense_amount(exp_id: int, amount: int, user_id: int = 1):
 async def delete_trip_expense(exp_id: int, user_id: int = 1):
     database.delete_trip_expense(exp_id, user_id)
     return {"ok": True}
+
+# ─── Раздача фронтенда ───────────────────────────────────────────────────────
+# Должно быть ПОСЛЕ всех API-роутов, чтобы не перехватывать /api/* запросы
+import pathlib
+_frontend = pathlib.Path(__file__).parent.parent / "frontend"
+if _frontend.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend), html=True), name="frontend")
