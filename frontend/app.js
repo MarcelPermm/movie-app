@@ -4712,17 +4712,181 @@ loadNotebookToday = async function() {
   if (!listEl) return;
   listEl.innerHTML = `<div style="padding:8px 0;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">загружаем…</div>`;
   try {
-    const [tasks, weekTasks] = await Promise.all([
-      apiFetch(`/tasks?date=${today}`),
-      loadWeekTasks(today),
-    ]);
+    const tasks = await apiFetch(`/tasks?date=${today}`);
     renderTodayTasks(tasks);
-    renderWeekGridClickable(weekTasks, today);
+    renderWeekView();
+    initWeekNav();
+    initGoals();
+    loadGoals();
     initAddTaskBtn();
   } catch {
     listEl.innerHTML = `<div style="color:var(--nb-red);font-size:13px;padding:8px 0">Ошибка загрузки</div>`;
   }
 };
+
+// ════════════════════════════════════════════════════════════════
+//  НЕДЕЛЯ — прокрутка по неделям
+// ════════════════════════════════════════════════════════════════
+let _weekOffset = 0;
+
+function _weekMonday(offset) {
+  const base = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
+  base.setDate(base.getDate() + offset * 7);
+  const day = base.getDay();
+  const mon = new Date(base);
+  mon.setDate(base.getDate() - (day === 0 ? 6 : day - 1));
+  return mon;
+}
+
+async function renderWeekView() {
+  const mon = _weekMonday(_weekOffset);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = dt => dt.toISOString().slice(0, 10);
+  const mo = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  const title = $("nb-week-title");
+  if (title) {
+    title.textContent = _weekOffset === 0
+      ? "Эта неделя"
+      : `${mon.getDate()} ${mo[mon.getMonth()]} – ${sun.getDate()} ${mo[sun.getMonth()]}`;
+  }
+  const todayBtn = $("nb-week-today");
+  if (todayBtn) todayBtn.style.visibility = _weekOffset === 0 ? "hidden" : "visible";
+  let tasks = [];
+  try { tasks = await apiFetch(`/tasks/week?date_from=${fmt(mon)}&date_to=${fmt(sun)}`); } catch {}
+  renderWeekGridForMonday(tasks, mon);
+}
+
+function renderWeekGridForMonday(tasks, mon) {
+  const grid = $("nb-week-grid");
+  if (!grid) return;
+  const realToday = new Date().toISOString().slice(0, 10);
+  const dayNames = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  grid.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(mon); dt.setDate(mon.getDate() + i);
+    const ds = dt.toISOString().slice(0, 10);
+    const isT = ds === realToday;
+    const isSel = ds === state.notebookDate;
+    const dayTasks = tasks.filter(t => String(t.date).slice(0, 10) === ds).slice(0, 3);
+    const row = document.createElement("div");
+    row.className = `week-day-row${isSel ? " is-selected" : ""}`;
+    row.dataset.date = ds;
+    row.innerHTML = `
+      <div class="week-day-num ${isT ? "is-today" : ""}">${dt.getDate()}</div>
+      <div class="week-day-name">${dayNames[i]}</div>
+      <div class="week-day-tasks">
+        ${dayTasks.length
+          ? dayTasks.map(t => `<div class="week-task-dot ${t.status}">${t.title}</div>`).join("")
+          : `<div class="week-task-dot" style="opacity:.3">—</div>`}
+      </div>`;
+    row.addEventListener("click", () => switchNotebookDay(ds));
+    grid.appendChild(row);
+  }
+}
+
+function initWeekNav() {
+  const prev = $("nb-week-prev"), next = $("nb-week-next"), tdy = $("nb-week-today");
+  if (prev && !prev._init) { prev._init = true; prev.addEventListener("click", () => { _weekOffset--; renderWeekView(); }); }
+  if (next && !next._init) { next._init = true; next.addEventListener("click", () => { _weekOffset++; renderWeekView(); }); }
+  if (tdy  && !tdy._init)  { tdy._init  = true; tdy.addEventListener("click",  () => { _weekOffset = 0; renderWeekView(); }); }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ЦЕЛИ на месяц / год
+// ════════════════════════════════════════════════════════════════
+let _goalPeriod = "month";
+
+function _goalKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  return _goalPeriod === "month" ? `${y}-${String(d.getMonth() + 1).padStart(2, "0")}` : `${y}`;
+}
+
+async function loadGoals() {
+  const list = $("nb-goals-list");
+  if (!list) return;
+  const periodEl = $("nb-goals-period");
+  if (periodEl) {
+    const d = new Date();
+    const mo = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+    periodEl.textContent = _goalPeriod === "month" ? `${mo[d.getMonth()]} ${d.getFullYear()}` : `${d.getFullYear()} год`;
+  }
+  let goals = [];
+  try { goals = await apiFetch(`/goals?period=${_goalPeriod}&period_key=${_goalKey()}`); } catch {}
+  renderGoals(goals);
+}
+
+function renderGoals(goals) {
+  const list = $("nb-goals-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!goals.length) {
+    list.innerHTML = `<div class="nb-goals-empty">пока нет целей — добавь ниже ↓</div>`;
+    return;
+  }
+  const done = goals.filter(g => g.done).length;
+  for (const g of goals) {
+    const row = document.createElement("div");
+    row.className = `nb-goal-row${g.done ? " is-done" : ""}`;
+    row.innerHTML = `
+      <button class="nb-goal-check">${g.done ? "✓" : ""}</button>
+      <span class="nb-goal-text">${g.text}</span>
+      <button class="nb-goal-del">×</button>`;
+    row.querySelector(".nb-goal-check").addEventListener("click", async () => {
+      try { await apiFetch(`/goals/${g.id}`, { method: "PATCH", body: JSON.stringify({ done: !g.done }) }); loadGoals(); } catch {}
+    });
+    row.querySelector(".nb-goal-del").addEventListener("click", async () => {
+      try { await apiFetch(`/goals/${g.id}`, { method: "DELETE" }); loadGoals(); } catch {}
+    });
+    list.appendChild(row);
+  }
+  // прогресс
+  const periodEl = $("nb-goals-period");
+  if (periodEl && goals.length) {
+    periodEl.dataset.progress = `${done}/${goals.length}`;
+    let badge = periodEl.querySelector(".nb-goals-badge");
+    if (!badge) { badge = document.createElement("span"); badge.className = "nb-goals-badge"; periodEl.appendChild(badge); }
+    badge.textContent = ` · ${done}/${goals.length}`;
+  }
+}
+
+function initGoals() {
+  document.querySelectorAll(".nb-goal-tab").forEach(tab => {
+    if (tab._init) return; tab._init = true;
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".nb-goal-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      _goalPeriod = tab.dataset.period;
+      loadGoals();
+    });
+  });
+  const addBtn = $("nb-goal-add");
+  if (addBtn && !addBtn._init) {
+    addBtn._init = true;
+    addBtn.addEventListener("click", () => {
+      addBtn.style.display = "none";
+      const form = document.createElement("div");
+      form.className = "nb-goal-add-form";
+      form.innerHTML = `<input class="nb-goal-input" placeholder="${_goalPeriod === "month" ? "Цель на месяц…" : "Цель на год…"}" />`;
+      addBtn.parentNode.insertBefore(form, addBtn);
+      const inp = form.querySelector(".nb-goal-input");
+      inp.focus();
+      const submit = async () => {
+        const text = inp.value.trim();
+        form.remove(); addBtn.style.display = "";
+        if (!text) return;
+        try {
+          await apiFetch("/goals", { method: "POST", body: JSON.stringify({ period: _goalPeriod, period_key: _goalKey(), text }) });
+          loadGoals();
+        } catch {}
+      };
+      inp.addEventListener("keydown", e => {
+        if (e.key === "Enter") submit();
+        if (e.key === "Escape") { form.remove(); addBtn.style.display = ""; }
+      });
+    });
+  }
+}
 
 
 // ════════════════════════════════════════════════════════════════

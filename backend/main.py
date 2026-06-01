@@ -71,6 +71,7 @@ async def startup():
     database.init_notes_table()
     database.init_budget_tables()
     database.init_trips_tables()
+    database.init_goals_table()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -1977,6 +1978,27 @@ async def patch_trip_expense(exp_id: int, body: dict = Body(...), user_id: int =
 @app.delete("/trip-expenses/{exp_id}")
 async def delete_trip_expense(exp_id: int, user_id: int = 1):
     database.delete_trip_expense(exp_id, user_id)
+    return {"ok": True}
+
+# ─── Цели (месяц / год) ───────────────────────────────────────────────────────
+@app.get("/goals")
+async def get_goals(period: str, period_key: str, user_id: int = 1):
+    return database.get_goals(user_id, period, period_key)
+
+@app.post("/goals")
+async def add_goal(body: dict = Body(...), user_id: int = 1):
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Пустая цель")
+    return database.add_goal(user_id, body["period"], body["period_key"], text)
+
+@app.patch("/goals/{goal_id}")
+async def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):
+    return database.update_goal(goal_id, user_id, body)
+
+@app.delete("/goals/{goal_id}")
+async def delete_goal(goal_id: int, user_id: int = 1):
+    database.delete_goal(goal_id, user_id)
     return {"ok": True}
 
 # ─── Раздача фронтенда ───────────────────────────────────────────────────────

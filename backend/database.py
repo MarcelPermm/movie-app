@@ -1637,6 +1637,81 @@ def delete_trip(trip_id: int, user_id: int):
     finally:
         conn.close()
 
+# ─── Цели (месяц / год) ───────────────────────────────────────────────────────
+
+def init_goals_table():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS goals (
+                id          SERIAL PRIMARY KEY,
+                user_id     INTEGER NOT NULL DEFAULT 1,
+                period      VARCHAR(10) NOT NULL,   -- 'month' | 'year'
+                period_key  VARCHAR(10) NOT NULL,   -- '2026-06' | '2026'
+                text        TEXT NOT NULL,
+                done        BOOLEAN DEFAULT FALSE,
+                sort        INTEGER DEFAULT 0,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_goals(user_id: int, period: str, period_key: str) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM goals WHERE user_id=%s AND period=%s AND period_key=%s "
+            "ORDER BY done ASC, sort ASC, created_at ASC",
+            (user_id, period, period_key))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+def add_goal(user_id: int, period: str, period_key: str, text: str) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO goals (user_id,period,period_key,text) VALUES (%s,%s,%s,%s) RETURNING *",
+            (user_id, period, period_key, text))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+def update_goal(goal_id: int, user_id: int, fields: dict) -> dict:
+    allowed = ("text", "done", "sort")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k}=%s"); vals.append(fields[k])
+    if not sets:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        vals += [goal_id, user_id]
+        cur.execute(f"UPDATE goals SET {', '.join(sets)} WHERE id=%s AND user_id=%s RETURNING *", vals)
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+def delete_goal(goal_id: int, user_id: int):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM goals WHERE id=%s AND user_id=%s", (goal_id, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
 def get_trip_expenses(trip_id: int, user_id: int) -> list:
     conn = _get_conn()
     try:

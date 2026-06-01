@@ -402,8 +402,28 @@
                   </div>
                 </div>
                 <div class="nb-section-week">
-                  <h2 class="nb-title-sm">Эта неделя</h2>
+                  <div class="nb-week-head">
+                    <h2 class="nb-title-sm" id="nb-week-title">Эта неделя</h2>
+                    <div class="nb-week-nav">
+                      <button class="nb-week-arrow" id="nb-week-prev" title="Прошлая неделя">‹</button>
+                      <button class="nb-week-today" id="nb-week-today" title="К текущей неделе">●</button>
+                      <button class="nb-week-arrow" id="nb-week-next" title="Следующая неделя">›</button>
+                    </div>
+                  </div>
                   <div class="week-grid-h" id="nb-week-grid"></div>
+                </div>
+                <!-- Цели на месяц / год -->
+                <div class="nb-section-goals">
+                  <div class="nb-goals-head">
+                    <h2 class="nb-title-sm">Цели</h2>
+                    <div class="nb-goals-tabs">
+                      <button class="nb-goal-tab active" data-period="month">Месяц</button>
+                      <button class="nb-goal-tab" data-period="year">Год</button>
+                    </div>
+                  </div>
+                  <div class="nb-goals-period" id="nb-goals-period"></div>
+                  <div class="nb-goals-list" id="nb-goals-list"></div>
+                  <button class="task-add-btn sm" id="nb-goal-add"><span class="task-add-line">+ новая цель…</span></button>
                 </div>
               </div>
             </div>
