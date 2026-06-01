@@ -1428,6 +1428,9 @@ def init_trips_tables():
         """)
         cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS planned_amount INTEGER")
         cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS city TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS planned_max INTEGER")
+        cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS subcategory TEXT DEFAULT ''")
+        cur.execute("ALTER TABLE trip_expenses ADD COLUMN IF NOT EXISTS day TEXT DEFAULT ''")
         conn.commit()
     finally:
         conn.close()
@@ -1646,19 +1649,41 @@ def get_trip_expenses(trip_id: int, user_id: int) -> list:
 
 def add_trip_expense(trip_id: int, user_id: int, date: str, amount: int,
                      planned_amount: int = None, category: str = "",
-                     note: str = "", emoji: str = "", city: str = "") -> dict:
+                     note: str = "", emoji: str = "", city: str = "",
+                     planned_max: int = None, subcategory: str = "", day: str = "") -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO trip_expenses "
-            "(trip_id,user_id,date,amount,planned_amount,category,note,emoji,city) "
-            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
-            (trip_id, user_id, date, amount, planned_amount, category, note, emoji, city)
+            "(trip_id,user_id,date,amount,planned_amount,category,note,emoji,city,planned_max,subcategory,day) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+            (trip_id, user_id, date, amount, planned_amount, category, note, emoji, city,
+             planned_max, subcategory, day)
         )
         row = dict(cur.fetchone())
         conn.commit()
         return row
+    finally:
+        conn.close()
+
+def update_trip_expense(exp_id: int, user_id: int, fields: dict) -> dict:
+    allowed = ("amount", "planned_amount", "planned_max", "category",
+               "subcategory", "day", "note", "emoji", "city", "date")
+    sets, vals = [], []
+    for k in allowed:
+        if k in fields:
+            sets.append(f"{k}=%s"); vals.append(fields[k])
+    if not sets:
+        return {}
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        vals += [exp_id, user_id]
+        cur.execute(f"UPDATE trip_expenses SET {', '.join(sets)} WHERE id=%s AND user_id=%s RETURNING *", vals)
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else {}
     finally:
         conn.close()
 

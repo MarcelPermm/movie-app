@@ -4910,7 +4910,7 @@ async function loadBudget() {
     renderBudgetSummary(cats, expenses, events);
     renderBudgetAccordion(cats, expenses);
     renderBudgetEvents(events);
-    renderUnplanned(expenses);
+    renderUnplanned(expenses, cats);
   } catch(e) { console.error(e); }
   initBudgetAddButtons();
   initBudgetEventBtn();
@@ -4923,8 +4923,11 @@ function renderBudgetHeader() {
 }
 
 function renderBudgetSummary(cats, expenses, events = []) {
+  // Регулярные = только категории с заполненным планом
+  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0).map(c => c.id));
   const planReg   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
-  const actualReg = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const actualReg = expenses.reduce((s, e) => s + (plannedIds.has(e.category_id) ? (e.amount || 0) : 0), 0);
+  const actualUnplanned = expenses.reduce((s, e) => s + (plannedIds.has(e.category_id) ? 0 : (e.amount || 0)), 0);
 
   // Только верхний уровень: группы + одиночные (без детей групп)
   // Чтобы не было двойного счёта: group.planned_total уже = сумма детей при создании
@@ -4954,7 +4957,7 @@ function renderBudgetSummary(cats, expenses, events = []) {
   const planEv   = topEvents.reduce((s, t) => s + getPlan(t), 0);
   const actualEv = topEvents.reduce((s, t) => s + getActual(t), 0);
   const plan   = planReg + planEv;
-  const actual = actualReg + actualEv;
+  const actual = actualReg + actualUnplanned + actualEv;
   const left   = plan - actual;
 
   // KPI row (в topbar справа)
@@ -4990,6 +4993,7 @@ function renderBudgetSummary(cats, expenses, events = []) {
       </div>
       <div class="bud-bar-legend">
         <span class="bud-bleg bud-bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
+        ${actualUnplanned ? `<span class="bud-bleg bud-bleg-warn">▫ нерегулярное: ${actualUnplanned.toLocaleString("ru")} ₽</span>` : ""}
         <span class="bud-bleg bud-bleg-ev">□ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
         ${overEvent ? `<span class="bud-bleg bud-bleg-warn">↑ ${overEvent.name} вышли за бюджет на ${(getActual(overEvent) - getPlan(overEvent)).toLocaleString("ru")} ₽</span>` : ""}
       </div>`;
@@ -5003,13 +5007,18 @@ function renderBudgetAccordion(cats, expenses) {
   if (!el) return;
   el.innerHTML = "";
 
-  const catMap = {};
-  for (const cat of cats) catMap[cat.id] = cat;
+  // Регулярные = только категории с заполненным планом
+  const plannedCats = cats.filter(c => (c.plan_monthly || 0) > 0);
+  const plannedIds  = new Set(plannedCats.map(c => c.id));
 
-  // Группируем расходы по категории
+  const catMap = {};
+  for (const cat of plannedCats) catMap[cat.id] = cat;
+
+  // Группируем расходы только по запланированным категориям
   const byCat = {};
   for (const exp of expenses) {
-    const key = exp.category_id || 0;
+    if (!plannedIds.has(exp.category_id)) continue;  // нерегулярные → в отдельный блок
+    const key = exp.category_id;
     if (!byCat[key]) byCat[key] = { cat: catMap[key] || null, exps: [], total: 0 };
     byCat[key].exps.push(exp);
     byCat[key].total += exp.amount;
@@ -5127,9 +5136,9 @@ function renderBudgetAccordion(cats, expenses) {
     el.appendChild(catDiv);
   }
 
-  // Категории без расходов (чтобы можно было задать план)
+  // Запланированные категории без расходов (чтобы видеть план)
   const usedIds = new Set(Object.keys(byCat).map(Number));
-  for (const cat of cats) {
+  for (const cat of plannedCats) {
     if (usedIds.has(cat.id)) continue;
     const emptyDiv = document.createElement("div");
     emptyDiv.className = "bacc-cat bacc-cat-empty";
@@ -5151,6 +5160,10 @@ function renderBudgetAccordion(cats, expenses) {
       try { await apiFetch(`/budget/categories/${cat.id}`, { method: "DELETE" }); loadBudget(); } catch {}
     });
     el.appendChild(emptyDiv);
+  }
+
+  if (!el.children.length) {
+    el.innerHTML = `<div class="bacc-empty-hint">Пока нет регулярных категорий.<br>Добавь категорию и задай ей план — она появится здесь.</div>`;
   }
 }
 
@@ -5903,36 +5916,63 @@ function initExpenseModal() {
 }
 
 // ─── Раздел «Незапланированные» ──────────────────────────────────────────────
-function renderUnplanned(expenses) {
+function renderUnplanned(expenses, cats = []) {
   const section = $("bud-unplanned-section");
   const body    = $("bud-unplanned-body");
   const total   = $("bud-unplanned-total");
   if (!section || !body) return;
 
-  // Траты без категории
-  const unplanned = expenses.filter(e => !e.category_id);
+  // Нерегулярные = всё, что НЕ относится к категории с планом
+  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0).map(c => c.id));
+  const catMap = {}; for (const c of cats) catMap[c.id] = c;
+  const unplanned = expenses.filter(e => !plannedIds.has(e.category_id));
   if (!unplanned.length) { section.style.display = "none"; return; }
   section.style.display = "";
 
   const sum = unplanned.reduce((s, e) => s + e.amount, 0);
   if (total) total.textContent = sum.toLocaleString("ru") + " ₽";
 
+  // Группируем по категории (или «Без категории»)
+  const byCat = {};
+  for (const exp of unplanned) {
+    const key = exp.category_id || 0;
+    if (!byCat[key]) byCat[key] = { cat: catMap[key] || null, exps: [], total: 0 };
+    byCat[key].exps.push(exp);
+    byCat[key].total += exp.amount;
+  }
+  const groups = Object.values(byCat).sort((a, b) => b.total - a.total);
+
   body.innerHTML = "";
-  unplanned.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(exp => {
-    const [, mo, d] = String(exp.date).slice(0, 10).split("-");
-    const row = document.createElement("div");
-    row.className = "bacc-exp-row";
-    const label = exp.merchant || exp.note || "расход";
-    row.innerHTML = `
-      <span class="bacc-exp-date">${d}.${mo}</span>
-      <span class="bacc-exp-desc">${label}</span>
-      <span class="bacc-exp-amt">${exp.amount.toLocaleString("ru")} ₽</span>
-      <button class="bacc-exp-del">×</button>`;
-    row.querySelector(".bacc-exp-del").addEventListener("click", async () => {
-      try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+  for (const g of groups) {
+    const emoji = g.cat ? g.cat.emoji : "🔸";
+    const name  = g.cat ? g.cat.name : "Без категории";
+    const grpEl = document.createElement("div");
+    grpEl.className = "bud-unpl-cat";
+    grpEl.innerHTML = `
+      <div class="bud-unpl-cat-head">
+        <span class="bud-unpl-cat-emoji">${emoji}</span>
+        <span class="bud-unpl-cat-name">${name}</span>
+        <span class="bud-unpl-cat-total">${g.total.toLocaleString("ru")} ₽</span>
+      </div>`;
+    g.exps.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(exp => {
+      const [, mo, d] = String(exp.date).slice(0, 10).split("-");
+      const row = document.createElement("div");
+      row.className = "bacc-exp-row";
+      const label = exp.merchant || exp.note || "расход";
+      row.innerHTML = `
+        <span class="bacc-exp-date">${d}.${mo}</span>
+        <span class="bacc-exp-desc" title="${exp.note || ""}">${label}</span>
+        <span class="bacc-exp-amt">${exp.amount.toLocaleString("ru")} ₽</span>
+        <button class="bacc-exp-edit" title="Категория / правка">✏️</button>
+        <button class="bacc-exp-del">×</button>`;
+      row.querySelector(".bacc-exp-del").addEventListener("click", async () => {
+        try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+      });
+      row.querySelector(".bacc-exp-edit").addEventListener("click", () => openBudgetExpEdit(row, exp, cats));
+      grpEl.appendChild(row);
     });
-    body.appendChild(row);
-  });
+    body.appendChild(grpEl);
+  }
 
   // Toggle открытие/закрытие
   const toggle = $("bud-unplanned-toggle");
@@ -6210,136 +6250,249 @@ function renderTripsGrid(trips) {
   });
 }
 
+// Состояние открытой поездки
+const _tripDetail = { trip: null, isGroup: false, items: [], cities: [], today: "" };
+
 async function openTripDetail(trip) {
   const panel = $("ntab-trips");
   if (!panel) return;
-
-  // Сохраняем оригинальный HTML страницы чтобы вернуть при нажатии «назад»
   const page = panel.querySelector(".nb-page");
   const originalHTML = page.innerHTML;
-
-  const expenses = await apiFetch(`/trips/${trip.id}/expenses`).catch(() => []);
   const today = new Date().toISOString().slice(0, 10);
+
+  _tripDetail.trip = trip;
+  _tripDetail.isGroup = trip.event_type === "group";
+  _tripDetail.today = today;
+
   page.innerHTML = `
     <button class="trip-back-btn" id="trip-back">← Поездки</button>
     <div class="trip-detail-header">
       <div class="trip-detail-emoji">${trip.emoji}</div>
       <div class="trip-detail-name">${trip.name}</div>
+      <div class="trip-detail-totals" id="trip-detail-totals"></div>
     </div>
-    <div id="trip-exp-list"></div>
-    <button class="task-add-btn" id="trip-add-exp-btn"><span class="task-add-line">+ расход…</span></button>`;
+    <div class="trip-detail-cols-legend">
+      <span class="tdc-label">категория / статья</span>
+      <span class="tdc-num">план</span>
+      <span class="tdc-num">макс</span>
+      <span class="tdc-num">факт</span>
+      <span class="tdc-x"></span>
+    </div>
+    <div id="trip-detail-body"></div>
+    <button class="task-add-btn" id="trip-add-exp-btn"><span class="task-add-line">+ статья…</span></button>`;
 
   $("trip-back").addEventListener("click", () => {
     page.innerHTML = originalHTML;
-    loadTrips();       // восстанавливает trips-grid и перезагружает данные
-    initTripsAddBtn(); // восстанавливает кнопку добавления
+    loadTrips();
+    initTripsAddBtn();
   });
 
-  renderTripExpenses(expenses, trip.id, today);
+  await loadTripDetailItems();
+  renderTripDetail();
   initTripAddExpBtn(trip.id, today);
 }
 
-function buildTripExpRow(exp, tripId) {
-  const dt  = new Date(String(exp.date).slice(0,10) + "T00:00:00");
-  const row = document.createElement("div");
-  row.className = "trip-exp-row";
-  row.dataset.expId = exp.id;
-
-  // Блок сумм: если есть planned_amount — показываем план (зачёркнут) + факт
-  // Если факт = 0 или null — кликабельная надпись «+ факт»
-  const hasPlanned = exp.planned_amount != null && exp.planned_amount > 0;
-  const hasFact    = exp.amount != null && exp.amount > 0;
-
-  let amountsHtml;
-  if (hasPlanned) {
-    amountsHtml = `
-      <div class="trip-exp-amounts">
-        <span class="trip-exp-planned">${exp.planned_amount.toLocaleString("ru")} ₽</span>
-        ${hasFact
-          ? `<span class="trip-exp-actual">${exp.amount.toLocaleString("ru")} ₽</span>`
-          : `<span class="trip-exp-actual not-set" data-exp-id="${exp.id}">+ факт</span>`
-        }
-      </div>`;
+// Загружает расходы поездки (или всех городов группы) в _tripDetail.items
+async function loadTripDetailItems() {
+  const trip = _tripDetail.trip;
+  if (_tripDetail.isGroup) {
+    const all = await apiFetch("/trips").catch(() => []);
+    const kids = all.filter(t => t.parent_id === trip.id);
+    _tripDetail.cities = kids.map(k => ({ id: k.id, name: k.name, emoji: k.emoji }));
+    const lists = await Promise.all(kids.map(k =>
+      apiFetch(`/trips/${k.id}/expenses`).then(exps =>
+        exps.map(e => ({ ...e, _tripId: k.id, _city: k.name }))
+      ).catch(() => [])
+    ));
+    _tripDetail.items = lists.flat();
   } else {
-    amountsHtml = `
-      <div class="trip-exp-amounts">
-        ${hasFact
-          ? `<span class="trip-exp-actual">${exp.amount.toLocaleString("ru")} ₽</span>`
-          : `<span class="trip-exp-actual not-set" data-exp-id="${exp.id}">+ сумма</span>`
-        }
-      </div>`;
+    const exps = await apiFetch(`/trips/${trip.id}/expenses`).catch(() => []);
+    _tripDetail.cities = [];
+    _tripDetail.items = exps.map(e => ({ ...e, _tripId: trip.id, _city: (e.city || "").trim() }));
   }
-
-  row.innerHTML = `
-    <span class="trip-exp-date">${dt.getDate()}.${String(dt.getMonth()+1).padStart(2,"0")}</span>
-    <span class="trip-exp-emoji">${exp.emoji || "💸"}</span>
-    <div class="trip-exp-body">
-      <div class="trip-exp-note">${exp.note || "расход"}</div>
-      ${exp.category ? `<div class="trip-exp-cat">${exp.category}</div>` : ""}
-    </div>
-    ${amountsHtml}
-    <button class="trip-exp-delete">×</button>`;
-
-  // Клик «+ факт» / «+ сумма» — инлайн-ввод
-  const notSet = row.querySelector(".trip-exp-actual.not-set");
-  if (notSet) {
-    notSet.addEventListener("click", () => {
-      const inp = document.createElement("input");
-      inp.type = "number"; inp.min = "1"; inp.placeholder = "₽";
-      inp.className = "trip-exp-actual-input";
-      notSet.replaceWith(inp);
-      inp.focus();
-      const save = async () => {
-        const val = parseInt(inp.value);
-        if (!val) { inp.replaceWith(notSet); return; }
-        try {
-          const updated = await apiFetch(`/trip-expenses/${exp.id}/amount?amount=${val}`, { method: "PATCH" });
-          exp.amount = updated.amount || val;
-          const newRow = buildTripExpRow(exp, tripId);
-          row.replaceWith(newRow);
-        } catch { inp.replaceWith(notSet); }
-      };
-      inp.addEventListener("blur", save);
-      inp.addEventListener("keydown", e => { if (e.key === "Enter") save(); if (e.key === "Escape") inp.replaceWith(notSet); });
-    });
-  }
-
-  row.querySelector(".trip-exp-delete").addEventListener("click", async () => {
-    try {
-      await apiFetch(`/trip-expenses/${exp.id}`, { method: "DELETE" });
-      row.remove();
-    } catch {}
-  });
-  return row;
 }
 
-function renderTripExpenses(expenses, tripId, today) {
-  const el = $("trip-exp-list");
-  if (!el) return;
-  el.innerHTML = "";
-  if (!expenses.length) {
-    el.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3);padding:8px 0">нет расходов</div>`;
+// ─── Рендер детального табличного вида поездки ───────────────────────────────
+const _fmt = v => (v != null && v !== "" && Number(v) > 0)
+  ? Number(v).toLocaleString("ru")
+  : `<span class="trip-cell-empty">+</span>`;
+
+function _sumItems(items) {
+  return items.reduce((a, e) => ({
+    plan: a.plan + (Number(e.planned_amount) || 0),
+    max:  a.max  + (Number(e.planned_max)    || 0),
+    fact: a.fact + (Number(e.amount)         || 0),
+  }), { plan: 0, max: 0, fact: 0 });
+}
+
+function _tripItemRowHtml(exp) {
+  const label = exp.subcategory || exp.note || exp.category || "статья";
+  const dayChip = exp.day ? `<span class="trip-day-chip">${exp.day}</span>` : "";
+  const ceil = Number(exp.planned_max) || Number(exp.planned_amount) || 0;
+  const overCls = ceil > 0 && Number(exp.amount) > ceil ? " over" : "";
+  return `<div class="trip-item-row" data-id="${exp.id}">
+    <span class="trip-item-label">${exp.emoji || "•"} ${label}${dayChip}</span>
+    <span class="trip-cell editable" data-id="${exp.id}" data-field="planned_amount">${_fmt(exp.planned_amount)}</span>
+    <span class="trip-cell editable" data-id="${exp.id}" data-field="planned_max">${_fmt(exp.planned_max)}</span>
+    <span class="trip-cell editable${overCls}" data-id="${exp.id}" data-field="amount">${_fmt(exp.amount)}</span>
+    <button class="trip-item-del" data-id="${exp.id}" title="Удалить">×</button>
+  </div>`;
+}
+
+function _tripCatBlockHtml(catName, emoji, items) {
+  const s = _sumItems(items);
+  const overCls = s.max > 0 && s.fact > s.max ? " over" : "";
+  const rows = items.map(_tripItemRowHtml).join("");
+  return `<div class="trip-cat-block">
+    <div class="trip-cat-head">
+      <span class="trip-cat-name">${emoji || "📦"} ${catName || "Без категории"}</span>
+      <span class="trip-cell sub">${_fmt(s.plan)}</span>
+      <span class="trip-cell sub">${_fmt(s.max)}</span>
+      <span class="trip-cell sub${overCls}">${_fmt(s.fact)}</span>
+      <span class="trip-x"></span>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+// Группировка items по категории (с сохранением emoji первого вхождения)
+function _groupByCategory(items) {
+  const map = new Map();
+  for (const e of items) {
+    const key = (e.category || "").trim() || "—";
+    if (!map.has(key)) map.set(key, { name: key === "—" ? "Без категории" : key, emoji: e.emoji || "", items: [] });
+    map.get(key).items.push(e);
+  }
+  return [...map.values()].sort((a, b) => _sumItems(b.items).plan - _sumItems(a.items).plan);
+}
+
+function renderTripDetail() {
+  const body = $("trip-detail-body");
+  if (!body) return;
+  const items = _tripDetail.items;
+
+  // Итоги в шапке
+  const tot = _sumItems(items);
+  const totEl = $("trip-detail-totals");
+  if (totEl) {
+    const overFact = tot.max > 0 && tot.fact > tot.max;
+    totEl.innerHTML = `
+      <span class="tdt-item"><b>${tot.plan.toLocaleString("ru")} ₽</b><i>план</i></span>
+      <span class="tdt-item"><b>${tot.max.toLocaleString("ru")} ₽</b><i>макс</i></span>
+      <span class="tdt-item${overFact ? " over" : ""}"><b>${tot.fact.toLocaleString("ru")} ₽</b><i>факт</i></span>`;
+  }
+
+  if (!items.length) {
+    body.innerHTML = `<div class="trip-detail-empty">пока нет статей — добавь первую ниже ↓</div>`;
     return;
   }
-  // Группируем по городу (порядок первого появления)
-  const byCityMap = {};
-  const cityOrder = [];
-  for (const exp of expenses) {
-    const city = (exp.city || "").trim();
-    if (!byCityMap[city]) { byCityMap[city] = []; cityOrder.push(city); }
-    byCityMap[city].push(exp);
-  }
-  for (const city of cityOrder) {
-    if (city) {
-      const header = document.createElement("div");
-      header.className = "trip-city-header";
-      header.textContent = `📍 ${city}`;
-      el.appendChild(header);
+
+  let html = "";
+
+  if (_tripDetail.isGroup) {
+    // Сводка по категориям по всей поездке
+    const overview = _groupByCategory(items);
+    html += `<div class="trip-overview">
+      <div class="trip-section-title">Сводка по категориям · вся поездка</div>
+      ${overview.map(g => {
+        const s = _sumItems(g.items);
+        const overCls = s.max > 0 && s.fact > s.max ? " over" : "";
+        return `<div class="trip-cat-head plain">
+          <span class="trip-cat-name">${g.emoji || "📦"} ${g.name}</span>
+          <span class="trip-cell sub">${_fmt(s.plan)}</span>
+          <span class="trip-cell sub">${_fmt(s.max)}</span>
+          <span class="trip-cell sub${overCls}">${_fmt(s.fact)}</span>
+          <span class="trip-x"></span>
+        </div>`;
+      }).join("")}
+    </div>`;
+
+    // По городам
+    for (const city of _tripDetail.cities) {
+      const cityItems = items.filter(e => e._tripId === city.id);
+      const cs = _sumItems(cityItems);
+      const overCls = cs.max > 0 && cs.fact > cs.max ? " over" : "";
+      html += `<div class="trip-city-block">
+        <div class="trip-city-head">
+          <span class="trip-city-name">${city.emoji || "📍"} ${city.name}</span>
+          <span class="trip-cell sub">${_fmt(cs.plan)}</span>
+          <span class="trip-cell sub">${_fmt(cs.max)}</span>
+          <span class="trip-cell sub${overCls}">${_fmt(cs.fact)}</span>
+          <span class="trip-x"></span>
+        </div>
+        ${cityItems.length
+          ? _groupByCategory(cityItems).map(g => _tripCatBlockHtml(g.name, g.emoji, g.items)).join("")
+          : `<div class="trip-detail-empty sm">нет статей по этому городу</div>`}
+      </div>`;
     }
-    for (const exp of byCityMap[city]) {
-      el.appendChild(buildTripExpRow(exp, tripId));
+  } else {
+    // Одиночная поездка: возможна разбивка по городам внутри
+    const cities = [...new Set(items.map(e => (e._city || "").trim()))];
+    const useCities = cities.filter(Boolean).length > 0;
+    if (useCities) {
+      for (const city of cities) {
+        const cityItems = items.filter(e => (e._city || "").trim() === city);
+        if (city) {
+          const cs = _sumItems(cityItems);
+          const overCls = cs.max > 0 && cs.fact > cs.max ? " over" : "";
+          html += `<div class="trip-city-head">
+            <span class="trip-city-name">📍 ${city || "без города"}</span>
+            <span class="trip-cell sub">${_fmt(cs.plan)}</span>
+            <span class="trip-cell sub">${_fmt(cs.max)}</span>
+            <span class="trip-cell sub${overCls}">${_fmt(cs.fact)}</span>
+            <span class="trip-x"></span>
+          </div>`;
+        }
+        html += _groupByCategory(cityItems).map(g => _tripCatBlockHtml(g.name, g.emoji, g.items)).join("");
+      }
+    } else {
+      html += _groupByCategory(items).map(g => _tripCatBlockHtml(g.name, g.emoji, g.items)).join("");
     }
   }
+
+  body.innerHTML = html;
+
+  // Делегирование: редактирование ячеек + удаление
+  body.onclick = e => {
+    const cell = e.target.closest(".trip-cell.editable");
+    if (cell) {
+      const exp = _tripDetail.items.find(x => x.id == cell.dataset.id);
+      if (exp) editTripCell(cell, exp, cell.dataset.field);
+      return;
+    }
+    const del = e.target.closest(".trip-item-del");
+    if (del) {
+      const id = del.dataset.id;
+      apiFetch(`/trip-expenses/${id}`, { method: "DELETE" }).then(() => {
+        _tripDetail.items = _tripDetail.items.filter(x => x.id != id);
+        renderTripDetail();
+      }).catch(() => {});
+    }
+  };
+}
+
+function editTripCell(cell, exp, field) {
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.min = "0"; inp.className = "trip-cell-input";
+  inp.value = exp[field] != null ? exp[field] : "";
+  cell.replaceWith(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const save = async () => {
+    if (done) return; done = true;
+    const raw = inp.value.trim();
+    const val = raw === "" ? null : parseInt(raw);
+    try {
+      await apiFetch(`/trip-expenses/${exp.id}`, { method: "PATCH", body: JSON.stringify({ [field]: val }) });
+      exp[field] = val;
+    } catch {}
+    renderTripDetail();
+  };
+  inp.addEventListener("blur", save);
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") inp.blur();
+    if (e.key === "Escape") { done = true; renderTripDetail(); }
+  });
 }
 
 function initTripAddExpBtn(tripId, today) {
@@ -6347,51 +6500,39 @@ function initTripAddExpBtn(tripId, today) {
   if (!btn) return;
   btn.addEventListener("click", () => {
     btn.style.display = "none";
-    const form = document.createElement("div");
-    form.className = "nb-inline-form";
-    // Уникальные города уже в этой поездке
-    const existingCities = [...new Set(
-      Array.from(document.querySelectorAll(".trip-city-header"))
-        .map(h => h.textContent.replace("📍 ", "").trim())
-        .filter(Boolean)
-    )];
-    const cityDatalist = existingCities.length
-      ? `<datalist id="texp-cities">${existingCities.map(c => `<option value="${c}">`).join("")}</datalist>`
+    const isGroup = _tripDetail.isGroup;
+    // Список городов (для группы — дочерние поездки)
+    const cityOpts = isGroup
+      ? _tripDetail.cities.map(c => `<option value="${c.id}">${c.emoji || "📍"} ${c.name}</option>`).join("")
       : "";
+    const form = document.createElement("div");
+    form.className = "trip-add-form";
     form.innerHTML = `
-      ${cityDatalist}
+      ${isGroup ? `<select class="nb-inline-select" id="texp-city">${cityOpts}</select>` : ""}
       <input class="nb-inline-input sm" id="texp-emoji" placeholder="Emoji" maxlength="4" value="💸" />
-      <input class="nb-inline-input md" id="texp-note" placeholder="Заметка…" />
-      <div class="preset-wrap" style="flex:1">
-        <input class="nb-inline-input sm" id="texp-cat" placeholder="Категория" style="width:100%" autocomplete="off" />
+      <div class="preset-wrap" style="flex:1;min-width:120px">
+        <input class="nb-inline-input" id="texp-cat" placeholder="Категория (Еда…)" style="width:100%" autocomplete="off" />
         <div class="preset-dropdown" id="texp-dropdown" style="display:none"></div>
       </div>
-      <input class="nb-inline-input sm" id="texp-city" placeholder="Город…" list="texp-cities" />
+      <input class="nb-inline-input" id="texp-sub" placeholder="Статья (Завтрак…)" />
+      <input class="nb-inline-input sm" id="texp-day" placeholder="День / дата" />
       <input class="nb-inline-input sm" id="texp-plan" placeholder="План ₽" type="number" min="0" />
+      <input class="nb-inline-input sm" id="texp-max"  placeholder="Макс ₽"  type="number" min="0" />
       <input class="nb-inline-input sm" id="texp-amt"  placeholder="Факт ₽"  type="number" min="0" />
-      <input class="nb-inline-input sm" id="texp-date" type="date" value="${today}" />
       <button class="nb-inline-btn" id="texp-submit">Добавить</button>`;
     btn.parentNode.insertBefore(form, btn.nextSibling);
-    const emojiI   = form.querySelector("#texp-emoji");
-    const noteI    = form.querySelector("#texp-note");
-    const catI     = form.querySelector("#texp-cat");
-    const cityI    = form.querySelector("#texp-city");
-    const planI    = form.querySelector("#texp-plan");
-    const amtI     = form.querySelector("#texp-amt");
-    const dateI    = form.querySelector("#texp-date");
-    const dropdown = form.querySelector("#texp-dropdown");
+    const q = id => form.querySelector(id);
+    const emojiI = q("#texp-emoji"), catI = q("#texp-cat"), subI = q("#texp-sub"),
+          dayI = q("#texp-day"), planI = q("#texp-plan"), maxI = q("#texp-max"),
+          amtI = q("#texp-amt"), cityI = q("#texp-city"), dropdown = q("#texp-dropdown");
 
-    // ── Preset dropdown для категории поездки ─────────────────
     function renderTripPresets(query) {
-      const q = query.trim().toLowerCase();
-      const filtered = q
-        ? CATEGORY_PRESETS.filter(p => p.name.toLowerCase().includes(q))
-        : CATEGORY_PRESETS;
+      const qq = query.trim().toLowerCase();
+      const filtered = qq ? CATEGORY_PRESETS.filter(p => p.name.toLowerCase().includes(qq)) : CATEGORY_PRESETS;
       if (!filtered.length) { dropdown.style.display = "none"; return; }
       dropdown.innerHTML = filtered.map(p =>
         `<div class="preset-item" data-emoji="${p.emoji}" data-name="${p.name}">
-          <span class="preset-item-emoji">${p.emoji}</span>${p.name}
-        </div>`).join("");
+          <span class="preset-item-emoji">${p.emoji}</span>${p.name}</div>`).join("");
       dropdown.style.display = "";
     }
     catI.addEventListener("focus", () => renderTripPresets(catI.value));
@@ -6403,36 +6544,42 @@ function initTripAddExpBtn(tripId, today) {
       emojiI.value = item.dataset.emoji;
       catI.value   = item.dataset.name;
       dropdown.style.display = "none";
-      planI.focus();
+      subI.focus();
     });
 
-    form.querySelector("#texp-submit").addEventListener("click", async () => {
-      const planned = parseInt(planI.value) || 0;
-      const amount  = parseInt(amtI.value)  || 0;
-      // Нужна хотя бы одна сумма или заметка
-      if (!amount && !planned && !noteI.value.trim()) return;
+    const submit = async () => {
+      const targetTrip = isGroup ? parseInt(cityI.value) : tripId;
+      if (isGroup && !targetTrip) { cityI.focus(); return; }
+      const plan = parseInt(planI.value) || 0;
+      const pmax = parseInt(maxI.value)  || 0;
+      const fact = parseInt(amtI.value)  || 0;
+      if (!plan && !pmax && !fact && !catI.value.trim() && !subI.value.trim()) return;
       try {
-        const exp = await apiFetch(`/trips/${tripId}/expenses`, {
+        await apiFetch(`/trips/${targetTrip}/expenses`, {
           method: "POST",
           body: JSON.stringify({
-            amount,
-            planned_amount: planned || null,
-            note: noteI.value || "",
-            category: catI.value || "",
+            amount: fact,
+            planned_amount: plan || null,
+            planned_max: pmax || null,
+            category: catI.value.trim(),
+            subcategory: subI.value.trim(),
+            day: dayI.value.trim(),
+            note: subI.value.trim(),
             emoji: emojiI.value || "💸",
-            city: cityI ? cityI.value.trim() : "",
-            date: dateI.value || today,
+            date: today,
           })
         });
         form.remove(); btn.style.display = "";
-        const list = $("trip-exp-list");
-        // убираем «нет расходов» если было
-        const empty = list.querySelector("[style*='нет расходов']");
-        if (empty) empty.remove();
-        list.appendChild(buildTripExpRow(exp, tripId));
+        await loadTripDetailItems();
+        renderTripDetail();
       } catch {}
+    };
+    q("#texp-submit").addEventListener("click", submit);
+    form.addEventListener("keydown", e => {
+      if (e.key === "Escape") { form.remove(); btn.style.display = ""; }
+      if (e.key === "Enter" && e.target !== catI) submit();
     });
-    form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); btn.style.display = ""; } });
+    (isGroup ? cityI : catI).focus();
   });
 }
 

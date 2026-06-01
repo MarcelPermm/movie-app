@@ -3992,6 +3992,72 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .trip-back-btn { background: none; border: none; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); padding: 0 0 16px; display: flex; align-items: center; gap: 4px; }
 .trip-back-btn:hover { color: var(--terracotta); }
 
+/* ─── Детальная таблица поездки (план | макс | факт) ─────────────────────────── */
+.trip-detail-totals { margin-left: auto; display: flex; gap: 16px; }
+.tdt-item { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.tdt-item b { font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.tdt-item i { font-style: normal; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-top: 2px; }
+.tdt-item.over b { color: #c94c4c; }
+
+/* единая сетка строк: label | план | макс | факт | × */
+.trip-detail-cols-legend,
+.trip-item-row,
+.trip-cat-head,
+.trip-city-head {
+  display: grid;
+  grid-template-columns: 1fr 72px 72px 72px 24px;
+  align-items: center;
+  gap: 4px;
+}
+.trip-detail-cols-legend { padding: 4px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--rule); }
+.trip-detail-cols-legend .tdc-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.trip-detail-cols-legend .tdc-num { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); text-align: right; }
+
+.trip-cat-block { margin-bottom: 10px; }
+.trip-cat-head {
+  padding: 6px 8px;
+  background: rgba(0,0,0,.025);
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+.trip-cat-head.plain { background: none; border-bottom: 1px dashed var(--rule); border-radius: 0; }
+.trip-cat-name { font-family: 'Fraunces', Georgia, serif; font-size: 14px; font-weight: 600; color: var(--ink); }
+
+.trip-item-row { padding: 5px 8px; border-bottom: 1px solid var(--rule); }
+.trip-item-row:hover { background: rgba(0,0,0,.02); }
+.trip-item-label { font-size: 13px; color: var(--ink); display: flex; align-items: center; gap: 6px; min-width: 0; }
+.trip-day-chip { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-3); background: var(--rule); border-radius: 6px; padding: 1px 5px; }
+
+.trip-cell {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--ink); text-align: right; font-variant-numeric: tabular-nums;
+  padding: 2px 4px; border-radius: 5px;
+}
+.trip-cell.editable { cursor: pointer; }
+.trip-cell.editable:hover { background: rgba(0,0,0,.05); }
+.trip-cell.sub { font-weight: 600; }
+.trip-cell.over { color: #c94c4c; }
+.trip-cell-empty { color: var(--ink-3); opacity: .5; }
+.trip-cell-input {
+  width: 68px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  text-align: right; border: 1px solid var(--terracotta); border-radius: 5px;
+  padding: 2px 4px; background: var(--paper); color: var(--ink);
+}
+.trip-item-del { opacity: 0; background: none; border: none; cursor: pointer; color: var(--ink-3); font-size: 14px; transition: opacity .15s; }
+.trip-item-row:hover .trip-item-del { opacity: 1; }
+.trip-item-del:hover { color: #c94c4c; }
+
+.trip-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 4px 0 6px; }
+.trip-overview { margin-bottom: 18px; padding: 10px 0; border-bottom: 2px solid var(--rule); }
+.trip-city-block { margin-bottom: 16px; }
+.trip-city-head { padding: 7px 8px; background: rgba(0,0,0,.04); border-radius: 8px; margin-bottom: 4px; }
+.trip-city-name { font-family: 'Fraunces', Georgia, serif; font-size: 15px; font-weight: 700; color: var(--ink); }
+
+.trip-detail-empty { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); padding: 14px 0; text-align: center; }
+.trip-detail-empty.sm { padding: 6px 0; }
+
+.trip-add-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding: 10px; background: rgba(0,0,0,.02); border-radius: 10px; }
+
 /* ── Списки ────────────────────────────────────────────────── */
 .lists-nav { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .list-nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: none; background: transparent; font-family: 'Fraunces', Georgia, serif; font-size: 14px; color: var(--ink-2); cursor: pointer; border-radius: 4px; text-align: left; transition: all .15s; width: 100%; border-left: 3px solid transparent; margin-left: -4px; }
@@ -5397,6 +5463,24 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   padding: 4px 0;
   border-top: 1px solid var(--border);
 }
+.bud-unpl-cat { padding: 2px 0 6px; }
+.bud-unpl-cat + .bud-unpl-cat { border-top: 1px dashed var(--border); }
+.bud-unpl-cat-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px 4px;
+}
+.bud-unpl-cat-emoji { font-size: 14px; }
+.bud-unpl-cat-name {
+  flex: 1; font-size: 12px; font-weight: 600; color: var(--text-dim);
+}
+.bud-unpl-cat-total {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  font-family: 'Fraunces', serif;
+}
+.bacc-empty-hint {
+  padding: 18px 14px; text-align: center;
+  font-size: 12px; line-height: 1.6; color: var(--text-dim);
+}
 
 /* ─── Группы поездок ────────────────────────────────────────────────────────── */
 .trip-group-card {
@@ -5419,6 +5503,13 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .trip-group-name { display: block; font-size: 14px; font-weight: 600; color: var(--text); }
 .trip-group-meta { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 .trip-group-toggle { color: var(--text-dim); font-size: 12px; }
+/* Кнопка удаления группы — статичная (не absolute), видна на ховере группы */
+.trip-group-head .trip-card-delete {
+  position: static; opacity: .35; flex-shrink: 0;
+  font-size: 18px; line-height: 1; padding: 2px 6px;
+}
+.trip-group-card:hover .trip-group-head .trip-card-delete { opacity: 1; }
+.trip-group-head .trip-card-delete:hover { color: #c94c4c; }
 .trip-group-children { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 6px; }
 
 .trip-card-child { margin: 0 !important; opacity: .9; }
