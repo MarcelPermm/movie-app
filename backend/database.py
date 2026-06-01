@@ -1223,6 +1223,7 @@ def init_budget_tables():
             )
         """)
         cur.execute("ALTER TABLE budget_expenses ADD COLUMN IF NOT EXISTS merchant TEXT")
+        cur.execute("ALTER TABLE budget_categories ADD COLUMN IF NOT EXISTS plan_max INTEGER DEFAULT 0")
         conn.commit()
     finally:
         conn.close()
@@ -1236,20 +1237,21 @@ def get_budget_categories(user_id: int) -> list:
     finally:
         conn.close()
 
-def add_budget_category(user_id: int, name: str, emoji: str, plan_monthly: int = 0) -> dict:
+def add_budget_category(user_id: int, name: str, emoji: str, plan_monthly: int = 0, plan_max: int = 0) -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO budget_categories (user_id,name,emoji,plan_monthly) VALUES (%s,%s,%s,%s) RETURNING *",
-                    (user_id, name, emoji, plan_monthly))
+        cur.execute("INSERT INTO budget_categories (user_id,name,emoji,plan_monthly,plan_max) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+                    (user_id, name, emoji, plan_monthly, plan_max))
         row = dict(cur.fetchone())
         conn.commit()
         return row
     finally:
         conn.close()
 
-def update_budget_category(cat_id: int, user_id: int, name: str = None, emoji: str = None, plan_monthly: int = None) -> dict:
-    fields = {k: v for k, v in {"name": name, "emoji": emoji, "plan_monthly": plan_monthly}.items() if v is not None}
+def update_budget_category(cat_id: int, user_id: int, name: str = None, emoji: str = None,
+                           plan_monthly: int = None, plan_max: int = None) -> dict:
+    fields = {k: v for k, v in {"name": name, "emoji": emoji, "plan_monthly": plan_monthly, "plan_max": plan_max}.items() if v is not None}
     if not fields:
         return {}
     conn = _get_conn()

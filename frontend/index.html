@@ -390,8 +390,21 @@
                   <button class="task-add-btn" id="task-add-btn"><span class="task-add-line">+ новая задача…</span></button>
                 </div>
               </div>
-              <!-- Правая страница: вчера + неделя -->
+              <!-- Правая страница: цели + вчера + неделя -->
               <div class="nb-page nb-page-right">
+                <!-- Цели на месяц / год -->
+                <div class="nb-section-goals">
+                  <div class="nb-goals-head">
+                    <h2 class="nb-title-sm">Цели</h2>
+                    <div class="nb-goals-tabs">
+                      <button class="nb-goal-tab active" data-period="month">Месяц</button>
+                      <button class="nb-goal-tab" data-period="year">Год</button>
+                    </div>
+                  </div>
+                  <div class="nb-goals-period" id="nb-goals-period"></div>
+                  <div class="nb-goals-list" id="nb-goals-list"></div>
+                  <button class="task-add-btn sm" id="nb-goal-add"><span class="task-add-line">+ новая цель…</span></button>
+                </div>
                 <div class="nb-section-yesterday">
                   <div class="nb-yesterday-head">
                     <h2 class="nb-title-sm">Вчера</h2>
@@ -411,19 +424,6 @@
                     </div>
                   </div>
                   <div class="week-grid-h" id="nb-week-grid"></div>
-                </div>
-                <!-- Цели на месяц / год -->
-                <div class="nb-section-goals">
-                  <div class="nb-goals-head">
-                    <h2 class="nb-title-sm">Цели</h2>
-                    <div class="nb-goals-tabs">
-                      <button class="nb-goal-tab active" data-period="month">Месяц</button>
-                      <button class="nb-goal-tab" data-period="year">Год</button>
-                    </div>
-                  </div>
-                  <div class="nb-goals-period" id="nb-goals-period"></div>
-                  <div class="nb-goals-list" id="nb-goals-list"></div>
-                  <button class="task-add-btn sm" id="nb-goal-add"><span class="task-add-line">+ новая цель…</span></button>
                 </div>
               </div>
             </div>
@@ -518,6 +518,9 @@
                       <option value="">— категория —</option>
                     </select>
                     <input class="bud-modal-input" id="bm-merchant" placeholder="Где / у кого…" autocomplete="off" />
+                    <select class="bud-modal-select" id="bm-event">
+                      <option value="">— без события / поездки —</option>
+                    </select>
                     <input class="bud-modal-input" id="bm-note" placeholder="Комментарий…" />
                     <input class="bud-modal-input" id="bm-date" type="date" />
                   </div>

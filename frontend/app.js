@@ -5087,9 +5087,10 @@ function renderBudgetHeader() {
 }
 
 function renderBudgetSummary(cats, expenses, events = []) {
-  // Регулярные = только категории с заполненным планом
-  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0).map(c => c.id));
-  const planReg   = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+  // Регулярные = только категории с заполненным планом (мин или макс)
+  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0 || (c.plan_max || 0) > 0).map(c => c.id));
+  const planReg    = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+  const planRegMax = cats.reduce((s, c) => s + ((c.plan_max || c.plan_monthly) || 0), 0);
   const actualReg = expenses.reduce((s, e) => s + (plannedIds.has(e.category_id) ? (e.amount || 0) : 0), 0);
   const actualUnplanned = expenses.reduce((s, e) => s + (plannedIds.has(e.category_id) ? 0 : (e.amount || 0)), 0);
 
@@ -5156,7 +5157,7 @@ function renderBudgetSummary(cats, expenses, events = []) {
         <div class="bud-bar-ev${overEv ? " over" : ""}" style="width:${pctEv}%"></div>
       </div>
       <div class="bud-bar-legend">
-        <span class="bud-bleg bud-bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")} ₽</span>
+        <span class="bud-bleg bud-bleg-reg">▪ регулярное: ${actualReg.toLocaleString("ru")} / ${planReg.toLocaleString("ru")}${planRegMax > planReg ? "–" + planRegMax.toLocaleString("ru") : ""} ₽</span>
         ${actualUnplanned ? `<span class="bud-bleg bud-bleg-warn">▫ нерегулярное: ${actualUnplanned.toLocaleString("ru")} ₽</span>` : ""}
         <span class="bud-bleg bud-bleg-ev">□ события и поездки: ${actualEv.toLocaleString("ru")} / ${planEv.toLocaleString("ru")} ₽</span>
         ${overEvent ? `<span class="bud-bleg bud-bleg-warn">↑ ${overEvent.name} вышли за бюджет на ${(getActual(overEvent) - getPlan(overEvent)).toLocaleString("ru")} ₽</span>` : ""}
@@ -5171,8 +5172,8 @@ function renderBudgetAccordion(cats, expenses) {
   if (!el) return;
   el.innerHTML = "";
 
-  // Регулярные = только категории с заполненным планом
-  const plannedCats = cats.filter(c => (c.plan_monthly || 0) > 0);
+  // Регулярные = только категории с заполненным планом (мин или макс)
+  const plannedCats = cats.filter(c => (c.plan_monthly || 0) > 0 || (c.plan_max || 0) > 0);
   const plannedIds  = new Set(plannedCats.map(c => c.id));
 
   const catMap = {};
@@ -5197,7 +5198,9 @@ function renderBudgetAccordion(cats, expenses) {
     const emoji    = cat ? cat.emoji : "💰";
     const catName  = cat ? cat.name : "Без категории";
     const plan     = cat ? (cat.plan_monthly || 0) : 0;
-    const over     = plan > 0 && group.total > plan;
+    const planMax  = cat ? (cat.plan_max || 0) : 0;
+    const ceil     = planMax || plan;  // потолок для подсветки/бара
+    const over     = ceil > 0 && group.total > ceil;
 
     // Подгруппа по merchant (место / заведение)
     const byMerchant = {};
@@ -5212,9 +5215,12 @@ function renderBudgetAccordion(cats, expenses) {
     const catDiv = document.createElement("div");
     catDiv.className = "bacc-cat";
 
-    const pct       = plan > 0 ? Math.min((group.total / plan) * 100, 100) : (group.total > 0 ? 100 : 0);
+    const pct       = ceil > 0 ? Math.min((group.total / ceil) * 100, 100) : (group.total > 0 ? 100 : 0);
     const spentFmt  = group.total.toLocaleString("ru");
-    const planFmt   = plan > 0 ? ` / ${plan.toLocaleString("ru")} ₽` : "";
+    const planStr   = plan > 0 ? plan.toLocaleString("ru") : "0";
+    const planFmt   = (plan > 0 || planMax > 0)
+      ? ` / ${planStr}${planMax > 0 && planMax !== plan ? "–" + planMax.toLocaleString("ru") : ""} ₽`
+      : "";
     const overSign  = over ? " ↑" : "";
     catDiv.innerHTML = `
       <div class="bacc-cat-head">
@@ -5334,25 +5340,46 @@ function renderBudgetAccordion(cats, expenses) {
 function openPlanEdit(catDiv, cat) {
   const planBtn = catDiv.querySelector(".bacc-plan-val");
   if (!planBtn) return;
+  const wrap = document.createElement("span");
+  wrap.className = "bacc-plan-edit";
   const inp = document.createElement("input");
   inp.type = "number"; inp.min = "0"; inp.value = cat.plan_monthly || "";
   inp.className = "bacc-plan-input"; inp.placeholder = "план ₽";
-  planBtn.replaceWith(inp);
+  const sep = document.createElement("span");
+  sep.className = "bacc-plan-sep"; sep.textContent = "–";
+  const inpMax = document.createElement("input");
+  inpMax.type = "number"; inpMax.min = "0"; inpMax.value = cat.plan_max || "";
+  inpMax.className = "bacc-plan-input"; inpMax.placeholder = "макс ₽";
+  wrap.append(inp, sep, inpMax);
+  planBtn.replaceWith(wrap);
   inp.focus(); inp.select();
 
+  let saved = false;
   const save = async () => {
+    if (saved) return; saved = true;
     const val = parseInt(inp.value) || 0;
+    const valMax = parseInt(inpMax.value) || 0;
     try {
       await apiFetch(`/budget/categories/${cat.id}`, {
-        method: "PATCH", body: JSON.stringify({ plan_monthly: val }),
+        method: "PATCH",
+        body: JSON.stringify({ plan_monthly: val, plan_max: valMax }),
       });
     } catch {}
     loadBudget();
   };
-  inp.addEventListener("blur", save);
-  inp.addEventListener("keydown", e => {
-    if (e.key === "Enter") inp.blur();
-    if (e.key === "Escape") loadBudget();
+  const onBlur = () => {
+    // не сохраняем, если фокус ушёл на второй input этой же пары
+    setTimeout(() => {
+      if (document.activeElement === inp || document.activeElement === inpMax) return;
+      save();
+    }, 0);
+  };
+  [inp, inpMax].forEach(el => {
+    el.addEventListener("blur", onBlur);
+    el.addEventListener("keydown", e => {
+      if (e.key === "Enter") save();
+      if (e.key === "Escape") { saved = true; loadBudget(); }
+    });
   });
 }
 
@@ -6032,6 +6059,29 @@ function openExpenseModal(prefillCatId = null) {
     sel.innerHTML = `<option value="">— незапланированная —</option>` +
       cats.map(c => `<option value="${c.id}"${prefillCatId == c.id ? " selected" : ""}>${c.emoji} ${c.name}</option>`).join("");
   }).catch(() => {});
+  // Заполняем события / поездки текущего месяца
+  const evSel = $("bm-event");
+  if (evSel) {
+    evSel.innerHTML = `<option value="">— без события / поездки —</option>`;
+    const { year, month } = budgetState;
+    apiFetch(`/budget/events?year=${year}&month=${month}`).then(events => {
+      // дети групп показываем с отступом, сами группы — как заголовок (не выбираемый — выбираем город)
+      const groups = events.filter(e => e.event_type === "group");
+      const childIds = new Set(events.filter(e => e.parent_id).map(e => e.id));
+      const singles = events.filter(e => e.event_type !== "group" && !e.parent_id);
+      let html = "";
+      for (const g of groups) {
+        const kids = events.filter(e => e.parent_id === g.id);
+        html += `<optgroup label="${g.emoji} ${g.name}">` +
+          kids.map(k => `<option value="${k.id}">${k.emoji} ${k.name}</option>`).join("") +
+          `</optgroup>`;
+      }
+      for (const e of singles) {
+        html += `<option value="${e.id}">${e.emoji} ${e.name}</option>`;
+      }
+      evSel.innerHTML = `<option value="">— без события / поездки —</option>` + html;
+    }).catch(() => {});
+  }
   modal.style.display = "flex";
   setTimeout(() => $("bm-amount").focus(), 50);
 }
@@ -6056,14 +6106,30 @@ function initExpenseModal() {
     const amount = parseInt($("bm-amount").value);
     if (!amount || amount <= 0) { $("bm-amount").focus(); return; }
     const catId = $("bm-category").value ? parseInt($("bm-category").value) : null;
+    const evSel = $("bm-event");
+    const eventId = evSel && evSel.value ? parseInt(evSel.value) : null;
+    const date = $("bm-date").value || new Date().toISOString().slice(0, 10);
+    const merchant = $("bm-merchant").value.trim() || null;
+    const note = $("bm-note").value.trim() || null;
     try {
-      await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({
-        amount,
-        merchant: $("bm-merchant").value.trim() || null,
-        note: $("bm-note").value.trim() || null,
-        category_id: catId,
-        date: $("bm-date").value || new Date().toISOString().slice(0, 10),
-      })});
+      if (eventId) {
+        // трата привязана к событию/поездке → в trip_expenses
+        const catName = catId ? ($("bm-category").selectedOptions[0]?.textContent || "").trim() : "";
+        await apiFetch(`/trips/${eventId}/expenses`, { method: "POST", body: JSON.stringify({
+          amount,
+          date,
+          category: catName,
+          note: [merchant, note].filter(Boolean).join(" · ") || "",
+        })});
+      } else {
+        await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({
+          amount,
+          merchant,
+          note,
+          category_id: catId,
+          date,
+        })});
+      }
       closeExpenseModal();
       loadBudget();
     } catch {}
@@ -6087,7 +6153,7 @@ function renderUnplanned(expenses, cats = []) {
   if (!section || !body) return;
 
   // Нерегулярные = всё, что НЕ относится к категории с планом
-  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0).map(c => c.id));
+  const plannedIds = new Set(cats.filter(c => (c.plan_monthly || 0) > 0 || (c.plan_max || 0) > 0).map(c => c.id));
   const catMap = {}; for (const c of cats) catMap[c.id] = c;
   const unplanned = expenses.filter(e => !plannedIds.has(e.category_id));
   if (!unplanned.length) { section.style.display = "none"; return; }
@@ -6118,7 +6184,7 @@ function renderUnplanned(expenses, cats = []) {
         <span class="bud-unpl-cat-name">${name}</span>
         <span class="bud-unpl-cat-total">${g.total.toLocaleString("ru")} ₽</span>
       </div>`;
-    g.exps.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(exp => {
+    g.exps.sort((a, b) => b.amount - a.amount).forEach(exp => {
       const [, mo, d] = String(exp.date).slice(0, 10).split("-");
       const row = document.createElement("div");
       row.className = "bacc-exp-row";
@@ -6168,12 +6234,14 @@ function initBudgetAddButtons() {
           <input class="nb-inline-input lg" id="bcat-name" placeholder="Название…" style="width:100%" autocomplete="off" />
           <div class="preset-dropdown" id="bcat-dropdown" style="display:none"></div>
         </div>
-        <input class="nb-inline-input sm" id="bcat-plan" placeholder="Бюджет ₽" type="number" min="0" />
+        <input class="nb-inline-input sm" id="bcat-plan" placeholder="План ₽" type="number" min="0" />
+        <input class="nb-inline-input sm" id="bcat-max" placeholder="Макс ₽" type="number" min="0" />
         <button class="nb-inline-btn" id="bcat-submit">Добавить</button>`;
       catBtn.parentNode.insertBefore(form, catBtn.nextSibling);
       const emojiI  = form.querySelector("#bcat-emoji");
       const nameI   = form.querySelector("#bcat-name");
       const planI   = form.querySelector("#bcat-plan");
+      const maxI    = form.querySelector("#bcat-max");
       const dropdown = form.querySelector("#bcat-dropdown");
 
       // ── Preset dropdown logic ──────────────────────────────────
@@ -6206,7 +6274,7 @@ function initBudgetAddButtons() {
       form.querySelector("#bcat-submit").addEventListener("click", async () => {
         const name = nameI.value.trim(); if (!name) return;
         try {
-          await apiFetch("/budget/categories", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value || "💰", plan_monthly: parseInt(planI.value) || 0 }) });
+          await apiFetch("/budget/categories", { method: "POST", body: JSON.stringify({ name, emoji: emojiI.value || "💰", plan_monthly: parseInt(planI.value) || 0, plan_max: parseInt(maxI.value) || 0 }) });
           form.remove(); catBtn.style.display = ""; loadBudget();
         } catch {}
       });
@@ -6434,6 +6502,7 @@ async function openTripDetail(trip) {
       <div class="trip-detail-emoji">${trip.emoji}</div>
       <div class="trip-detail-name">${trip.name}</div>
       <div class="trip-detail-totals" id="trip-detail-totals"></div>
+      <button class="trip-days-btn" id="trip-days-btn" title="Заметки по дням">📅 по дням</button>
     </div>
     <div class="trip-detail-cols-legend">
       <span class="tdc-label">категория / статья</span>
@@ -6454,6 +6523,132 @@ async function openTripDetail(trip) {
   await loadTripDetailItems();
   renderTripDetail();
   initTripAddExpBtn(trip.id, today);
+  $("trip-days-btn").addEventListener("click", () => openTripDaysView(trip));
+}
+
+// ─── Вид «по дням» внутри вкладки Поездки (заметки + расходы по дням) ─────────
+async function openTripDaysView(trip) {
+  const panel = $("ntab-trips");
+  if (!panel) return;
+  const page = panel.querySelector(".nb-page");
+  const isGroup = trip.event_type === "group";
+
+  // Собираем список trip-id, по которым тянем расходы (группа → все города)
+  let tripIds = [trip.id];
+  let childList = [];
+  if (isGroup) {
+    const all = await apiFetch("/trips").catch(() => []);
+    childList = all.filter(t => t.parent_id === trip.id);
+    tripIds = childList.map(c => c.id);
+    if (!tripIds.length) tripIds = [trip.id];
+  }
+
+  // Расходы по всем нужным поездкам + заметки по дням (заметки храним под id самой поездки/группы)
+  const [expLists, dayNotes] = await Promise.all([
+    Promise.all(tripIds.map(id =>
+      apiFetch(`/trips/${id}/expenses`).then(x => x.map(e => ({ ...e, _tripId: id })))
+        .catch(() => [])
+    )),
+    apiFetch(`/trips/${trip.id}/day-notes`).catch(() => []),
+  ]);
+  const expenses = expLists.flat();
+
+  const noteMap = {};
+  for (const dn of dayNotes) noteMap[String(dn.date).slice(0, 10)] = dn;
+
+  // Уникальные дни: из расходов + диапазон поездки (и всех городов группы)
+  const datesSet = new Set(expenses.map(e => String(e.date).slice(0, 10)));
+  const ranges = isGroup ? childList : [trip];
+  for (const r of ranges) {
+    if (r.start_date && r.end_date) {
+      let d = new Date(String(r.start_date).slice(0,10) + "T00:00:00");
+      const end = new Date(String(r.end_date).slice(0,10) + "T00:00:00");
+      while (d <= end) { datesSet.add(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+    } else if (r.start_date) {
+      datesSet.add(String(r.start_date).slice(0,10));
+    }
+  }
+  const dates = [...datesSet].sort();
+
+  const actual = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const perDay = dates.length ? Math.round(actual / dates.length) : 0;
+  const MONTH_NAMES = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+
+  page.innerHTML = `
+    <button class="trip-back-btn" id="tdv-back">← ${trip.emoji} ${trip.name}</button>
+    <div class="trip-detail-header">
+      <div class="trip-detail-emoji">${trip.emoji}</div>
+      <div class="trip-detail-name">${trip.name} · по дням</div>
+      <div class="trip-detail-totals">
+        <span class="tdt-item"><b>${actual.toLocaleString("ru")} ₽</b><i>факт</i></span>
+        ${dates.length>1 ? `<span class="tdt-item"><b>${perDay.toLocaleString("ru")} ₽</b><i>в день</i></span>` : ""}
+      </div>
+    </div>
+    <div class="evd-days-scroll"><div class="evd-days-row" id="tdv-days-row"></div></div>`;
+
+  $("tdv-back").addEventListener("click", () => openTripDetail(trip));
+
+  const row = $("tdv-days-row");
+  for (const dateStr of dates) {
+    const dt = new Date(dateStr + "T00:00:00");
+    const dayExps = expenses.filter(e => String(e.date).slice(0,10) === dateStr);
+    const dayTotal = dayExps.reduce((s,e) => s + (Number(e.amount)||0), 0);
+    const dn = noteMap[dateStr];
+    const dayTitle = dn?.title || "";
+    const dayNote  = dn?.note  || "";
+
+    const cityName = id => (childList.find(c => c.id === id)?.name) || "";
+
+    const col = document.createElement("div");
+    col.className = "evd-day-col";
+    col.innerHTML = `
+      <div class="evd-day-head">
+        <div class="evd-day-date">${dt.getDate()} ${MONTH_NAMES[dt.getMonth()]}</div>
+        ${dayTotal ? `<div class="evd-day-total">${dayTotal.toLocaleString("ru")} ₽</div>` : ""}
+        <input class="evd-day-title-inp" value="${dayTitle}" placeholder="название дня…" />
+      </div>
+      <div class="evd-day-exps">
+        ${dayExps.map(exp => `
+          <div class="evd-exp-row" data-id="${exp.id}">
+            <span class="evd-exp-emoji">${exp.emoji || "💸"}</span>
+            <div class="evd-exp-body">
+              <div class="evd-exp-note">${exp.note || exp.category || "расход"}</div>
+              ${isGroup && cityName(exp._tripId) ? `<div class="evd-exp-cat">📍 ${cityName(exp._tripId)}</div>` : (exp.category ? `<div class="evd-exp-cat">${exp.category}</div>` : "")}
+            </div>
+            <span class="evd-exp-amt">${(Number(exp.amount)||0).toLocaleString("ru")} ₽</span>
+            <button class="evd-exp-del" data-id="${exp.id}">×</button>
+          </div>`).join("")}
+      </div>
+      <div class="evd-day-note-wrap">
+        <textarea class="evd-day-note" placeholder="заметка о дне…">${dayNote}</textarea>
+      </div>
+      <button class="evd-day-add-btn">+ расход</button>`;
+
+    const titleInp = col.querySelector(".evd-day-title-inp");
+    const noteTA   = col.querySelector(".evd-day-note");
+    const saveDayNote = async () => {
+      await apiFetch(`/trips/${trip.id}/day-notes`, {
+        method: "POST",
+        body: JSON.stringify({ date: dateStr, title: titleInp.value.trim(), note: noteTA.value.trim() }),
+      }).catch(()=>{});
+    };
+    titleInp.addEventListener("blur", saveDayNote);
+    noteTA.addEventListener("blur", saveDayNote);
+
+    col.querySelectorAll(".evd-exp-del").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        try { await apiFetch(`/trip-expenses/${btn.dataset.id}`, { method: "DELETE" }); btn.closest(".evd-exp-row").remove(); } catch {}
+      });
+    });
+
+    col.querySelector(".evd-day-add-btn").addEventListener("click", () => {
+      // для группы добавляем расход в первый город (или саму поездку)
+      const targetId = isGroup ? (tripIds[0]) : trip.id;
+      openDayExpenseForm(col, targetId, dateStr, () => openTripDaysView(trip));
+    });
+
+    row.appendChild(col);
+  }
 }
 
 // Загружает расходы поездки (или всех городов группы) в _tripDetail.items
@@ -6506,7 +6701,8 @@ function _tripItemRowHtml(exp) {
 function _tripCatBlockHtml(catName, emoji, items) {
   const s = _sumItems(items);
   const overCls = s.max > 0 && s.fact > s.max ? " over" : "";
-  const rows = items.map(_tripItemRowHtml).join("");
+  const _key = e => (Number(e.amount) || Number(e.planned_amount) || Number(e.planned_max) || 0);
+  const rows = [...items].sort((a, b) => _key(b) - _key(a)).map(_tripItemRowHtml).join("");
   return `<div class="trip-cat-block">
     <div class="trip-cat-head">
       <span class="trip-cat-name">${emoji || "📦"} ${catName || "Без категории"}</span>
@@ -6527,7 +6723,10 @@ function _groupByCategory(items) {
     if (!map.has(key)) map.set(key, { name: key === "—" ? "Без категории" : key, emoji: e.emoji || "", items: [] });
     map.get(key).items.push(e);
   }
-  return [...map.values()].sort((a, b) => _sumItems(b.items).plan - _sumItems(a.items).plan);
+  return [...map.values()].sort((a, b) => {
+    const sa = _sumItems(a.items), sb = _sumItems(b.items);
+    return (sb.fact || sb.plan || sb.max) - (sa.fact || sa.plan || sa.max);
+  });
 }
 
 function renderTripDetail() {

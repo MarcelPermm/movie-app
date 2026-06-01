@@ -3980,6 +3980,14 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .trip-detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .trip-detail-emoji { font-size: 36px; }
 .trip-detail-name { font-family: 'Fraunces', Georgia, serif; font-size: 28px; font-weight: 700; color: var(--ink); }
+.trip-days-btn {
+  margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--ink-2); background: var(--paper-2, rgba(255,255,255,.04));
+  border: 1px solid var(--rule); border-radius: 7px; padding: 7px 12px; cursor: pointer;
+  white-space: nowrap; transition: all .15s;
+}
+.trip-days-btn:hover { color: var(--ink); border-color: var(--terracotta); }
+.trip-detail-totals + .trip-days-btn { margin-left: 12px; }
 .trip-exp-row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); align-items: flex-start; }
 .trip-exp-date { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3); flex-shrink: 0; margin-top: 1px; }
 .trip-exp-emoji { font-size: 14px; flex-shrink: 0; }
@@ -5163,6 +5171,10 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   border-bottom: 1px solid var(--terracotta); outline: none;
   width: 90px; text-align: right; padding: 0;
 }
+
+.bacc-plan-edit { display: inline-flex; align-items: center; gap: 4px; }
+.bacc-plan-edit .bacc-plan-input { width: 64px; }
+.bacc-plan-sep  { color: var(--ink-3); font-size: 12px; }
 
 .bacc-cat-body   { padding-left: 30px; padding-bottom: 4px; }
 .bacc-merchant   { border-left: 2px solid var(--rule); margin: 2px 0; }

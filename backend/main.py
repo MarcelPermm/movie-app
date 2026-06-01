@@ -1752,11 +1752,13 @@ class BudgetCategoryCreate(BaseModel):
     name: str
     emoji: str = "💰"
     plan_monthly: int = 0
+    plan_max: int = 0
 
 class BudgetCategoryUpdate(BaseModel):
     name: Optional[str] = None
     emoji: Optional[str] = None
     plan_monthly: Optional[int] = None
+    plan_max: Optional[int] = None
 
 class BudgetExpenseCreate(BaseModel):
     date: str
@@ -1771,11 +1773,11 @@ async def get_budget_categories(user_id: int = 1):
 
 @app.post("/budget/categories")
 async def create_budget_category(req: BudgetCategoryCreate, user_id: int = 1):
-    return database.add_budget_category(user_id, req.name, req.emoji, req.plan_monthly)
+    return database.add_budget_category(user_id, req.name, req.emoji, req.plan_monthly, req.plan_max)
 
 @app.patch("/budget/categories/{cat_id}")
 async def update_budget_category(cat_id: int, req: BudgetCategoryUpdate, user_id: int = 1):
-    return database.update_budget_category(cat_id, user_id, req.name, req.emoji, req.plan_monthly)
+    return database.update_budget_category(cat_id, user_id, req.name, req.emoji, req.plan_monthly, req.plan_max)
 
 @app.delete("/budget/categories/{cat_id}")
 async def delete_budget_category(cat_id: int, user_id: int = 1):
