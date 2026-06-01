@@ -453,14 +453,22 @@
                     <div class="budget-col-title">Регулярные <span class="budget-col-sub">· что и так каждый месяц</span></div>
                   </div>
                   <div class="budget-col-actions">
+                    <button class="bud-fab" id="budget-add-expense-fab" title="Добавить трату">+ трата</button>
                     <label class="bud-icon-btn" title="Загрузить выписку (PDF)">📂<input type="file" id="budget-import-file" accept=".pdf" style="display:none" /></label>
                     <button class="bud-icon-btn" id="budget-clear-month" title="Очистить месяц">🗑</button>
                   </div>
                 </div>
                 <div id="budget-categories-list"></div>
-                <div id="budget-expenses-list" style="display:none"></div>
+                <!-- Незапланированные траты -->
+                <div class="bud-unplanned-section" id="bud-unplanned-section">
+                  <div class="bud-unplanned-head" id="bud-unplanned-toggle">
+                    <span class="bud-unplanned-label">Незапланированные</span>
+                    <span class="bud-unplanned-total" id="bud-unplanned-total"></span>
+                    <span class="bud-unplanned-chevron">›</span>
+                  </div>
+                  <div class="bud-unplanned-body" id="bud-unplanned-body"></div>
+                </div>
                 <button class="bud-add-row" id="budget-add-cat-btn">+ добавить категорию</button>
-                <button class="bud-add-row" id="budget-add-exp-btn">+ расход без категории</button>
               </div>
               <!-- Правая: События -->
               <div class="budget-col" id="budget-col-events">
@@ -472,12 +480,42 @@
                 <button class="bud-add-row" id="budget-add-event-btn">+ новое событие или поездка</button>
               </div>
             </div>
+
+            <!-- Модал: добавить трату -->
+            <div class="bud-modal-overlay" id="bud-expense-modal" style="display:none">
+              <div class="bud-modal">
+                <div class="bud-modal-head">
+                  <span class="bud-modal-title">Добавить трату</span>
+                  <button class="bud-modal-close" id="bud-modal-close">×</button>
+                </div>
+                <div class="bud-modal-body">
+                  <div class="bud-modal-amount-row">
+                    <input class="bud-modal-amount" id="bm-amount" type="number" min="1" placeholder="0" />
+                    <span class="bud-modal-currency">₽</span>
+                  </div>
+                  <div class="bud-modal-fields">
+                    <select class="bud-modal-select" id="bm-category">
+                      <option value="">— категория —</option>
+                    </select>
+                    <input class="bud-modal-input" id="bm-merchant" placeholder="Где / у кого…" autocomplete="off" />
+                    <input class="bud-modal-input" id="bm-note" placeholder="Комментарий…" />
+                    <input class="bud-modal-input" id="bm-date" type="date" />
+                  </div>
+                </div>
+                <div class="bud-modal-footer">
+                  <button class="bud-modal-submit" id="bm-submit">Сохранить</button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <!-- Поездки (скрыта — теперь детали открываются в бюджете) -->
+          <!-- Поездки -->
           <div class="ntab-panel" id="ntab-trips" style="display:none">
             <div class="nb-page" style="max-width:none;flex:1">
-              <div class="nb-page-head"><h1 class="nb-title">Поездки</h1></div>
+              <div class="nb-page-head" style="display:flex;align-items:center;justify-content:space-between">
+                <h1 class="nb-title">Поездки</h1>
+                <button class="bud-fab" id="trips-group-btn">Сгруппировать</button>
+              </div>
               <div class="trips-grid" id="trips-grid"></div>
               <button class="task-add-btn" id="trips-add-btn"><span class="task-add-line">+ новая поездка…</span></button>
             </div>

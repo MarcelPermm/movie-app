@@ -4868,21 +4868,31 @@ document.addEventListener("click", e => {
 // ════════════════════════════════════════════════════════════════
 
 const CATEGORY_PRESETS = [
-  { emoji: "✈️",  name: "Билеты" },
-  { emoji: "🏨",  name: "Жильё" },
-  { emoji: "🍽️", name: "Кафе / Ресторан" },
-  { emoji: "🍺",  name: "Алкоголь" },
-  { emoji: "🎢",  name: "Развлечения" },
+  // Базовые / регулярные
+  { emoji: "🏠",  name: "Ипотека / Аренда" },
+  { emoji: "💡",  name: "ЖКХ" },
+  { emoji: "📶",  name: "Интернет" },
+  { emoji: "📱",  name: "Связь / Телефон" },
+  { emoji: "🚗",  name: "Авто / Бензин" },
   { emoji: "🛒",  name: "Продукты" },
-  { emoji: "🚕",  name: "Такси / Транспорт" },
-  { emoji: "💊",  name: "Аптека / Здоровье" },
-  { emoji: "👗",  name: "Одежда / Шопинг" },
   { emoji: "☕",  name: "Кофе" },
-  { emoji: "🎁",  name: "Подарки" },
-  { emoji: "📱",  name: "Связь / Интернет" },
+  { emoji: "🍽️", name: "Кафе / Ресторан" },
+  { emoji: "🚕",  name: "Такси / Транспорт" },
+  // Здоровье и спорт
+  { emoji: "💊",  name: "Аптека / Здоровье" },
+  { emoji: "🏋️", name: "Спорт / Фитнес" },
+  // Развлечения
   { emoji: "🎬",  name: "Кино / Театр" },
-  { emoji: "🏋️", name: "Спорт" },
+  { emoji: "🎮",  name: "Подписки / Игры" },
+  { emoji: "🍺",  name: "Алкоголь / Бар" },
+  { emoji: "🎢",  name: "Развлечения" },
+  // Прочее
+  { emoji: "👗",  name: "Одежда / Шопинг" },
+  { emoji: "🎁",  name: "Подарки" },
+  { emoji: "✈️",  name: "Путешествия" },
+  { emoji: "🏨",  name: "Жильё в поездке" },
   { emoji: "🐾",  name: "Животные" },
+  { emoji: "📚",  name: "Образование / Книги" },
   { emoji: "💰",  name: "Другое" },
 ];
 
@@ -4900,6 +4910,7 @@ async function loadBudget() {
     renderBudgetSummary(cats, expenses, events);
     renderBudgetAccordion(cats, expenses);
     renderBudgetEvents(events);
+    renderUnplanned(expenses);
   } catch(e) { console.error(e); }
   initBudgetAddButtons();
   initBudgetEventBtn();
@@ -5829,7 +5840,116 @@ function openBudgetExpEdit(row, exp, cats) {
   form.querySelector("#bee-amt").focus();
 }
 
+// ─── Модал добавления траты ───────────────────────────────────────────────────
+function openExpenseModal(prefillCatId = null) {
+  const modal = $("bud-expense-modal");
+  if (!modal) return;
+  // Дата — сегодня
+  $("bm-date").value = new Date().toISOString().slice(0, 10);
+  $("bm-amount").value = "";
+  $("bm-merchant").value = "";
+  $("bm-note").value = "";
+  // Заполняем категории
+  apiFetch("/budget/categories").then(cats => {
+    const sel = $("bm-category");
+    sel.innerHTML = `<option value="">— незапланированная —</option>` +
+      cats.map(c => `<option value="${c.id}"${prefillCatId == c.id ? " selected" : ""}>${c.emoji} ${c.name}</option>`).join("");
+  }).catch(() => {});
+  modal.style.display = "flex";
+  setTimeout(() => $("bm-amount").focus(), 50);
+}
+
+function closeExpenseModal() {
+  const modal = $("bud-expense-modal");
+  if (modal) modal.style.display = "none";
+}
+
+function initExpenseModal() {
+  const modal = $("bud-expense-modal");
+  if (!modal || modal._init) return;
+  modal._init = true;
+
+  // Закрытие
+  $("bud-modal-close").addEventListener("click", closeExpenseModal);
+  modal.addEventListener("click", e => { if (e.target === modal) closeExpenseModal(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && modal.style.display !== "none") closeExpenseModal(); });
+
+  // Сохранить
+  $("bm-submit").addEventListener("click", async () => {
+    const amount = parseInt($("bm-amount").value);
+    if (!amount || amount <= 0) { $("bm-amount").focus(); return; }
+    const catId = $("bm-category").value ? parseInt($("bm-category").value) : null;
+    try {
+      await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({
+        amount,
+        merchant: $("bm-merchant").value.trim() || null,
+        note: $("bm-note").value.trim() || null,
+        category_id: catId,
+        date: $("bm-date").value || new Date().toISOString().slice(0, 10),
+      })});
+      closeExpenseModal();
+      loadBudget();
+    } catch {}
+  });
+
+  // Enter в полях
+  ["bm-amount","bm-merchant","bm-note","bm-date"].forEach(id => {
+    $(id) && $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("bm-submit").click(); });
+  });
+
+  // FAB кнопка "+ трата"
+  const fab = $("budget-add-expense-fab");
+  if (fab && !fab._init) { fab._init = true; fab.addEventListener("click", () => openExpenseModal()); }
+}
+
+// ─── Раздел «Незапланированные» ──────────────────────────────────────────────
+function renderUnplanned(expenses) {
+  const section = $("bud-unplanned-section");
+  const body    = $("bud-unplanned-body");
+  const total   = $("bud-unplanned-total");
+  if (!section || !body) return;
+
+  // Траты без категории
+  const unplanned = expenses.filter(e => !e.category_id);
+  if (!unplanned.length) { section.style.display = "none"; return; }
+  section.style.display = "";
+
+  const sum = unplanned.reduce((s, e) => s + e.amount, 0);
+  if (total) total.textContent = sum.toLocaleString("ru") + " ₽";
+
+  body.innerHTML = "";
+  unplanned.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(exp => {
+    const [, mo, d] = String(exp.date).slice(0, 10).split("-");
+    const row = document.createElement("div");
+    row.className = "bacc-exp-row";
+    const label = exp.merchant || exp.note || "расход";
+    row.innerHTML = `
+      <span class="bacc-exp-date">${d}.${mo}</span>
+      <span class="bacc-exp-desc">${label}</span>
+      <span class="bacc-exp-amt">${exp.amount.toLocaleString("ru")} ₽</span>
+      <button class="bacc-exp-del">×</button>`;
+    row.querySelector(".bacc-exp-del").addEventListener("click", async () => {
+      try { await apiFetch(`/budget/expenses/${exp.id}`, { method: "DELETE" }); loadBudget(); } catch {}
+    });
+    body.appendChild(row);
+  });
+
+  // Toggle открытие/закрытие
+  const toggle = $("bud-unplanned-toggle");
+  if (toggle && !toggle._init) {
+    toggle._init = true;
+    toggle.addEventListener("click", () => {
+      const open = body.style.display !== "none";
+      body.style.display = open ? "none" : "";
+      const ch = toggle.querySelector(".bud-unplanned-chevron");
+      if (ch) ch.style.transform = open ? "" : "rotate(90deg)";
+    });
+  }
+}
+
 function initBudgetAddButtons() {
+  initExpenseModal();
+
   const catBtn = $("budget-add-cat-btn");
   if (catBtn && !catBtn._init) {
     catBtn._init = true;
@@ -5890,75 +6010,6 @@ function initBudgetAddButtons() {
       form.addEventListener("keydown", e => { if (e.key === "Escape") cancel(); if (e.key === "Enter" && e.target !== nameI) form.querySelector("#bcat-submit").click(); });
     });
   }
-  const expBtn = $("budget-add-exp-btn");
-  if (expBtn && !expBtn._init) {
-    expBtn._init = true;
-    expBtn.addEventListener("click", async () => {
-      expBtn.style.display = "none";
-      const [cats, merchants] = await Promise.all([
-        apiFetch("/budget/categories").catch(() => []),
-        apiFetch("/budget/merchants").catch(() => []),
-      ]);
-      const catOpts = cats.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join("");
-      const today = new Date().toISOString().slice(0, 10);
-      const form = document.createElement("div");
-      form.className = "nb-inline-form";
-      form.innerHTML = `
-        <input class="nb-inline-input sm" id="bexp-amt"      placeholder="Сумма ₽" type="number" min="1" />
-        <div class="preset-wrap" style="flex:1.2">
-          <input class="nb-inline-input md" id="bexp-merchant" placeholder="Место / заведение…" style="width:100%" autocomplete="off" />
-          <div class="preset-dropdown" id="bexp-m-dd" style="display:none"></div>
-        </div>
-        <input class="nb-inline-input md" id="bexp-note"     placeholder="Дополнение…" />
-        <select class="nb-inline-select"   id="bexp-cat"><option value="">— категория —</option>${catOpts}</select>
-        <input class="nb-inline-input sm"  id="bexp-date" type="date" value="${today}" />
-        <button class="nb-inline-btn" id="bexp-submit">Добавить</button>`;
-      expBtn.parentNode.insertBefore(form, expBtn.nextSibling);
-
-      const amtI      = form.querySelector("#bexp-amt");
-      const merchantI = form.querySelector("#bexp-merchant");
-      const noteI     = form.querySelector("#bexp-note");
-      const selCat    = form.querySelector("#bexp-cat");
-      const dateI     = form.querySelector("#bexp-date");
-      const mDd       = form.querySelector("#bexp-m-dd");
-
-      // Dropdown из истории мест
-      function renderMerchantDd(q) {
-        const filtered = q
-          ? merchants.filter(m => m.toLowerCase().includes(q.toLowerCase()))
-          : merchants.slice(0, 10);
-        if (!filtered.length) { mDd.style.display = "none"; return; }
-        mDd.innerHTML = filtered.map(m =>
-          `<div class="preset-item" data-name="${m}">${m}</div>`).join("");
-        mDd.style.display = "";
-      }
-      merchantI.addEventListener("focus", () => renderMerchantDd(merchantI.value));
-      merchantI.addEventListener("input", () => renderMerchantDd(merchantI.value));
-      merchantI.addEventListener("blur",  () => setTimeout(() => { mDd.style.display = "none"; }, 200));
-      mDd.addEventListener("mousedown", e => {
-        const item = e.target.closest(".preset-item");
-        if (!item) return;
-        merchantI.value = item.dataset.name;
-        mDd.style.display = "none";
-        noteI.focus();
-      });
-
-      form.querySelector("#bexp-submit").addEventListener("click", async () => {
-        const amount = parseInt(amtI.value); if (!amount) return;
-        try {
-          await apiFetch("/budget/expenses", { method: "POST", body: JSON.stringify({
-            amount,
-            merchant: merchantI.value.trim() || null,
-            note: noteI.value || null,
-            category_id: selCat.value ? parseInt(selCat.value) : null,
-            date: dateI.value || today,
-          })});
-          form.remove(); expBtn.style.display = ""; loadBudget();
-        } catch {}
-      });
-      form.addEventListener("keydown", e => { if (e.key === "Escape") { form.remove(); expBtn.style.display = ""; } });
-    });
-  }
 }
 
 document.addEventListener("click", e => {
@@ -5982,34 +6033,180 @@ async function loadTrips() {
   initTripsAddBtn();
 }
 
-function renderTripsGrid(trips) {
-  const grid = $("trips-grid");
-  if (!grid) return;
-  grid.innerHTML = "";
-  if (!trips.length) { grid.innerHTML = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-3)">нет поездок</div>`; return; }
-  trips.forEach(trip => {
-    const actual   = trip.actual_total || 0;
-    const planned  = trip.planned_total || 0;
-    const pct      = planned > 0 ? Math.min((actual / planned) * 100, 100) : (actual > 0 ? 100 : 0);
-    const over     = planned > 0 && actual > planned;
-    const dateStr  = trip.start_date ? `${String(trip.start_date).slice(0,10)}${trip.end_date ? " → " + String(trip.end_date).slice(0,10) : ""}` : "";
-    const card = document.createElement("div");
-    card.className = "trip-card";
-    card.innerHTML = `
-      <div class="trip-card-emoji">${trip.emoji}</div>
-      <div class="trip-card-name">${trip.name}</div>
-      ${dateStr ? `<div class="trip-card-dates">${dateStr}</div>` : ""}
-      ${planned ? `<div class="trip-card-budget">
-        <div class="trip-card-budget-bar"><div class="trip-card-budget-fill ${over?"over":""}" style="width:${pct}%"></div></div>
-        <div class="trip-card-nums"><span>${actual.toLocaleString("ru")} ₽</span><span>${planned.toLocaleString("ru")} ₽</span></div>
-      </div>` : ""}
-      <button class="trip-card-delete">×</button>`;
+let _tripsSelectMode = false;
+let _tripsSelected   = new Set();
+let _allTrips        = [];
+
+function buildTripCard(trip, selectMode = false) {
+  const actual  = trip.actual_total || 0;
+  const planned = trip.planned_total || 0;
+  const pct     = planned > 0 ? Math.min((actual / planned) * 100, 100) : (actual > 0 ? 100 : 0);
+  const over    = planned > 0 && actual > planned;
+  const dateStr = trip.start_date
+    ? `${String(trip.start_date).slice(0,10)}${trip.end_date ? " → " + String(trip.end_date).slice(0,10) : ""}`
+    : "";
+  const selected = _tripsSelected.has(trip.id);
+
+  const card = document.createElement("div");
+  card.className = `trip-card${selected ? " trip-card-selected" : ""}${selectMode ? " trip-card-selectable" : ""}`;
+  card.dataset.tripId = trip.id;
+  card.innerHTML = `
+    ${selectMode ? `<div class="trip-card-check">${selected ? "✓" : ""}</div>` : ""}
+    <div class="trip-card-emoji">${trip.emoji}</div>
+    <div class="trip-card-name">${trip.name}</div>
+    ${dateStr ? `<div class="trip-card-dates">${dateStr}</div>` : ""}
+    ${planned ? `<div class="trip-card-budget">
+      <div class="trip-card-budget-bar"><div class="trip-card-budget-fill ${over?"over":""}" style="width:${pct}%"></div></div>
+      <div class="trip-card-nums"><span>${actual.toLocaleString("ru")} ₽</span><span class="tc-plan">${planned.toLocaleString("ru")} ₽</span></div>
+    </div>` : ""}
+    ${!selectMode ? `<button class="trip-card-delete">×</button>` : ""}`;
+
+  if (!selectMode) {
     card.querySelector(".trip-card-delete").addEventListener("click", async e => {
       e.stopPropagation();
+      if (!confirm(`Удалить «${trip.name}»?`)) return;
       try { await apiFetch(`/trips/${trip.id}`, { method: "DELETE" }); loadTrips(); } catch {}
     });
     card.addEventListener("click", () => openTripDetail(trip));
-    grid.appendChild(card);
+  } else {
+    card.addEventListener("click", () => {
+      if (_tripsSelected.has(trip.id)) _tripsSelected.delete(trip.id);
+      else _tripsSelected.add(trip.id);
+      renderTripsGrid(_allTrips);
+      updateTripsGroupBar();
+    });
+  }
+  return card;
+}
+
+function buildTripGroupCard(grp, kids, selectMode = false) {
+  const kidsActual = kids.reduce((s, k) => s + (Number(k.actual_total) || 0), 0);
+  const kidsPlan   = kids.reduce((s, k) => s + (k.planned_total || 0), 0);
+  const actual     = (Number(grp.actual_total) || 0) + kidsActual;
+  const plan       = grp.planned_total || kidsPlan;
+  const over       = plan > 0 && actual > plan;
+
+  const wrap = document.createElement("div");
+  wrap.className = "trip-group-card";
+  wrap.innerHTML = `
+    <div class="trip-group-head">
+      <span class="trip-group-emoji">${grp.emoji || "📁"}</span>
+      <div class="trip-group-info">
+        <span class="trip-group-name">${grp.name}</span>
+        <span class="trip-group-meta">${kids.length} города · ${actual.toLocaleString("ru")} ₽${plan ? " / " + plan.toLocaleString("ru") + " ₽" : ""}</span>
+      </div>
+      <span class="trip-group-toggle">▾</span>
+      <button class="trip-card-delete">×</button>
+    </div>
+    <div class="trip-group-children"></div>`;
+
+  let expanded = true;
+  const childrenEl = wrap.querySelector(".trip-group-children");
+  const toggleEl   = wrap.querySelector(".trip-group-toggle");
+
+  kids.forEach(kid => {
+    const kidCard = buildTripCard(kid, false);
+    kidCard.classList.add("trip-card-child");
+    // Кнопка «убрать из группы»
+    const ungBtn = document.createElement("button");
+    ungBtn.className = "trip-ungroup-btn";
+    ungBtn.title = "Убрать из группы";
+    ungBtn.textContent = "↗";
+    ungBtn.addEventListener("click", async e => {
+      e.stopPropagation();
+      try { await apiFetch(`/trips/${kid.id}/ungroup`, { method: "POST" }); loadTrips(); } catch {}
+    });
+    kidCard.appendChild(ungBtn);
+    childrenEl.appendChild(kidCard);
+  });
+
+  wrap.querySelector(".trip-group-head").addEventListener("click", e => {
+    if (e.target.closest(".trip-card-delete") || e.target.closest(".trip-ungroup-btn")) return;
+    expanded = !expanded;
+    childrenEl.style.display = expanded ? "" : "none";
+    toggleEl.textContent = expanded ? "▾" : "▸";
+  });
+
+  wrap.querySelector(".trip-card-delete").addEventListener("click", async e => {
+    e.stopPropagation();
+    if (!confirm(`Удалить группу «${grp.name}» и разгруппировать поездки?`)) return;
+    try {
+      // Разгруппируем детей
+      for (const kid of kids) {
+        await apiFetch(`/trips/${kid.id}/ungroup`, { method: "POST" }).catch(() => {});
+      }
+      await apiFetch(`/trips/${grp.id}`, { method: "DELETE" });
+      loadTrips();
+    } catch {}
+  });
+
+  return wrap;
+}
+
+function updateTripsGroupBar() {
+  let bar = document.querySelector(".trips-group-bar");
+  if (!_tripsSelectMode) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "trips-group-bar";
+    const grid = $("trips-grid");
+    grid && grid.parentNode.insertBefore(bar, grid);
+  }
+  const n = _tripsSelected.size;
+  bar.innerHTML = n >= 2
+    ? `<span>Выбрано: ${n}</span><button class="trips-group-confirm" id="trips-group-confirm">Создать группу →</button><button class="trips-group-cancel" id="trips-group-cancel">Отмена</button>`
+    : `<span>Выберите 2 или более поездок для группировки</span><button class="trips-group-cancel" id="trips-group-cancel">Отмена</button>`;
+
+  bar.querySelector("#trips-group-cancel").addEventListener("click", () => {
+    _tripsSelectMode = false; _tripsSelected.clear();
+    renderTripsGrid(_allTrips); updateTripsGroupBar();
+    const btn = $("trips-group-btn");
+    if (btn) btn.textContent = "Сгруппировать";
+  });
+
+  const confirmBtn = bar.querySelector("#trips-group-confirm");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", async () => {
+      const name = prompt("Название группы:", "ЮГ 2025");
+      if (!name) return;
+      const ids = [..._tripsSelected];
+      try {
+        // Группируем попарно
+        let groupId = null;
+        for (let i = 1; i < ids.length; i++) {
+          const body = { trip_a: groupId || ids[0], trip_b: ids[i], name: i === 1 ? name : undefined, emoji: "📁" };
+          const result = await apiFetch("/trips/group", { method: "POST", body: JSON.stringify(body) });
+          groupId = result.id;
+        }
+        _tripsSelectMode = false; _tripsSelected.clear();
+        loadTrips();
+      } catch {}
+    });
+  }
+}
+
+function renderTripsGrid(trips) {
+  _allTrips = trips;
+  const grid = $("trips-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  if (!trips.length) {
+    grid.innerHTML = `<div class="trips-empty">нет поездок — добавь первую ✈️</div>`;
+    return;
+  }
+
+  const groups   = trips.filter(t => t.event_type === "group");
+  const singles  = trips.filter(t => t.event_type !== "group" && !t.parent_id);
+
+  // Сначала группы
+  groups.forEach(grp => {
+    const kids = trips.filter(t => t.parent_id === grp.id);
+    grid.appendChild(buildTripGroupCard(grp, kids, _tripsSelectMode));
+  });
+  // Потом одиночные
+  singles.forEach(trip => {
+    grid.appendChild(buildTripCard(trip, _tripsSelectMode));
   });
 }
 
@@ -6240,6 +6437,19 @@ function initTripAddExpBtn(tripId, today) {
 }
 
 function initTripsAddBtn() {
+  // Кнопка «Сгруппировать»
+  const grpBtn = $("trips-group-btn");
+  if (grpBtn && !grpBtn._init) {
+    grpBtn._init = true;
+    grpBtn.addEventListener("click", () => {
+      _tripsSelectMode = !_tripsSelectMode;
+      _tripsSelected.clear();
+      grpBtn.textContent = _tripsSelectMode ? "Отмена" : "Сгруппировать";
+      renderTripsGrid(_allTrips);
+      updateTripsGroupBar();
+    });
+  }
+
   const btn = $("trips-add-btn");
   if (!btn || btn._init) return;
   btn._init = true;
