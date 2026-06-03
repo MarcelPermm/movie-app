@@ -117,6 +117,12 @@ async def startup():
         database.init_durak_tables()
         print("✅ Таблицы Дурака готовы")
     except Exception as e:
+        print(f"⚠️  init_durak_tables: {e}")
+    try:
+        database.init_uno_tables()
+        database.init_game101_tables()
+        print("✅ Таблицы UNO/101 готовы")
+    except Exception as e:
         print(f"⚠️  init_chess_tables error: {e}")
     print("✅ База данных готова")
     if not TMDB_API_KEY:
@@ -2439,6 +2445,289 @@ async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default
 
 # ─── Раздача фронтенда ───────────────────────────────────────────────────────
 # Должно быть ПОСЛЕ всех API-роутов, чтобы не перехватывать /api/* запросы
+import uno_logic, game101_logic
+
+# ════════════════════════════════════════════════════════════════
+#  УНО + 101 — общий шаблон карточных игр
+# ════════════════════════════════════════════════════════════════
+
+class CardGameConnectionManager:
+    def __init__(self):
+        self.rooms: dict[str, list] = {}
+
+    async def connect(self, ws: WebSocket, code: str):
+        await ws.accept()
+        self.rooms.setdefault(code, []).append(ws)
+
+    def disconnect(self, ws: WebSocket, code: str):
+        try: self.rooms.get(code, []).remove(ws)
+        except ValueError: pass
+
+    async def broadcast(self, code: str, data: dict):
+        for ws in list(self.rooms.get(code, [])):
+            try: await ws.send_json(data)
+            except: self.disconnect(ws, code)
+
+    async def send_to(self, ws: WebSocket, data: dict):
+        try: await ws.send_json(data)
+        except: pass
+
+uno_manager   = CardGameConnectionManager()
+g101_manager  = CardGameConnectionManager()
+
+
+def _card_game_db(prefix: str):
+    """Returns (get_game, get_players, create, join, save) for a prefix."""
+    import database as db
+    return {
+        'uno':     (db.get_uno_game, db.get_uno_players, db.create_uno_game, db.join_uno_game, db.save_uno_state),
+        'game101': (db.get_game101,  db.get_game101_players, db.create_game101, db.join_game101, db.save_game101_state),
+    }[prefix]
+
+
+async def _card_broadcast_state(mgr, code, game, players, logic_mod):
+    import json as _j
+    state = game.get('state') or {}
+    if isinstance(state, str): state = _j.loads(state)
+    for p in players:
+        uid = p['user_id']
+        view = logic_mod.public_state(state, uid, players)
+        view['my_hand'] = state.get('hands', {}).get(str(uid), [])
+        view['game_status'] = game['status']
+        view['code'] = code
+        for ws in list(mgr.rooms.get(code, [])):
+            if getattr(ws, '_uid', None) == uid:
+                await mgr.send_to(ws, {'type': 'state', 'state': view})
+
+
+class CardGameCreateReq(BaseModel):
+    max_players: int = 4
+
+
+# ── UNO ────────────────────────────────────────────────────────────────────────
+
+@app.post('/uno/games')
+async def uno_create(req: CardGameCreateReq, user_id: int = Query(...)):
+    if not (2 <= req.max_players <= 10): raise HTTPException(400, 'max_players 2–10')
+    code = _gen_code()
+    for _ in range(10):
+        if not database.get_uno_game(code): break
+        code = _gen_code()
+    game = database.create_uno_game(code, user_id, req.max_players)
+    players = database.get_uno_players(game['id'])
+    return {'game': game, 'players': players}
+
+@app.get('/uno/games/{code}')
+async def uno_get(code: str):
+    game = database.get_uno_game(code)
+    if not game: raise HTTPException(404, 'Игра не найдена')
+    import json as _j
+    state = game.get('state') or {}
+    if isinstance(state, str): state = _j.loads(state)
+    game['state'] = state
+    return {'game': game, 'players': database.get_uno_players(game['id'])}
+
+@app.post('/uno/games/{code}/join')
+async def uno_join(code: str, user_id: int = Query(...)):
+    game = database.get_uno_game(code)
+    if not game: raise HTTPException(404, 'Игра не найдена')
+    if game['status'] != 'waiting': raise HTTPException(400, 'Уже началась')
+    players = database.get_uno_players(game['id'])
+    if any(p['user_id'] == user_id for p in players):
+        return {'game': game, 'players': players}
+    if len(players) >= game['max_players']: raise HTTPException(400, 'Все места заняты')
+    database.join_uno_game(game['id'], user_id, len(players))
+    players = database.get_uno_players(game['id'])
+    await uno_manager.broadcast(code, {'type': 'player_joined',
+        'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players]})
+    if len(players) == game['max_players']:
+        state = uno_logic.init_game([p['user_id'] for p in players])
+        database.save_uno_state(code, state, status='active')
+        game = database.get_uno_game(code)
+        await _card_broadcast_state(uno_manager, code, game, players, uno_logic)
+    return {'game': database.get_uno_game(code), 'players': players}
+
+@app.post('/uno/games/{code}/start')
+async def uno_start(code: str, user_id: int = Query(...)):
+    game = database.get_uno_game(code)
+    if not game: raise HTTPException(404)
+    if game['created_by'] != user_id: raise HTTPException(403)
+    players = database.get_uno_players(game['id'])
+    if len(players) < 2: raise HTTPException(400, 'Нужно минимум 2 игрока')
+    state = uno_logic.init_game([p['user_id'] for p in players])
+    database.save_uno_state(code, state, status='active')
+    game = database.get_uno_game(code)
+    await _card_broadcast_state(uno_manager, code, game, players, uno_logic)
+    return {'ok': True}
+
+@app.websocket('/uno/ws/{code}')
+async def uno_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0)):
+    await uno_manager.connect(websocket, code)
+    websocket._uid = user_id
+    import json as _j
+
+    game = database.get_uno_game(code)
+    players = database.get_uno_players(game['id']) if game else []
+    if game:
+        state = game.get('state') or {}
+        if isinstance(state, str): state = _j.loads(state)
+        game['state'] = state
+        if state:
+            view = uno_logic.public_state(state, user_id, players)
+            view.update({'my_hand': state.get('hands', {}).get(str(user_id), []),
+                         'game_status': game['status'], 'code': code})
+            await uno_manager.send_to(websocket, {'type': 'state', 'state': view})
+        else:
+            await uno_manager.send_to(websocket, {'type': 'lobby', 'game': {k: v for k, v in game.items() if k != 'state'},
+                'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players]})
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg = data.get('type')
+            game = database.get_uno_game(code)
+            players = database.get_uno_players(game['id']) if game else []
+            if not game: continue
+            state = game.get('state') or {}
+            if isinstance(state, str): state = _j.loads(state)
+            err = None; ns = state
+            if msg == 'play':    ns, err = uno_logic.do_play(state, user_id, data['card'], data.get('color'))
+            elif msg == 'color': ns, err = uno_logic.do_choose_color(state, user_id, data['color'])
+            elif msg == 'draw':  ns, err = uno_logic.do_draw(state, user_id)
+            elif msg == 'uno':   ns, err = uno_logic.do_say_uno(state, user_id)
+            elif msg == 'ping':  await uno_manager.send_to(websocket, {'type':'pong'}); continue
+            if err: await uno_manager.send_to(websocket, {'type': 'error', 'message': err}); continue
+            status = 'finished' if ns.get('phase') == 'finished' else 'active'
+            database.save_uno_state(code, ns, status=status)
+            game['state'] = ns
+            await _card_broadcast_state(uno_manager, code, game, players, uno_logic)
+            if ns.get('phase') == 'finished':
+                w = ns.get('winner'); wn = next((p['display_name'] for p in players if p['user_id']==w), '?')
+                await uno_manager.broadcast(code, {'type': 'game_over', 'winner_id': w, 'winner_name': wn})
+    except WebSocketDisconnect:
+        uno_manager.disconnect(websocket, code)
+
+
+# ── 101 ────────────────────────────────────────────────────────────────────────
+
+@app.post('/game101/games')
+async def g101_create(req: CardGameCreateReq, user_id: int = Query(...)):
+    if not (2 <= req.max_players <= 6): raise HTTPException(400, 'max_players 2–6')
+    code = _gen_code()
+    for _ in range(10):
+        if not database.get_game101(code): break
+        code = _gen_code()
+    game = database.create_game101(code, user_id, req.max_players)
+    return {'game': game, 'players': database.get_game101_players(game['id'])}
+
+@app.get('/game101/games/{code}')
+async def g101_get(code: str):
+    game = database.get_game101(code)
+    if not game: raise HTTPException(404)
+    import json as _j
+    state = game.get('state') or {}
+    if isinstance(state, str): state = _j.loads(state)
+    game['state'] = state
+    return {'game': game, 'players': database.get_game101_players(game['id'])}
+
+@app.post('/game101/games/{code}/join')
+async def g101_join(code: str, user_id: int = Query(...)):
+    game = database.get_game101(code)
+    if not game: raise HTTPException(404)
+    if game['status'] != 'waiting': raise HTTPException(400, 'Уже началась')
+    players = database.get_game101_players(game['id'])
+    if any(p['user_id'] == user_id for p in players):
+        return {'game': game, 'players': players}
+    if len(players) >= game['max_players']: raise HTTPException(400, 'Все места заняты')
+    database.join_game101(game['id'], user_id, len(players))
+    players = database.get_game101_players(game['id'])
+    await g101_manager.broadcast(code, {'type': 'player_joined',
+        'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players]})
+    if len(players) == game['max_players']:
+        state = game101_logic.init_game([p['user_id'] for p in players])
+        database.save_game101_state(code, state, status='active')
+        game = database.get_game101(code)
+        await _card_broadcast_state(g101_manager, code, game, players, game101_logic)
+    return {'game': database.get_game101(code), 'players': players}
+
+@app.post('/game101/games/{code}/start')
+async def g101_start(code: str, user_id: int = Query(...)):
+    game = database.get_game101(code)
+    if not game: raise HTTPException(404)
+    if game['created_by'] != user_id: raise HTTPException(403)
+    players = database.get_game101_players(game['id'])
+    if len(players) < 2: raise HTTPException(400, 'Нужно минимум 2 игрока')
+    state = game101_logic.init_game([p['user_id'] for p in players])
+    database.save_game101_state(code, state, status='active')
+    game = database.get_game101(code)
+    await _card_broadcast_state(g101_manager, code, game, players, game101_logic)
+    return {'ok': True}
+
+@app.websocket('/game101/ws/{code}')
+async def g101_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0)):
+    await g101_manager.connect(websocket, code)
+    websocket._uid = user_id
+    import json as _j
+
+    game = database.get_game101(code)
+    players = database.get_game101_players(game['id']) if game else []
+    if game:
+        state = game.get('state') or {}
+        if isinstance(state, str): state = _j.loads(state)
+        game['state'] = state
+        if state:
+            view = game101_logic.public_state(state, user_id, players)
+            view.update({'my_hand': state.get('hands', {}).get(str(user_id), []),
+                         'game_status': game['status'], 'code': code})
+            await g101_manager.send_to(websocket, {'type': 'state', 'state': view})
+        else:
+            await g101_manager.send_to(websocket, {'type': 'lobby', 'game': {k: v for k, v in game.items() if k != 'state'},
+                'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players]})
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg = data.get('type')
+            game = database.get_game101(code)
+            players = database.get_game101_players(game['id']) if game else []
+            if not game: continue
+            state = game.get('state') or {}
+            if isinstance(state, str): state = _j.loads(state)
+            err = None; ns = state
+            if   msg == 'play':       ns, err = game101_logic.do_play(state, user_id, data['card'], data.get('suit'))
+            elif msg == 'choose_suit':ns, err = game101_logic.do_choose_suit(state, user_id, data['suit'])
+            elif msg == 'draw_one':
+                ns, covered, err = game101_logic.do_draw_one(state, user_id)
+                if not err:
+                    status = 'finished' if ns.get('phase') == 'finished' else 'active'
+                    database.save_game101_state(code, ns, status=status)
+                    game['state'] = ns
+                    await _card_broadcast_state(g101_manager, code, game, players, game101_logic)
+                    if not covered:
+                        await g101_manager.send_to(websocket, {'type': 'draw_continue'})
+                    continue
+            elif msg == 'draw_pass':  ns, err = game101_logic.do_draw_pass(state, user_id)
+            elif msg == 'new_round':
+                if state.get('phase') == 'finished_round':
+                    ns = game101_logic.start_new_round(state)
+                else: continue
+            elif msg == 'ping': await g101_manager.send_to(websocket, {'type':'pong'}); continue
+            if err: await g101_manager.send_to(websocket, {'type': 'error', 'message': err}); continue
+            fin = ns.get('phase') in ('finished', 'finished_round')
+            status = 'finished' if ns.get('phase') == 'finished' else ('active' if not fin else 'active')
+            database.save_game101_state(code, ns, status=status)
+            game['state'] = ns
+            await _card_broadcast_state(g101_manager, code, game, players, game101_logic)
+            if ns.get('phase') == 'finished':
+                loser = ns.get('loser'); ln = next((p['display_name'] for p in players if p['user_id']==loser),'?')
+                w = ns.get('winner'); wn = next((p['display_name'] for p in players if p['user_id']==w),'?')
+                await g101_manager.broadcast(code, {'type': 'game_over', 'loser_id': loser, 'loser_name': ln,
+                                                     'winner_id': w, 'winner_name': wn, 'scores': ns.get('scores',{})})
+            elif ns.get('phase') == 'finished_round':
+                w = ns.get('winner'); wn = next((p['display_name'] for p in players if p['user_id']==w),'?')
+                await g101_manager.broadcast(code, {'type': 'round_over', 'winner_id': w, 'winner_name': wn, 'scores': ns.get('scores',{})})
+    except WebSocketDisconnect:
+        g101_manager.disconnect(websocket, code)
+
+
 import pathlib
 _frontend = pathlib.Path(__file__).parent.parent / "frontend"
 if _frontend.exists():

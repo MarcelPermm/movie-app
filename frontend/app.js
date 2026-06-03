@@ -7509,6 +7509,16 @@ function initGamesMode() {
     durakCard._init = true;
     durakCard.addEventListener("click", function() { initDurakMode(); });
   }
+  const unoCard = $("uno-open-card");
+  if (unoCard && !unoCard._init) {
+    unoCard._init = true;
+    unoCard.addEventListener("click", function() { initUnoMode(); });
+  }
+  const g101Card = $("g101-open-card");
+  if (g101Card && !g101Card._init) {
+    g101Card._init = true;
+    g101Card.addEventListener("click", function() { initG101Mode(); });
+  }
   loadGamesHistory(uid);
 }
 

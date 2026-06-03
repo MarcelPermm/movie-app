@@ -634,6 +634,16 @@
             <div class="game-card-name">Дурак</div>
             <div class="game-card-desc">2–6 игроков · онлайн</div>
           </div>
+          <div class="game-card" id="uno-open-card">
+            <div class="game-card-icon" style="font-size:36px;font-weight:900;font-family:sans-serif;color:#e63b2e">UNO</div>
+            <div class="game-card-name">UNO</div>
+            <div class="game-card-desc">2–10 игроков · онлайн</div>
+          </div>
+          <div class="game-card" id="g101-open-card">
+            <div class="game-card-icon" style="font-size:34px;font-weight:900;font-family:'JetBrains Mono',monospace">101</div>
+            <div class="game-card-name">Сто одно</div>
+            <div class="game-card-desc">2–6 игроков · онлайн</div>
+          </div>
         </div>
         <!-- История последних партий -->
         <div class="games-history-wrap" id="games-history-wrap" style="display:none">
@@ -745,6 +755,179 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- ══ UNO ════════════════════════════════════════════════ -->
+    <div id="uno-setup" style="display:none">
+      <button class="games-back-btn" id="uno-back-lobby">← Игры</button>
+      <div class="durak-setup-wrap">
+        <div class="durak-setup-title">🃏 UNO</div>
+        <div class="durak-setup-row">
+          <span class="durak-setup-lbl">Игроков</span>
+          <div class="durak-radio-group" id="uno-players-group">
+            <button class="durak-radio active" data-val="2">2</button>
+            <button class="durak-radio" data-val="3">3</button>
+            <button class="durak-radio" data-val="4">4</button>
+            <button class="durak-radio" data-val="5">5</button>
+            <button class="durak-radio" data-val="6">6</button>
+          </div>
+        </div>
+        <div class="durak-setup-actions">
+          <button class="chess-action-btn" id="uno-create-btn">Создать игру</button>
+          <div class="durak-setup-divider">или</div>
+          <div class="durak-join-row">
+            <input class="chess-code-input" id="uno-join-input" placeholder="ABCD12" maxlength="6" />
+            <button class="chess-action-btn" id="uno-join-btn">Войти по коду</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="uno-lobby" style="display:none">
+      <button class="games-back-btn" id="uno-back-setup">← Настройки</button>
+      <div class="chess-waiting-wrap">
+        <div class="chess-waiting-icon">🃏</div>
+        <div class="chess-waiting-title">UNO — игра создана!</div>
+        <div class="chess-code-display" id="uno-code-display">------</div>
+        <button class="chess-copy-btn" id="uno-copy-btn">📋 Скопировать код</button>
+        <div id="uno-players-list" class="durak-players-list"></div>
+        <button class="chess-action-btn" id="uno-start-btn" style="display:none">▶ Начать игру</button>
+        <div class="chess-waiting-dots" id="uno-waiting-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+    <div id="uno-game" style="display:none">
+      <div class="cg-layout">
+        <div class="cg-opponents" id="uno-opponents"></div>
+        <div class="cg-center">
+          <div class="cg-deck-area">
+            <div class="uno-deck-pile" id="uno-deck-pile"></div>
+            <div class="cg-deck-count" id="uno-deck-count">108</div>
+          </div>
+          <div class="cg-discard">
+            <div class="uno-top-card" id="uno-top-card"></div>
+            <div class="uno-color-bar" id="uno-color-bar"></div>
+          </div>
+          <div class="cg-direction" id="uno-direction">↻</div>
+        </div>
+        <div class="cg-status-bar">
+          <span class="durak-status-dot2" id="uno-status-dot"></span>
+          <span id="uno-status-text">Загрузка…</span>
+        </div>
+        <div class="durak-hand-section">
+          <div class="durak-action-btns" id="uno-action-btns">
+            <button class="durak-btn durak-btn-throw" id="uno-play-btn" style="display:none">▶ Сыграть</button>
+            <button class="durak-btn durak-btn-take"  id="uno-draw-btn">+ Взять карту</button>
+            <button class="durak-btn durak-btn-done"  id="uno-uno-btn" style="display:none">UNO!</button>
+          </div>
+          <div class="durak-hand" id="uno-hand"></div>
+        </div>
+      </div>
+      <div class="uno-color-picker" id="uno-color-picker" style="display:none">
+        <div class="uno-color-picker-inner">
+          <div class="uno-cp-title">Выбери цвет</div>
+          <div class="uno-cp-btns">
+            <button class="uno-cp-btn" data-color="r" style="background:#e63b2e">🔴</button>
+            <button class="uno-cp-btn" data-color="b" style="background:#2563eb">🔵</button>
+            <button class="uno-cp-btn" data-color="g" style="background:#16a34a">🟢</button>
+            <button class="uno-cp-btn" data-color="y" style="background:#d97706">🟡</button>
+          </div>
+        </div>
+      </div>
+      <div class="chess-gameover" id="uno-gameover" style="display:none">
+        <div class="chess-gameover-inner">
+          <div class="chess-gameover-icon" id="uno-go-icon">🏆</div>
+          <div class="chess-gameover-title" id="uno-go-title">Конец!</div>
+          <div class="chess-gameover-sub" id="uno-go-sub"></div>
+          <button class="chess-action-btn" id="uno-go-new">Ещё раз</button>
+          <button class="chess-action-btn chess-action-btn-sec" id="uno-go-lobby">В лобби</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 101 ═════════════════════════════════════════════════ -->
+    <div id="g101-setup" style="display:none">
+      <button class="games-back-btn" id="g101-back-lobby">← Игры</button>
+      <div class="durak-setup-wrap">
+        <div class="durak-setup-title">101</div>
+        <div class="durak-setup-row">
+          <span class="durak-setup-lbl">Игроков</span>
+          <div class="durak-radio-group" id="g101-players-group">
+            <button class="durak-radio active" data-val="2">2</button>
+            <button class="durak-radio" data-val="3">3</button>
+            <button class="durak-radio" data-val="4">4</button>
+            <button class="durak-radio" data-val="5">5</button>
+            <button class="durak-radio" data-val="6">6</button>
+          </div>
+        </div>
+        <div class="durak-setup-actions">
+          <button class="chess-action-btn" id="g101-create-btn">Создать игру</button>
+          <div class="durak-setup-divider">или</div>
+          <div class="durak-join-row">
+            <input class="chess-code-input" id="g101-join-input" placeholder="ABCD12" maxlength="6" />
+            <button class="chess-action-btn" id="g101-join-btn">Войти по коду</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="g101-lobby" style="display:none">
+      <button class="games-back-btn" id="g101-back-setup">← Настройки</button>
+      <div class="chess-waiting-wrap">
+        <div class="chess-waiting-icon">🂠</div>
+        <div class="chess-waiting-title">101 — игра создана!</div>
+        <div class="chess-code-display" id="g101-code-display">------</div>
+        <button class="chess-copy-btn" id="g101-copy-btn">📋 Скопировать код</button>
+        <div id="g101-players-list" class="durak-players-list"></div>
+        <button class="chess-action-btn" id="g101-start-btn" style="display:none">▶ Начать игру</button>
+        <div class="chess-waiting-dots" id="g101-waiting-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+    <div id="g101-game" style="display:none">
+      <div class="cg-layout">
+        <div class="cg-opponents" id="g101-opponents"></div>
+        <div class="cg-center">
+          <div class="cg-deck-area">
+            <div class="durak-card-back" id="g101-deck-pile" style="width:54px;height:82px"></div>
+            <div class="cg-deck-count" id="g101-deck-count">36</div>
+          </div>
+          <div class="cg-discard">
+            <div id="g101-top-card"></div>
+            <div class="g101-suit-bar" id="g101-suit-bar"></div>
+          </div>
+          <div class="cg-scores" id="g101-scores"></div>
+        </div>
+        <div class="cg-status-bar">
+          <span class="durak-status-dot2" id="g101-status-dot"></span>
+          <span id="g101-status-text">Загрузка…</span>
+        </div>
+        <div class="durak-hand-section">
+          <div class="durak-action-btns" id="g101-action-btns">
+            <button class="durak-btn durak-btn-throw" id="g101-play-btn"    style="display:none">▶ Сыграть</button>
+            <button class="durak-btn durak-btn-take"  id="g101-draw-btn"   style="display:none">+ Взять карту</button>
+            <button class="durak-btn durak-btn-take"  id="g101-draw-one-btn" style="display:none">🎴 Тянуть ещё</button>
+            <button class="durak-btn durak-btn-done"  id="g101-next-round-btn" style="display:none">▶ Следующий раунд</button>
+          </div>
+          <div class="durak-hand" id="g101-hand"></div>
+        </div>
+      </div>
+      <div class="g101-suit-picker" id="g101-suit-picker" style="display:none">
+        <div class="uno-color-picker-inner">
+          <div class="uno-cp-title">Выбери масть (дама)</div>
+          <div class="uno-cp-btns">
+            <button class="uno-cp-btn g101-suit-btn" data-suit="♠" style="background:#222;font-size:28px">♠</button>
+            <button class="uno-cp-btn g101-suit-btn" data-suit="♥" style="background:#c00;font-size:28px">♥</button>
+            <button class="uno-cp-btn g101-suit-btn" data-suit="♦" style="background:#c00;font-size:28px">♦</button>
+            <button class="uno-cp-btn g101-suit-btn" data-suit="♣" style="background:#222;font-size:28px">♣</button>
+          </div>
+        </div>
+      </div>
+      <div class="chess-gameover" id="g101-gameover" style="display:none">
+        <div class="chess-gameover-inner">
+          <div class="chess-gameover-icon" id="g101-go-icon">🏆</div>
+          <div class="chess-gameover-title" id="g101-go-title">Игра окончена</div>
+          <div class="chess-gameover-sub" id="g101-go-sub"></div>
+          <button class="chess-action-btn" id="g101-go-new">Новая игра</button>
+          <button class="chess-action-btn chess-action-btn-sec" id="g101-go-lobby">В лобби</button>
+        </div>
+      </div>
     </div>
 
     <!-- ══ ДУРАК ══════════════════════════════════════════════ -->
@@ -868,5 +1051,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
   <script src="config.js?v=10"></script>
   <script src="app.js?v=10"></script>
+  <script src="cardgames_module.js?v=10"></script>
 </body>
 </html>

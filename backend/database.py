@@ -2080,3 +2080,137 @@ def save_durak_state(code, state, status=None):
         conn.commit()
     finally:
         conn.close()
+
+
+# ─── UNO + 101 (общий шаблон) ─────────────────────────────────────────────────
+
+def _init_card_game_tables(cur, prefix):
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {prefix}_games (
+            id          SERIAL PRIMARY KEY,
+            code        VARCHAR(8) UNIQUE NOT NULL,
+            status      VARCHAR(20) DEFAULT 'waiting',
+            max_players INTEGER DEFAULT 4,
+            state       JSONB DEFAULT '{{}}',
+            created_by  INTEGER REFERENCES users(id),
+            created_at  TIMESTAMP DEFAULT NOW(),
+            updated_at  TIMESTAMP DEFAULT NOW()
+        )
+    """)
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS {prefix}_players (
+            id       SERIAL PRIMARY KEY,
+            game_id  INTEGER REFERENCES {prefix}_games(id) ON DELETE CASCADE,
+            user_id  INTEGER REFERENCES users(id),
+            seat     INTEGER,
+            UNIQUE(game_id, user_id)
+        )
+    """)
+    cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{prefix}_players_game ON {prefix}_players(game_id)")
+
+
+def init_uno_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        _init_card_game_tables(cur, 'uno')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def init_game101_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        _init_card_game_tables(cur, 'game101')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _create_card_game(prefix, code, created_by, max_players):
+    import json as _json
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO {prefix}_games (code, created_by, max_players)
+            VALUES (%s, %s, %s) RETURNING *
+        """, (code, created_by, max_players))
+        game = dict(cur.fetchone())
+        cur.execute(f"INSERT INTO {prefix}_players (game_id, user_id, seat) VALUES (%s,%s,0)",
+                    (game['id'], created_by))
+        conn.commit()
+        return game
+    finally:
+        conn.close()
+
+
+def _get_card_game(prefix, code):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"SELECT * FROM {prefix}_games WHERE code=%s", (code,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _get_card_game_players(prefix, game_id):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            SELECT p.*, u.display_name, u.username
+            FROM {prefix}_players p JOIN users u ON p.user_id=u.id
+            WHERE p.game_id=%s ORDER BY p.seat
+        """, (game_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def _join_card_game(prefix, game_id, user_id, seat):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(f"""
+            INSERT INTO {prefix}_players (game_id, user_id, seat)
+            VALUES (%s,%s,%s) ON CONFLICT DO NOTHING
+        """, (game_id, user_id, seat))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _save_card_game_state(prefix, code, state, status=None):
+    import json as _json
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        if status:
+            cur.execute(f"UPDATE {prefix}_games SET state=%s,status=%s,updated_at=NOW() WHERE code=%s",
+                        (_json.dumps(state), status, code))
+        else:
+            cur.execute(f"UPDATE {prefix}_games SET state=%s,updated_at=NOW() WHERE code=%s",
+                        (_json.dumps(state), code))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Public wrappers
+create_uno_game      = lambda code,uid,mp: _create_card_game('uno', code, uid, mp)
+get_uno_game         = lambda code:        _get_card_game('uno', code)
+get_uno_players      = lambda gid:         _get_card_game_players('uno', gid)
+join_uno_game        = lambda gid,uid,seat:_join_card_game('uno', gid, uid, seat)
+save_uno_state       = lambda code,st,status=None: _save_card_game_state('uno', code, st, status)
+
+create_game101       = lambda code,uid,mp: _create_card_game('game101', code, uid, mp)
+get_game101          = lambda code:        _get_card_game('game101', code)
+get_game101_players  = lambda gid:         _get_card_game_players('game101', gid)
+join_game101         = lambda gid,uid,seat:_join_card_game('game101', gid, uid, seat)
+save_game101_state   = lambda code,st,status=None: _save_card_game_state('game101', code, st, status)
