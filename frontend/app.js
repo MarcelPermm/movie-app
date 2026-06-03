@@ -7474,6 +7474,8 @@ const _chess = {
   legalSquares: [],
   myUserId: null,
   pendingPromotion: null,
+  _gamePoller: null,   // sync polling during active game
+  _lastFen: null,      // FEN last seen, to detect changes
 };
 
 function _chessApiBase() {
@@ -7670,7 +7672,8 @@ function chessConnect(code) {
 }
 
 function chessDisconnect() {
-  if (_chess._waitPoll) { clearInterval(_chess._waitPoll); _chess._waitPoll = null; }
+  if (_chess._waitPoll)  { clearInterval(_chess._waitPoll);  _chess._waitPoll = null; }
+  if (_chess._gamePoller){ clearInterval(_chess._gamePoller); _chess._gamePoller = null; }
   if (_chess.ws) {
     clearInterval(_chess.ws._pingInterval);
     try { _chess.ws.close(); } catch(e) {}
@@ -7682,11 +7685,41 @@ function chessDisconnect() {
   _chess.selected = null;
   _chess.legalSquares = [];
   _chess.pendingPromotion = null;
+  _chess._lastFen = null;
   // Сброс _init флагов кнопок — чтобы новая игра заново вешала обработчики
   ["chess-resign-btn","chess-draw-btn","chess-draw-accept","chess-draw-decline",
    "chess-gameover-new","chess-gameover-lobby","chess-back-from-waiting","chess-copy-code-btn"].forEach(function(id) {
     var el = $(id); if (el) el._init = false;
   });
+}
+
+// Polling-синхронизация: каждые 4 сек сверяем FEN с сервером
+// Страхует от потери WebSocket-сообщений (ход соперника "пропал")
+function _startChessGamePoller() {
+  if (_chess._gamePoller) clearInterval(_chess._gamePoller);
+  _chess._gamePoller = setInterval(async function() {
+    var gameEl = $("chess-game");
+    if (!gameEl || gameEl.style.display === "none" || !_chess.game) {
+      clearInterval(_chess._gamePoller); _chess._gamePoller = null; return;
+    }
+    try {
+      var g = await apiFetch("/chess/games/" + _chess.game.code);
+      if (!g || g.status === "finished") return;
+      var serverFen = g.fen;
+      var localFen  = _chess.engine ? _chess.engine.fen() : null;
+      // Если сервер знает о ходе, которого у нас нет — обновляем
+      if (serverFen && serverFen !== localFen) {
+        console.log("[chess poll] FEN mismatch — applying server state");
+        if (_chess.engine) {
+          try { _chess.engine.load(serverFen); } catch(e) {}
+        }
+        _chess._lastFen = serverFen;
+        renderChessBoard();
+        renderChessMoves(g.moves_pgn || "");
+        updateChessStatus();
+      }
+    } catch(e) {}
+  }, 4000);
 }
 
 function handleChessMessage(msg) {
@@ -7696,8 +7729,11 @@ function handleChessMessage(msg) {
   } else if (msg.type === "game_ready") {
     _chess.game = msg.game; chessStartGameUI(msg.game);
   } else if (msg.type === "move") {
-    if (_chess.engine) {
-      _chess.engine.load(msg.fen); renderChessBoard(); renderChessMoves(msg.pgn); updateChessStatus();
+    if (_chess.engine && msg.fen) {
+      try { _chess.engine.load(msg.fen); } catch(e) { console.error("chess load fen:", e); }
+      _chess._lastFen = msg.fen;
+      _chess.selected = null; _chess.legalSquares = [];
+      renderChessBoard(); renderChessMoves(msg.pgn || ""); updateChessStatus();
     }
   } else if (msg.type === "game_over") {
     handleChessGameOver(msg);
@@ -7732,6 +7768,8 @@ function chessStartGameUI(game) {
   var topAv = $("chess-top-avatar"); if (topAv) topAv.textContent = isW ? "♚" : "♔";
   var botAv = $("chess-bottom-avatar"); if (botAv) botAv.textContent = isW ? "♔" : "♚";
   renderChessBoard(); renderChessMoves(game.moves_pgn || ""); updateChessStatus();
+  _chess._lastFen = _chess.engine ? _chess.engine.fen() : null;
+  _startChessGamePoller();
 
   var resignBtn = $("chess-resign-btn");
   if (resignBtn && !resignBtn._init) {
