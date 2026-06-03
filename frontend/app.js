@@ -8115,7 +8115,8 @@ const _durak = {
   myUserId: null,
   myHand: [],
   selectedCards: [],
-  selectedDefense: null,  // { attackCard, selected }
+  selectedCard: null,    // одна карта — для отбоя
+  selectedDefense: null, // устарело, оставлено для совместимости
   code: null,
 };
 
@@ -8147,7 +8148,7 @@ function _durakDisconnect() {
     _durak.ws = null;
   }
   _durak.game = null; _durak.state = null; _durak.myHand = [];
-  _durak.selectedCards = []; _durak.selectedDefense = null; _durak.code = null;
+  _durak.selectedCards = []; _durak.selectedCard = null; _durak.selectedDefense = null; _durak.code = null;
   // Reset _init flags
   ['durak-create-btn','durak-join-btn','durak-copy-btn','durak-start-btn',
    'durak-back-lobby','durak-back-setup','durak-done-btn','durak-take-btn',
@@ -8349,6 +8350,9 @@ function _handleDurakMsg(msg) {
   if (msg.type === 'state') {
     _durak.state = msg.state;
     _durak.myHand = msg.state.my_hand || [];
+    // Сбрасываем выделение при получении нового стейта с сервера
+    _durak.selectedCard  = null;
+    _durak.selectedCards = [];
     if (msg.state.game_status === 'active') {
       _showDurakScreen('durak-game');
       _renderDurakGame(msg.state);
@@ -8435,136 +8439,199 @@ function _renderDurakDeck(state) {
   if (discardEl) discardEl.textContent = state.discard_count > 0 ? (state.discard_count + ' карт в отбое') : '';
 }
 
+// ── Стол ─────────────────────────────────────────────────────────
 function _renderDurakTable(state) {
-  var area = $('durak-table-area');
+  var area  = $('durak-table-area');
   var empty = $('durak-table-empty');
   if (!area) return;
-  var table = state.table || [];
-  var uid = _durak.myUserId;
+  var table      = state.table || [];
+  var uid        = _durak.myUserId;
   var isDefender = state.defender === uid;
+  var selCard    = _durak.selectedCard;
+
+  area.querySelectorAll('.durak-table-slot').forEach(function(el) { el.remove(); });
 
   if (!table.length) {
     if (empty) empty.style.display = '';
-    area.querySelectorAll('.durak-table-slot').forEach(function(el) { el.remove(); });
+    // Drop zone на пустой стол для атаки
+    _setupTableDropZone(area, state);
     return;
   }
   if (empty) empty.style.display = 'none';
 
-  // Re-render slots
-  area.querySelectorAll('.durak-table-slot').forEach(function(el) { el.remove(); });
-  table.forEach(function(slot, i) {
+  table.forEach(function(slot) {
     var div = document.createElement('div');
     div.className = 'durak-table-slot';
-    div.innerHTML = _cardHtml(slot.attack, 'table-attack');
+
+    // Атакующая карта
+    var atkEl = document.createElement('div');
+    var atkRank = slot.attack.startsWith('10') ? '10' : slot.attack.slice(0, -1);
+    var atkSuit = slot.attack.slice(-1);
+    atkEl.className = 'durak-card durak-card-' + (DURAK_SUITS[atkSuit] || 'black') + ' table-attack';
+    if (!slot.defense && isDefender) atkEl.classList.add('needs-defense');
+    atkEl.dataset.card = slot.attack;
+    atkEl.innerHTML = '<span class="dc-rank">' + atkRank + '</span><span class="dc-suit">' + atkSuit + '</span>';
+    div.appendChild(atkEl);
+
     if (slot.defense) {
-      div.innerHTML += _cardHtml(slot.defense, 'table-defense');
+      // Отбитая карта
+      var defRank = slot.defense.startsWith('10') ? '10' : slot.defense.slice(0, -1);
+      var defSuit = slot.defense.slice(-1);
+      var defEl = document.createElement('div');
+      defEl.className = 'durak-card durak-card-' + (DURAK_SUITS[defSuit] || 'black') + ' table-defense';
+      defEl.innerHTML = '<span class="dc-rank">' + defRank + '</span><span class="dc-suit">' + defSuit + '</span>';
+      div.appendChild(defEl);
     } else if (isDefender) {
-      div.innerHTML += '<div class="durak-table-placeholder" data-attack="' + slot.attack + '">?</div>';
+      // Клик и дроп на атакующую карту = отбить
+      if (selCard) {
+        atkEl.classList.add('clickable-target');
+        atkEl.addEventListener('click', function() {
+          var def = selCard;
+          _durak.selectedCard = null;
+          _renderDurakHand(state);
+          _renderDurakTable(state);
+          _renderDurakButtons(state);
+          _sendDurakMsg({ type: 'defend', attack_card: slot.attack, defense_card: def });
+        });
+      }
+      // Drag-drop target на слот
+      atkEl.addEventListener('dragover', function(e) { e.preventDefault(); atkEl.classList.add('drag-over'); });
+      atkEl.addEventListener('dragleave', function() { atkEl.classList.remove('drag-over'); });
+      atkEl.addEventListener('drop', function(e) {
+        e.preventDefault(); atkEl.classList.remove('drag-over');
+        var def = e.dataTransfer.getData('text/plain');
+        if (def) _sendDurakMsg({ type: 'defend', attack_card: slot.attack, defense_card: def });
+      });
     }
+
     area.appendChild(div);
   });
 
-  // Attach click for defense
-  if (isDefender && _durak.selectedDefense) {
-    area.querySelectorAll('.durak-table-placeholder').forEach(function(ph) {
-      ph.addEventListener('click', function() {
-        var attackCard = ph.dataset.attack;
-        var defCard = _durak.selectedDefense;
-        _durak.selectedDefense = null;
-        _durak.selectedCards = [];
-        _renderDurakHand(state);
-        _sendDurakMsg({ type: 'defend', attack_card: attackCard, defense_card: defCard });
-      });
-    });
-  }
+  _setupTableDropZone(area, state);
 }
 
+function _setupTableDropZone(area, state) {
+  var uid = _durak.myUserId;
+  var isAttacker = _durakCanAttack(state, uid);
+  if (!isAttacker) return;
+  area.addEventListener('dragover', function(e) {
+    e.preventDefault(); area.classList.add('drag-over');
+  });
+  area.addEventListener('dragleave', function(e) {
+    if (!area.contains(e.relatedTarget)) area.classList.remove('drag-over');
+  });
+  area.addEventListener('drop', function(e) {
+    e.preventDefault(); area.classList.remove('drag-over');
+    var card = e.dataTransfer.getData('text/plain');
+    if (card) _sendDurakMsg({ type: 'attack', cards: [card] });
+  });
+  // Клик по пустому столу = бросить выбранную карту
+  area.addEventListener('click', function(e) {
+    if (e.target !== area && !e.target.classList.contains('durak-table-empty')) return;
+    if (_durak.selectedCards.length > 0) _durakDoAttack(state);
+  });
+}
+
+function _durakCanAttack(state, uid) {
+  var phase = state.phase;
+  if (!['attack','throwing','defense'].includes(phase)) return false;
+  if ((state.finished_players || []).includes(uid)) return false;
+  return state.attacker === uid || (state.attackers || []).includes(uid) || phase !== 'defense';
+}
+
+// ── Рука игрока ──────────────────────────────────────────────────
 function _renderDurakHand(state) {
   var hand = $('durak-hand'); if (!hand) return;
-  var uid   = _durak.myUserId;
-  var cards = _durak.myHand;
-  var isAttacker  = (state.attackers || []).includes(uid) || state.attacker === uid;
-  var isDefender  = state.defender === uid;
-  var phase       = state.phase;
-  var canAct = (phase === 'attack' || phase === 'throwing' || phase === 'defense')
-    && !state.finished_players.includes(uid);
+  var uid        = _durak.myUserId;
+  var cards      = _durak.myHand;
+  var isDefender = state.defender === uid;
+  var phase      = state.phase;
+  var canAct     = ['attack','throwing','defense'].includes(phase)
+                   && !(state.finished_players || []).includes(uid);
 
-  hand.innerHTML = cards.map(function(card) {
-    var isSel = _durak.selectedCards.includes(card) || _durak.selectedDefense === card;
-    var cls = isSel ? 'selected' : '';
-    return _cardHtml(card, cls);
-  }).join('');
+  hand.innerHTML = '';
+  cards.forEach(function(card) {
+    var rank = card.startsWith('10') ? '10' : card.slice(0, -1);
+    var suit = card.slice(-1);
+    var isSel = _durak.selectedCards.includes(card) || _durak.selectedCard === card;
+    var el = document.createElement('div');
+    el.className = 'durak-card durak-card-' + (DURAK_SUITS[suit] || 'black')
+                   + (isSel ? ' selected' : '');
+    el.dataset.card = card;
+    el.draggable = canAct;
+    el.innerHTML = '<span class="dc-rank">' + rank + '</span><span class="dc-suit">' + suit + '</span>';
 
-  if (!canAct) return;
+    if (canAct) {
+      // Drag start
+      el.addEventListener('dragstart', function(e) {
+        e.dataTransfer.setData('text/plain', card);
+        el.classList.add('dragging');
+      });
+      el.addEventListener('dragend', function() { el.classList.remove('dragging'); });
 
-  hand.querySelectorAll('.durak-card').forEach(function(el) {
-    el.addEventListener('click', function() {
-      var card = el.dataset.card;
-      if (isDefender && phase === 'defense') {
-        // Select defense card then click placeholder on table
-        if (_durak.selectedDefense === card) {
-          _durak.selectedDefense = null;
-        } else {
-          _durak.selectedDefense = card;
+      el.addEventListener('click', function() {
+        if (isDefender && phase === 'defense') {
+          // Для защитника: выбираем одну карту для отбоя
+          _durak.selectedCard  = (_durak.selectedCard === card) ? null : card;
           _durak.selectedCards = [];
+        } else {
+          // Для атакующего / подкидывающего: тоглим в множественный выбор
+          _durak.selectedCard = null;
+          var idx = _durak.selectedCards.indexOf(card);
+          if (idx >= 0) _durak.selectedCards.splice(idx, 1);
+          else           _durak.selectedCards.push(card);
         }
         _renderDurakHand(state);
         _renderDurakTable(state);
-      } else if ((isAttacker || phase === 'throwing') && (phase === 'attack' || phase === 'throwing' || phase === 'defense')) {
-        // Toggle attack card
-        var idx = _durak.selectedCards.indexOf(card);
-        if (idx >= 0) { _durak.selectedCards.splice(idx, 1); }
-        else { _durak.selectedCards.push(card); }
-        _renderDurakHand(state);
-      }
-    });
-    el.addEventListener('dblclick', function() {
-      var card = el.dataset.card;
-      // Double click: immediately play as attack
-      if (!isDefender && (phase === 'attack' || phase === 'throwing' || phase === 'defense')) {
-        _durak.selectedCards = [card];
-        _durakDoAttack(state);
-      }
-    });
+        _renderDurakButtons(state);
+      });
+    }
+    hand.appendChild(el);
   });
 }
 
 function _durakDoAttack(state) {
   var cards = _durak.selectedCards.slice();
   if (!cards.length) return;
-  _durak.selectedCards = [];
+  _durak.selectedCards = []; _durak.selectedCard = null;
   _sendDurakMsg({ type: 'attack', cards: cards });
 }
 
+// ── Статус ───────────────────────────────────────────────────────
 function _renderDurakStatus(state) {
-  var el = $('durak-status-text'); if (!el) return;
-  var uid = _durak.myUserId;
-  var phase = state.phase;
+  var el  = $('durak-status-text');
+  var dot = $('durak-status-dot2');
+  if (!el) return;
+  var uid        = _durak.myUserId;
+  var phase      = state.phase;
   var isAttacker = state.attacker === uid;
   var isDefender = state.defender === uid;
   var isFinished = (state.finished_players || []).includes(uid);
 
-  if (phase === 'finished') { el.textContent = 'Игра завершена!'; return; }
-  if (isFinished)           { el.textContent = '✅ Вы вышли из игры!'; return; }
-
-  var attackerName = _playerName(state, state.attacker);
-  var defenderName = _playerName(state, state.defender);
-
-  if (phase === 'attack') {
-    el.textContent = isAttacker ? '⚔ Ваша атака!' : (attackerName + ' атакует');
+  var text = '', color = '#888';
+  if (phase === 'finished')  { text = 'Игра завершена!'; color = '#c96442'; }
+  else if (isFinished)       { text = '✅ Вы вышли из игры!'; color = '#5a8a5a'; }
+  else if (phase === 'attack') {
+    if (isAttacker) { text = '⚔ Ваш ход — атакуй!'; color = '#c96442'; }
+    else { text = _playerName(state, state.attacker) + ' ходит…'; }
   } else if (phase === 'defense') {
     if (isDefender) {
-      el.textContent = _durak.selectedDefense
-        ? 'Выбери карту на столе для отбоя'
-        : '🛡 Отбивайся! Выбери карту и кликни на атакующую';
-    } else if (isAttacker || (state.attackers || []).includes(uid)) {
-      el.textContent = '+ Можно подкинуть карту';
+      text = _durak.selectedCard
+        ? '👆 Теперь нажми на карту на столе которую хочешь побить'
+        : '🛡 Выбери карту из руки для отбоя';
+      color = '#4a6da8';
+    } else if (isAttacker) {
+      text = 'Можешь подкинуть карту того же достоинства';
     } else {
-      el.textContent = defenderName + ' защищается';
+      text = _playerName(state, state.defender) + ' защищается…';
     }
   } else if (phase === 'throwing') {
-    el.textContent = isDefender ? '✅ Все карты отбиты' : '+ Подкидывай!';
+    if (isDefender)  { text = '✅ Всё отбито! Ждём остальных…'; color = '#5a8a5a'; }
+    else if (isAttacker) { text = 'Подкини ещё или нажми «Хватит»'; color = '#c96442'; }
+    else { text = 'Можешь подкинуть карту'; }
   }
+  el.textContent = text;
+  if (dot) dot.style.background = color;
 }
 
 function _playerName(state, uid) {
@@ -8572,42 +8639,57 @@ function _playerName(state, uid) {
   return p ? p.display_name : '?';
 }
 
+// ── Кнопки действий ──────────────────────────────────────────────
 function _renderDurakButtons(state) {
-  var uid = _durak.myUserId;
-  var phase = state.phase;
-  var isAttacker = state.attacker === uid || (state.attackers || []).includes(uid);
+  var uid        = _durak.myUserId;
+  var phase      = state.phase;
+  var isAttacker = state.attacker === uid;
   var isDefender = state.defender === uid;
+  var hasSel     = _durak.selectedCards.length > 0;
+  var allBeaten  = (state.table || []).length > 0
+                   && (state.table || []).every(function(sl) { return sl.defense !== null; });
 
-  var doneBtn = $('durak-done-btn');
-  var takeBtn = $('durak-take-btn');
+  var throwBtn = $('durak-throw-btn');
+  var doneBtn  = $('durak-done-btn');
+  var takeBtn  = $('durak-take-btn');
 
+  // Бросить: видна когда атакующий выбрал карты
+  if (throwBtn) {
+    var canThrow = hasSel && !isDefender && ['attack','throwing','defense'].includes(phase);
+    throwBtn.style.display = canThrow ? '' : 'none';
+    if (canThrow) throwBtn.textContent = '↑ Бросить'
+      + (_durak.selectedCards.length > 1 ? ' (' + _durak.selectedCards.length + ' карты)' : ' карту');
+  }
+
+  // Хватит: атакующий может завершить подкидывание когда все отбито
   if (doneBtn) {
-    var allBeaten = (state.table || []).every(function(sl) { return sl.defense !== null; });
     doneBtn.style.display = (isAttacker && (phase === 'throwing' || (phase === 'defense' && allBeaten))) ? '' : 'none';
   }
+
+  // Взять: защитник всегда может взять карты
   if (takeBtn) {
-    takeBtn.style.display = (isDefender && phase === 'defense') ? '' : 'none';
+    takeBtn.style.display = (isDefender && phase === 'defense' && (state.table || []).length > 0) ? '' : 'none';
   }
 }
 
 function _initDurakGameBtns() {
+  var throwBtn = $('durak-throw-btn');
+  if (throwBtn && !throwBtn._init) {
+    throwBtn._init = true;
+    throwBtn.addEventListener('click', function() { _durakDoAttack(_durak.state); });
+  }
+
   var doneBtn = $('durak-done-btn');
   if (doneBtn && !doneBtn._init) {
     doneBtn._init = true;
-    doneBtn.addEventListener('click', function() {
-      // If cards selected, attack first
-      if (_durak.selectedCards.length > 0) {
-        _durakDoAttack(_durak.state);
-      } else {
-        _sendDurakMsg({ type: 'done_attack' });
-      }
-    });
+    doneBtn.addEventListener('click', function() { _sendDurakMsg({ type: 'done_attack' }); });
   }
 
   var takeBtn = $('durak-take-btn');
   if (takeBtn && !takeBtn._init) {
     takeBtn._init = true;
     takeBtn.addEventListener('click', function() {
+      _durak.selectedCard = null; _durak.selectedCards = [];
       _sendDurakMsg({ type: 'take' });
     });
   }

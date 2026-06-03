@@ -6080,3 +6080,84 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   cursor: pointer; transition: all .15s;
 }
 .chess-local-btn:hover { border-color: var(--terracotta); color: var(--ink); background: rgba(180,72,64,.06); }
+
+/* ── Durak UI redesign ─────────────────────────────────────────── */
+
+/* Рука + кнопки вместе */
+.durak-hand-section { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+
+/* Кнопки действий над рукой */
+.durak-action-btns {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+  min-height: 0; padding: 0 8px;
+}
+.durak-btn-throw {
+  background: var(--terracotta); color: #fff; font-size: 14px; font-weight: 700;
+  padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer;
+  animation: durak-btn-pop .2s ease; transition: opacity .15s;
+}
+.durak-btn-throw:hover { opacity: .85; }
+@keyframes durak-btn-pop { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.durak-btn-done { background: #5a8a5a; color: #fff; }
+.durak-btn-done:hover { background: #4a7a4a; }
+.durak-btn-take { background: #4a6da8; color: #fff; font-weight: 700; }
+.durak-btn-take:hover { background: #3a5d98; }
+
+/* Статусная строка */
+.durak-status-bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  background: var(--card); border-radius: 10px; border: 1px solid var(--rule);
+  flex-shrink: 0;
+}
+.durak-status-dot2 {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: #888; transition: background .3s;
+}
+.durak-status-text { font-family: 'JetBrains Mono',monospace; font-size: 12px; color: var(--ink); }
+
+/* Карта в руке — dragging */
+.durak-card.dragging { opacity: .4; transform: scale(.95); }
+
+/* Атакующая карта требует отбоя — пульсирует */
+.durak-card.needs-defense {
+  outline: 2px solid var(--terracotta);
+  animation: durak-pulse 1.2s ease-in-out infinite;
+}
+@keyframes durak-pulse {
+  0%, 100% { outline-color: var(--terracotta); box-shadow: 0 0 0 0 rgba(180,72,64,.4); }
+  50%       { outline-color: #ff6b5b;           box-shadow: 0 0 0 5px rgba(180,72,64,0); }
+}
+
+/* Атакующая карта — можно нажать для отбоя */
+.durak-card.clickable-target {
+  cursor: pointer; outline: 2px solid #4a6da8;
+  box-shadow: 0 0 12px rgba(74,109,168,.5);
+}
+.durak-card.clickable-target:hover { transform: translateY(-4px); }
+
+/* Зона дропа подсвечивается */
+.durak-table-area.drag-over {
+  background: rgba(90,138,90,.1); border-color: #5a8a5a;
+  box-shadow: inset 0 0 0 2px #5a8a5a;
+}
+.durak-card.drag-over {
+  outline: 3px solid #5a8a5a !important;
+  box-shadow: 0 0 14px rgba(90,138,90,.6) !important;
+}
+
+/* Отбитая карта — немного поверх атакующей и повёрнута */
+.durak-table-slot { position: relative; }
+.durak-table-slot .table-defense {
+  position: absolute; top: -10px; left: 10px;
+  transform: rotate(15deg); z-index: 2;
+  box-shadow: 2px 2px 8px rgba(0,0,0,.3);
+}
+
+/* Hand: карты чуть перекрываются */
+.durak-hand { display: flex; padding: 4px 8px 8px; gap: -8px; overflow-x: auto; }
+.durak-hand .durak-card { flex-shrink: 0; margin-right: -8px; transition: transform .15s, box-shadow .15s, margin-right .1s; }
+.durak-hand .durak-card:hover { transform: translateY(-10px); z-index: 5; margin-right: 4px; }
+.durak-hand .durak-card.selected {
+  transform: translateY(-16px); z-index: 6; margin-right: 4px;
+  outline: 2px solid var(--terracotta); box-shadow: 0 8px 20px rgba(180,72,64,.4);
+}

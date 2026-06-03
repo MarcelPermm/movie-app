@@ -835,16 +835,18 @@
             <div class="durak-discard-count" id="durak-discard-count"></div>
           </div>
         </div>
-        <!-- Статус + кнопки -->
+        <!-- Статус -->
         <div class="durak-status-bar" id="durak-status-bar">
+          <span class="durak-status-dot2" id="durak-status-dot2"></span>
           <span class="durak-status-text" id="durak-status-text">Загрузка…</span>
-          <div class="durak-action-btns">
-            <button class="durak-btn durak-btn-done" id="durak-done-btn" style="display:none">✓ Хватит</button>
-            <button class="durak-btn durak-btn-take" id="durak-take-btn" style="display:none">↙ Забрать</button>
-          </div>
         </div>
-        <!-- Низ: ваша рука -->
-        <div class="durak-hand-wrap">
+        <!-- Кнопки действий + рука -->
+        <div class="durak-hand-section">
+          <div class="durak-action-btns" id="durak-action-btns">
+            <button class="durak-btn durak-btn-throw" id="durak-throw-btn" style="display:none">↑ Бросить на стол</button>
+            <button class="durak-btn durak-btn-done"  id="durak-done-btn"  style="display:none">✓ Хватит, не подкидываю</button>
+            <button class="durak-btn durak-btn-take"  id="durak-take-btn"  style="display:none">↙ Взять все карты</button>
+          </div>
           <div class="durak-hand" id="durak-hand"></div>
         </div>
       </div>
@@ -864,7 +866,7 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
-  <script src="config.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="config.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
