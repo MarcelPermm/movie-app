@@ -108,7 +108,11 @@ async def startup():
     database.init_budget_tables()
     database.init_trips_tables()
     database.init_goals_table()
-    database.init_chess_tables()
+    try:
+        database.init_chess_tables()
+        print("✅ Шахматные таблицы готовы")
+    except Exception as e:
+        print(f"⚠️  init_chess_tables error: {e}")
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")

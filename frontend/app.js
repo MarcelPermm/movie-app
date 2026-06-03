@@ -7476,7 +7476,9 @@ const _chess = {
   pendingPromotion: null,
 };
 
-function _chessApiBase() { return window.API_BASE || ""; }
+function _chessApiBase() {
+  return (typeof API_BASE_URL !== "undefined" ? API_BASE_URL : "") || "";
+}
 function _chessWsBase() {
   const base = _chessApiBase();
   if (base.startsWith("http")) return base.replace(/^http/, "ws");
@@ -7594,7 +7596,11 @@ async function chessCreateGame() {
       });
     }
     chessConnect(game.code);
-  } catch(e) { toast("Ошибка создания игры", "error"); }
+  } catch(e) {
+    console.error("chess create error:", e);
+    const msg = (e && (e.detail || e.message)) || "Ошибка создания игры";
+    toast(msg, "error");
+  }
 }
 
 async function chessJoinGame() {

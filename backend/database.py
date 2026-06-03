@@ -295,11 +295,22 @@ def get_user_by_id(user_id: int) -> dict | None:
 CHESS_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 def init_chess_tables():
+    # 1. Добавляем password_hash к users (отдельная транзакция)
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        # Добавляем password_hash к users
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT DEFAULT ''")
+        conn.commit()
+    except Exception as e:
+        print(f"alter users password_hash: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+    # 2. Создаём chess_games
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chess_games (
                 id             SERIAL PRIMARY KEY,
