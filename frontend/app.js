@@ -7476,7 +7476,8 @@ const _chess = {
   pendingPromotion: null,
   _gamePoller: null,
   _lastFen: null,
-  isLocal: false,     // true = играем вдвоём на одном экране
+  _lastWsMsgTime: 0,  // время последнего WS-сообщения (для умного polling)
+  isLocal: false,
 };
 
 function _chessApiBase() {
@@ -7750,34 +7751,44 @@ function chessDisconnect() {
 
 // Polling-синхронизация: каждые 4 сек сверяем FEN с сервером
 // Страхует от потери WebSocket-сообщений (ход соперника "пропал")
+// Умный polling: тикает каждую секунду, но HTTP-запрос делает
+// только если WebSocket молчал последние 2+ секунды.
+// В нормальной ситуации (WS работает) — 0 лишних запросов к БД.
+// При сбое WS — реагирует за ≤1 сек.
 function _startChessGamePoller() {
   if (_chess._gamePoller) clearInterval(_chess._gamePoller);
+  _chess._lastWsMsgTime = Date.now(); // считаем WS активным при старте
   _chess._gamePoller = setInterval(async function() {
     var gameEl = $("chess-game");
-    if (!gameEl || gameEl.style.display === "none" || !_chess.game) {
+    if (!gameEl || gameEl.style.display === "none" || !_chess.game || _chess.isLocal) {
       clearInterval(_chess._gamePoller); _chess._gamePoller = null; return;
     }
+    // Пропускаем если WS живой (последнее сообщение < 2 сек назад)
+    var wsSilentMs = Date.now() - (_chess._lastWsMsgTime || 0);
+    var wsAlive = _chess.ws && _chess.ws.readyState === WebSocket.OPEN && wsSilentMs < 2000;
+    if (wsAlive) return;
+
+    // WS молчит — сверяемся с сервером
     try {
       var g = await apiFetch("/chess/games/" + _chess.game.code);
       if (!g || g.status === "finished") return;
       var serverFen = g.fen;
       var localFen  = _chess.engine ? _chess.engine.fen() : null;
-      // Если сервер знает о ходе, которого у нас нет — обновляем
       if (serverFen && serverFen !== localFen) {
         console.log("[chess poll] FEN mismatch — applying server state");
-        if (_chess.engine) {
-          try { _chess.engine.load(serverFen); } catch(e) {}
-        }
+        if (_chess.engine) { try { _chess.engine.load(serverFen); } catch(e) {} }
         _chess._lastFen = serverFen;
         renderChessBoard();
         renderChessMoves(g.moves_pgn || "");
         updateChessStatus();
+        _chess._lastWsMsgTime = Date.now(); // обновляем таймер после ручного sync
       }
     } catch(e) {}
-  }, 4000);
+  }, 1000); // тикаем каждую секунду, но без запроса если WS ок
 }
 
 function handleChessMessage(msg) {
+  if (msg.type !== "pong") _chess._lastWsMsgTime = Date.now(); // фиксируем активность WS
   if (msg.type === "state") {
     _chess.game = msg.game;
     if (msg.game.status === "active") chessStartGameUI(msg.game);
