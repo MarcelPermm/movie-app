@@ -6154,10 +6154,155 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 }
 
 /* Hand: карты чуть перекрываются */
-.durak-hand { display: flex; padding: 4px 8px 8px; gap: -8px; overflow-x: auto; }
+/* padding-top: 20px даёт пространство для поднятой карты — overflow-x:auto неявно ставит overflow-y:auto */
+.durak-hand { display: flex; padding: 20px 8px 8px; gap: -8px; overflow-x: auto; overflow-y: visible; }
 .durak-hand .durak-card { flex-shrink: 0; margin-right: -8px; transition: transform .15s, box-shadow .15s, margin-right .1s; }
 .durak-hand .durak-card:hover { transform: translateY(-10px); z-index: 5; margin-right: 4px; }
 .durak-hand .durak-card.selected {
   transform: translateY(-16px); z-index: 6; margin-right: 4px;
   outline: 2px solid var(--terracotta); box-shadow: 0 8px 20px rgba(180,72,64,.4);
+}
+
+/* ── Козырная карта: фикс видимости ───────────────────────── */
+/* z-index: -1 прятал карту за фон страницы; left: -14px было слишком мало */
+.durak-deck-wrap { margin-left: 52px; } /* отступ слева для козыря */
+.durak-trump-reveal { left: -46px !important; z-index: 0 !important; top: 50%; transform: translateY(-50%); }
+.trump-card { transform: rotate(90deg) !important; margin-left: 0 !important; z-index: 0 !important; }
+#durak-deck-card { position: relative; z-index: 1; }
+
+/* ════════════════════════════════════════════════════════════════
+   🃏 UNO + 101 — стили карточных игр (cg-* = card game shared)
+════════════════════════════════════════════════════════════════ */
+
+/* ── Общий layout ────────────────────────────────────────────── */
+.cg-layout {
+  display: flex; flex-direction: column;
+  height: calc(100dvh - 56px); padding: 8px; gap: 8px; overflow: hidden;
+}
+
+/* ── Соперники ───────────────────────────────────────────────── */
+.cg-opponents {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; flex-shrink: 0;
+}
+.cg-opponent {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 6px 10px; min-width: 72px;
+}
+.cg-opponent.cg-current {
+  border-color: var(--terracotta); background: rgba(180,72,64,.08);
+}
+.cg-opp-cards { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.cg-card-back-mini {
+  width: 14px; height: 22px; border-radius: 3px;
+  background: repeating-linear-gradient(45deg,#1a3a6a 0,#1a3a6a 2px,#2255aa 2px,#2255aa 4px);
+  border: 1px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); flex-shrink: 0;
+}
+.cg-extra { font-family: 'JetBrains Mono',monospace; font-size: 10px; color: var(--ink-3); }
+
+/* ── Центр (колода + сброс) ──────────────────────────────────── */
+.cg-center {
+  display: flex; gap: 16px; align-items: center; justify-content: center; flex-shrink: 0;
+  padding: 10px 16px; background: var(--card); border-radius: 12px; border: 1px solid var(--rule);
+}
+.cg-deck-area { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cg-deck-count { font-family: 'JetBrains Mono',monospace; font-size: 11px; color: var(--ink-3); }
+.cg-discard { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cg-direction { font-size: 22px; color: var(--ink-3); user-select: none; }
+.cg-status-bar {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  background: var(--card); border-radius: 10px; border: 1px solid var(--rule); flex-shrink: 0;
+}
+
+/* ── Счёт 101 ────────────────────────────────────────────────── */
+.cg-scores { display: flex; flex-direction: column; gap: 2px; }
+.g101-score-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.g101-score-item {
+  font-family: 'JetBrains Mono',monospace; font-size: 12px; color: var(--ink-2);
+  padding: 2px 8px; border-radius: 6px; background: var(--paper-shade);
+}
+.g101-score-danger { color: #cc1111; background: rgba(204,17,17,.1); }
+.g101-score-warn { color: #c96442; }
+.g101-suit-bar {
+  font-size: 30px; line-height: 1; min-width: 36px; text-align: center;
+  padding: 2px 4px; transition: color .2s;
+}
+
+/* ── Карты UNO ───────────────────────────────────────────────── */
+.uno-card {
+  width: 54px; min-width: 54px; height: 82px; flex-shrink: 0;
+  border-radius: 9px; border: 3px solid rgba(255,255,255,.75);
+  box-shadow: 0 2px 8px rgba(0,0,0,.28); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; user-select: none;
+  transition: transform .15s, box-shadow .15s;
+  color: #fff; font-family: 'JetBrains Mono',monospace; font-weight: 900;
+}
+.uno-card:hover { transform: translateY(-8px); box-shadow: 0 8px 20px rgba(0,0,0,.3); }
+.uno-card.selected {
+  transform: translateY(-16px);
+  box-shadow: 0 10px 24px rgba(0,0,0,.4);
+  border-color: #fff; outline: 2px solid rgba(255,255,255,.9);
+}
+.uno-corner {
+  position: absolute; font-size: 12px; font-weight: 900; line-height: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,.35);
+}
+.uno-corner.tl { top: 4px; left: 5px; }
+.uno-corner.br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.uno-center-val { font-size: 26px; font-weight: 900; line-height: 1; text-shadow: 0 2px 4px rgba(0,0,0,.3); }
+
+/* Дикая карта */
+.uno-wild { background: #111 !important; overflow: hidden; }
+.uno-wild-quarters {
+  position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr;
+  border-radius: 7px; overflow: hidden;
+}
+.uno-wild-quarters span { display: block; opacity: .95; }
+.uno-card-center {
+  position: relative; z-index: 2;
+  font-size: 18px; font-weight: 900;
+  background: #111; border-radius: 50%;
+  padding: 4px 6px; color: #fff;
+}
+
+/* UNO: верхняя карта и цветовая полоска */
+.uno-top-card { min-width: 54px; min-height: 82px; }
+.uno-color-bar { height: 8px; border-radius: 4px; width: 54px; margin-top: 2px; transition: background .3s; }
+
+/* UNO: рубашка колоды */
+.uno-deck-pile {
+  width: 54px; height: 82px; border-radius: 9px;
+  background: repeating-linear-gradient(45deg,#1a3a6a 0,#1a3a6a 4px,#2255aa 4px,#2255aa 8px);
+  border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); cursor: pointer;
+}
+
+/* ── Выбор цвета / масти (оверлей) ──────────────────────────── */
+.uno-color-picker, .g101-suit-picker {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center; z-index: 300;
+}
+.uno-color-picker-inner {
+  background: var(--card); border-radius: 16px; padding: 20px 24px;
+  border: 1px solid var(--rule); box-shadow: 0 8px 32px rgba(0,0,0,.35);
+}
+.uno-cp-title {
+  font-family: 'JetBrains Mono',monospace; font-size: 13px; color: var(--ink-2);
+  text-align: center; margin-bottom: 14px;
+}
+.uno-cp-btns { display: flex; gap: 12px; }
+.uno-cp-btn {
+  width: 52px; height: 52px; border-radius: 12px; border: 3px solid rgba(255,255,255,.25);
+  cursor: pointer; font-size: 24px;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .15s, border-color .15s;
+}
+.uno-cp-btn:hover { transform: scale(1.15); border-color: rgba(255,255,255,.8); }
+
+/* ── UNO рука (те же .durak-hand классы, нужен padding-top) ─── */
+.durak-hand .uno-card { margin-right: -10px; }
+.durak-hand .uno-card:last-child { margin-right: 0; }
+.durak-hand .uno-card:hover { transform: translateY(-10px); z-index: 5; margin-right: 2px; }
+.durak-hand .uno-card.selected {
+  transform: translateY(-16px); z-index: 6; margin-right: 2px;
 }

@@ -32,7 +32,11 @@ function _cgConnect(g, code) {
   var uid = g.myUserId;
   var ws = new WebSocket(_cgWsBase() + '/' + g.prefix + '/ws/' + code + '?user_id=' + uid);
   g.ws = ws;
-  ws.onmessage = function(e) { try { g.onMsg(JSON.parse(e.data)); } catch(err) { console.error(g.prefix, err); } };
+  g._lastWsMsg = Date.now();
+  ws.onmessage = function(e) {
+    g._lastWsMsg = Date.now();
+    try { g.onMsg(JSON.parse(e.data)); } catch(err) { console.error(g.prefix, err); }
+  };
   ws.onerror = function() {};
   ws.onclose = function() {
     if (g.code) {
@@ -42,6 +46,20 @@ function _cgConnect(g, code) {
   ws._ping = setInterval(function() {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
   }, 25000);
+  // Polling-страховка: если WS молчит 3+ сек — запрашиваем состояние из БД
+  if (g._poller) clearInterval(g._poller);
+  g._poller = setInterval(function() {
+    if (!g.code) { clearInterval(g._poller); return; }
+    if (Date.now() - g._lastWsMsg < 3000) return;
+    apiFetch('/' + g.prefix + '/games/' + g.code).then(function(resp) {
+      var game = resp.game; var st = game && game.state;
+      if (!st || game.status !== 'active') return;
+      var view = st; view.game_status = 'active'; view.code = g.code;
+      // my_hand from state
+      view.my_hand = st.hands && st.hands[String(uid)] ? st.hands[String(uid)] : (g.myHand || []);
+      g.onMsg({ type: 'state', state: view });
+    }).catch(function() {});
+  }, 2000);
 }
 
 function _cgSend(g, msg) {
@@ -49,6 +67,7 @@ function _cgSend(g, msg) {
 }
 
 function _cgDisconnect(g) {
+  if (g._poller) { clearInterval(g._poller); g._poller = null; }
   if (g.ws) { clearInterval(g.ws._ping); try { g.ws.close(); } catch(e) {} g.ws = null; }
   g.code = null; g.state = null; g.myHand = []; g.selectedCard = null; g.game = null;
   ['create-btn','join-btn','copy-btn','start-btn','back-lobby','back-setup',
