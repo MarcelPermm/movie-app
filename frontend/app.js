@@ -7500,6 +7500,11 @@ function initGamesMode() {
   _showChessScreen("games-lobby");
   const card = $("chess-open-card");
   if (card && !card._init) { card._init = true; card.addEventListener("click", openChessEntry); }
+  const durakCard = $("durak-open-card");
+  if (durakCard && !durakCard._init) {
+    durakCard._init = true;
+    durakCard.addEventListener("click", function() { initDurakMode(); });
+  }
   loadGamesHistory(uid);
 }
 
@@ -7952,4 +7957,553 @@ function updateChessStatus() {
 
 function updateChessStatusText(text) {
   var el = $("chess-status-text"); if (el) el.textContent = text;
+}
+
+// ════════════════════════════════════════════════════════════════
+//  🃏 ДУРАК
+// ════════════════════════════════════════════════════════════════
+
+const DURAK_SUITS = { '♠':'black','♣':'black','♥':'red','♦':'red' };
+const DURAK_RANK_LABELS = { 'J':'J','Q':'Q','K':'K','A':'A' };
+
+const _durak = {
+  ws: null,
+  game: null,
+  state: null,
+  myUserId: null,
+  myHand: [],
+  selectedCards: [],
+  selectedDefense: null,  // { attackCard, selected }
+  code: null,
+};
+
+function _durakWsBase() {
+  const base = (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '') || '';
+  if (base.startsWith('http')) return base.replace(/^http/, 'ws');
+  const loc = window.location;
+  return (loc.protocol === 'https:' ? 'wss' : 'ws') + '://' + loc.host;
+}
+
+function _showDurakScreen(id) {
+  ['durak-setup','durak-lobby','durak-game'].forEach(function(s) {
+    var el = $(s); if (el) el.style.display = s === id ? '' : 'none';
+  });
+}
+
+// ── Инициализация ────────────────────────────────────────────────
+function initDurakMode() {
+  _durakDisconnect();
+  _durak.myUserId = state.user && state.user.id;
+  _showDurakScreen('durak-setup');
+  _initDurakSetup();
+}
+
+function _durakDisconnect() {
+  if (_durak.ws) {
+    clearInterval(_durak.ws._ping);
+    try { _durak.ws.close(); } catch(e) {}
+    _durak.ws = null;
+  }
+  _durak.game = null; _durak.state = null; _durak.myHand = [];
+  _durak.selectedCards = []; _durak.selectedDefense = null; _durak.code = null;
+  // Reset _init flags
+  ['durak-create-btn','durak-join-btn','durak-copy-btn','durak-start-btn',
+   'durak-back-lobby','durak-back-setup','durak-done-btn','durak-take-btn',
+   'durak-go-new','durak-go-lobby'].forEach(function(id) {
+    var el = $(id); if (el) el._init = false;
+  });
+  // Reset radio group listeners
+  ['durak-deck-group','durak-players-group','durak-variant-group','durak-neighbors-group'].forEach(function(id) {
+    var el = $(id); if (el) el._init = false;
+  });
+}
+
+// ── Setup screen ─────────────────────────────────────────────────
+function _initDurakSetup() {
+  // Radio groups
+  ['durak-deck-group','durak-players-group','durak-variant-group','durak-neighbors-group'].forEach(function(gid) {
+    var grp = $(gid); if (!grp || grp._init) return; grp._init = true;
+    grp.addEventListener('click', function(e) {
+      var btn = e.target.closest('.durak-radio'); if (!btn) return;
+      grp.querySelectorAll('.durak-radio').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+    });
+  });
+
+  var backBtn = $('durak-back-lobby');
+  if (backBtn && !backBtn._init) {
+    backBtn._init = true;
+    backBtn.addEventListener('click', function() { _showDurakScreen(null); _showChessScreen('games-lobby'); });
+  }
+
+  var createBtn = $('durak-create-btn');
+  if (createBtn && !createBtn._init) {
+    createBtn._init = true;
+    createBtn.addEventListener('click', _durakCreateGame);
+  }
+
+  var joinBtn = $('durak-join-btn');
+  if (joinBtn && !joinBtn._init) {
+    joinBtn._init = true;
+    joinBtn.addEventListener('click', _durakJoinByCode);
+  }
+
+  var joinInp = $('durak-join-input');
+  if (joinInp && !joinInp._init) {
+    joinInp._init = true;
+    joinInp.addEventListener('keydown', function(e) { if (e.key === 'Enter') _durakJoinByCode(); });
+    joinInp.addEventListener('input', function() { joinInp.value = joinInp.value.toUpperCase(); });
+  }
+}
+
+function _getDurakSetup() {
+  function activeVal(gid) {
+    var btn = document.querySelector('#' + gid + ' .durak-radio.active');
+    return btn ? btn.dataset.val : null;
+  }
+  return {
+    deck_size:      parseInt(activeVal('durak-deck-group')) || 36,
+    max_players:    parseInt(activeVal('durak-players-group')) || 2,
+    variant:        activeVal('durak-variant-group') || 'podkidnoy',
+    neighbors_only: activeVal('durak-neighbors-group') === '1',
+  };
+}
+
+async function _durakCreateGame() {
+  var uid = _durak.myUserId; if (!uid) return;
+  var setup = _getDurakSetup();
+  try {
+    var resp = await apiFetch('/durak/games?user_id=' + uid, {
+      method: 'POST', body: JSON.stringify(setup),
+    });
+    _durak.code = resp.game.code;
+    _durak.game = resp.game;
+    _showDurakWaiting(resp.game, resp.players);
+    _durakConnect(resp.game.code);
+  } catch(e) {
+    toast((e && e.detail) || 'Ошибка создания игры', 'error');
+  }
+}
+
+async function _durakJoinByCode() {
+  var inp = $('durak-join-input');
+  var code = inp ? inp.value.trim().toUpperCase() : '';
+  if (code.length < 4) { toast('Введи код', 'error'); return; }
+  var uid = _durak.myUserId;
+  try {
+    var resp = await apiFetch('/durak/games/' + code + '/join?user_id=' + uid, { method: 'POST' });
+    _durak.code = code;
+    _durak.game = resp.game;
+    if (resp.game.status === 'active') {
+      _durakConnect(code);
+    } else {
+      _showDurakWaiting(resp.game, resp.players);
+      _durakConnect(code);
+    }
+  } catch(e) {
+    toast((e && e.detail) || 'Игра не найдена или уже началась', 'error');
+  }
+}
+
+// ── Зал ожидания ─────────────────────────────────────────────────
+function _showDurakWaiting(game, players) {
+  _showDurakScreen('durak-lobby');
+  var codeEl = $('durak-code-display'); if (codeEl) codeEl.textContent = game.code;
+  var titleEl = $('durak-lobby-title'); if (titleEl) titleEl.textContent = 'Игра создана!';
+  _renderDurakPlayerList(players, game.max_players);
+  _initDurakLobbyBtns(game);
+}
+
+function _renderDurakPlayerList(players, maxPlayers) {
+  var list = $('durak-players-list'); if (!list) return;
+  var html = '';
+  for (var i = 0; i < maxPlayers; i++) {
+    var p = players[i];
+    html += '<div class="durak-lobby-player ' + (p ? 'filled' : 'empty') + '">';
+    html += p ? ('👤 ' + p.display_name) : '⋯ ожидание';
+    html += '</div>';
+  }
+  list.innerHTML = html;
+
+  var dots = $('durak-waiting-dots');
+  var hint  = $('durak-lobby-hint');
+  var start = $('durak-start-btn');
+  var uid   = _durak.myUserId;
+  var isCreator = _durak.game && _durak.game.created_by === uid;
+  var full  = players.length >= maxPlayers;
+
+  if (dots) dots.style.display = full ? 'none' : '';
+  if (hint) hint.textContent = full ? 'Все игроки на месте!' : 'Ожидаем игроков… (' + players.length + '/' + maxPlayers + ')';
+  if (start) start.style.display = (!full && isCreator && players.length >= 2) ? '' : 'none';
+}
+
+function _initDurakLobbyBtns(game) {
+  var backBtn = $('durak-back-setup');
+  if (backBtn && !backBtn._init) {
+    backBtn._init = true;
+    backBtn.addEventListener('click', function() { _durakDisconnect(); _showDurakScreen('durak-setup'); });
+  }
+
+  var copyBtn = $('durak-copy-btn');
+  if (copyBtn && !copyBtn._init) {
+    copyBtn._init = true;
+    copyBtn.addEventListener('click', function() {
+      navigator.clipboard.writeText(game.code).then(function() {
+        copyBtn.textContent = '✓ Скопировано!';
+        setTimeout(function() { copyBtn.textContent = '📋 Скопировать код'; }, 2000);
+      });
+    });
+  }
+
+  var startBtn = $('durak-start-btn');
+  if (startBtn && !startBtn._init) {
+    startBtn._init = true;
+    startBtn.addEventListener('click', async function() {
+      try {
+        await apiFetch('/durak/games/' + game.code + '/start?user_id=' + _durak.myUserId, { method: 'POST' });
+      } catch(e) { toast(e && e.detail || 'Ошибка', 'error'); }
+    });
+  }
+}
+
+// ── WebSocket ────────────────────────────────────────────────────
+function _durakConnect(code) {
+  if (_durak.ws) { try { _durak.ws.close(); } catch(e) {} }
+  var uid = _durak.myUserId;
+  var ws = new WebSocket(_durakWsBase() + '/durak/ws/' + code + '?user_id=' + uid);
+  _durak.ws = ws;
+  ws.onmessage = function(e) {
+    try { _handleDurakMsg(JSON.parse(e.data)); } catch(err) { console.error('durak ws:', err); }
+  };
+  ws.onerror = function() {};
+  ws.onclose = function() {
+    if (_durak.code && $('durak-game') && $('durak-game').style.display !== 'none') {
+      setTimeout(function() { if (_durak.code) _durakConnect(_durak.code); }, 3000);
+    }
+  };
+  ws._ping = setInterval(function() {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' }));
+  }, 25000);
+}
+
+function _handleDurakMsg(msg) {
+  if (msg.type === 'pong') return;
+
+  if (msg.type === 'lobby') {
+    _durak.game = msg.game;
+    _renderDurakPlayerList(msg.players, msg.game.max_players);
+    return;
+  }
+
+  if (msg.type === 'player_joined') {
+    if (_durak.game) _renderDurakPlayerList(msg.players, _durak.game.max_players);
+    return;
+  }
+
+  if (msg.type === 'error') {
+    toast(msg.message, 'error'); return;
+  }
+
+  if (msg.type === 'state') {
+    _durak.state = msg.state;
+    _durak.myHand = msg.state.my_hand || [];
+    if (msg.state.game_status === 'active') {
+      _showDurakScreen('durak-game');
+      _renderDurakGame(msg.state);
+    } else if (msg.state.game_status === 'waiting') {
+      // Still in lobby — update player list
+      var players = (msg.state.players || []);
+      if (_durak.game) _renderDurakPlayerList(players, _durak.game.max_players);
+    }
+    return;
+  }
+
+  if (msg.type === 'game_over') {
+    _showDurakGameOver(msg.loser_id, msg.loser_name);
+    return;
+  }
+}
+
+// ── Рендер игры ──────────────────────────────────────────────────
+function _renderDurakGame(state) {
+  _renderDurakOpponents(state);
+  _renderDurakTable(state);
+  _renderDurakDeck(state);
+  _renderDurakHand(state);
+  _renderDurakStatus(state);
+  _renderDurakButtons(state);
+  _initDurakGameBtns();
+}
+
+function _cardHtml(card, extra) {
+  var rank = card.startsWith('10') ? '10' : card.slice(0, -1);
+  var suit = card.slice(-1);
+  var color = DURAK_SUITS[suit] || 'black';
+  var cls = 'durak-card durak-card-' + color + (extra ? ' ' + extra : '');
+  return '<div class="' + cls + '" data-card="' + card + '">'
+    + '<span class="dc-rank">' + rank + '</span>'
+    + '<span class="dc-suit">' + suit + '</span>'
+    + '</div>';
+}
+
+function _cardBackHtml(count, label) {
+  return '<div class="durak-card-back-wrap">'
+    + '<div class="durak-card-back"></div>'
+    + '<span class="dc-back-count">' + count + '</span>'
+    + (label ? '<span class="dc-back-label">' + label + '</span>' : '')
+    + '</div>';
+}
+
+function _renderDurakOpponents(state) {
+  var el = $('durak-opponents'); if (!el) return;
+  var uid = _durak.myUserId;
+  var players = (state.players || []).filter(function(p) { return p.user_id !== uid; });
+  el.innerHTML = players.map(function(p) {
+    var isAttacker = p.user_id === state.attacker;
+    var isDefender = p.user_id === state.defender;
+    var role = isAttacker ? '⚔' : isDefender ? '🛡' : '';
+    var finished = p.finished;
+    var count = state.hands[String(p.user_id)] || 0;
+    return '<div class="durak-opponent' + (finished ? ' finished' : '') + '">'
+      + '<div class="durak-opp-name">' + role + ' ' + p.display_name + '</div>'
+      + (finished ? '<div class="durak-opp-out">вышел</div>'
+          : _cardBackHtml(count, null))
+      + '</div>';
+  }).join('');
+}
+
+function _renderDurakDeck(state) {
+  var wrap = $('durak-deck-wrap');
+  var countEl = $('durak-deck-count');
+  var trump = $('durak-trump-reveal');
+  if (countEl) countEl.textContent = state.deck_count || 0;
+  if (trump) {
+    if (state.deck_count > 0 && state.trump_card) {
+      trump.innerHTML = _cardHtml(state.trump_card, 'trump-card');
+      trump.style.display = '';
+    } else {
+      trump.style.display = 'none';
+    }
+  }
+  if (wrap) {
+    var deckCard = wrap.querySelector('.durak-card-back');
+    if (deckCard) deckCard.style.display = state.deck_count > 0 ? '' : 'none';
+  }
+  var discardEl = $('durak-discard-count');
+  if (discardEl) discardEl.textContent = state.discard_count > 0 ? (state.discard_count + ' карт в отбое') : '';
+}
+
+function _renderDurakTable(state) {
+  var area = $('durak-table-area');
+  var empty = $('durak-table-empty');
+  if (!area) return;
+  var table = state.table || [];
+  var uid = _durak.myUserId;
+  var isDefender = state.defender === uid;
+
+  if (!table.length) {
+    if (empty) empty.style.display = '';
+    area.querySelectorAll('.durak-table-slot').forEach(function(el) { el.remove(); });
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  // Re-render slots
+  area.querySelectorAll('.durak-table-slot').forEach(function(el) { el.remove(); });
+  table.forEach(function(slot, i) {
+    var div = document.createElement('div');
+    div.className = 'durak-table-slot';
+    div.innerHTML = _cardHtml(slot.attack, 'table-attack');
+    if (slot.defense) {
+      div.innerHTML += _cardHtml(slot.defense, 'table-defense');
+    } else if (isDefender) {
+      div.innerHTML += '<div class="durak-table-placeholder" data-attack="' + slot.attack + '">?</div>';
+    }
+    area.appendChild(div);
+  });
+
+  // Attach click for defense
+  if (isDefender && _durak.selectedDefense) {
+    area.querySelectorAll('.durak-table-placeholder').forEach(function(ph) {
+      ph.addEventListener('click', function() {
+        var attackCard = ph.dataset.attack;
+        var defCard = _durak.selectedDefense;
+        _durak.selectedDefense = null;
+        _durak.selectedCards = [];
+        _renderDurakHand(state);
+        _sendDurakMsg({ type: 'defend', attack_card: attackCard, defense_card: defCard });
+      });
+    });
+  }
+}
+
+function _renderDurakHand(state) {
+  var hand = $('durak-hand'); if (!hand) return;
+  var uid   = _durak.myUserId;
+  var cards = _durak.myHand;
+  var isAttacker  = (state.attackers || []).includes(uid) || state.attacker === uid;
+  var isDefender  = state.defender === uid;
+  var phase       = state.phase;
+  var canAct = (phase === 'attack' || phase === 'throwing' || phase === 'defense')
+    && !state.finished_players.includes(uid);
+
+  hand.innerHTML = cards.map(function(card) {
+    var isSel = _durak.selectedCards.includes(card) || _durak.selectedDefense === card;
+    var cls = isSel ? 'selected' : '';
+    return _cardHtml(card, cls);
+  }).join('');
+
+  if (!canAct) return;
+
+  hand.querySelectorAll('.durak-card').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var card = el.dataset.card;
+      if (isDefender && phase === 'defense') {
+        // Select defense card then click placeholder on table
+        if (_durak.selectedDefense === card) {
+          _durak.selectedDefense = null;
+        } else {
+          _durak.selectedDefense = card;
+          _durak.selectedCards = [];
+        }
+        _renderDurakHand(state);
+        _renderDurakTable(state);
+      } else if ((isAttacker || phase === 'throwing') && (phase === 'attack' || phase === 'throwing' || phase === 'defense')) {
+        // Toggle attack card
+        var idx = _durak.selectedCards.indexOf(card);
+        if (idx >= 0) { _durak.selectedCards.splice(idx, 1); }
+        else { _durak.selectedCards.push(card); }
+        _renderDurakHand(state);
+      }
+    });
+    el.addEventListener('dblclick', function() {
+      var card = el.dataset.card;
+      // Double click: immediately play as attack
+      if (!isDefender && (phase === 'attack' || phase === 'throwing' || phase === 'defense')) {
+        _durak.selectedCards = [card];
+        _durakDoAttack(state);
+      }
+    });
+  });
+}
+
+function _durakDoAttack(state) {
+  var cards = _durak.selectedCards.slice();
+  if (!cards.length) return;
+  _durak.selectedCards = [];
+  _sendDurakMsg({ type: 'attack', cards: cards });
+}
+
+function _renderDurakStatus(state) {
+  var el = $('durak-status-text'); if (!el) return;
+  var uid = _durak.myUserId;
+  var phase = state.phase;
+  var isAttacker = state.attacker === uid;
+  var isDefender = state.defender === uid;
+  var isFinished = (state.finished_players || []).includes(uid);
+
+  if (phase === 'finished') { el.textContent = 'Игра завершена!'; return; }
+  if (isFinished)           { el.textContent = '✅ Вы вышли из игры!'; return; }
+
+  var attackerName = _playerName(state, state.attacker);
+  var defenderName = _playerName(state, state.defender);
+
+  if (phase === 'attack') {
+    el.textContent = isAttacker ? '⚔ Ваша атака!' : (attackerName + ' атакует');
+  } else if (phase === 'defense') {
+    if (isDefender) {
+      el.textContent = _durak.selectedDefense
+        ? 'Выбери карту на столе для отбоя'
+        : '🛡 Отбивайся! Выбери карту и кликни на атакующую';
+    } else if (isAttacker || (state.attackers || []).includes(uid)) {
+      el.textContent = '+ Можно подкинуть карту';
+    } else {
+      el.textContent = defenderName + ' защищается';
+    }
+  } else if (phase === 'throwing') {
+    el.textContent = isDefender ? '✅ Все карты отбиты' : '+ Подкидывай!';
+  }
+}
+
+function _playerName(state, uid) {
+  var p = (state.players || []).find(function(pl) { return pl.user_id === uid; });
+  return p ? p.display_name : '?';
+}
+
+function _renderDurakButtons(state) {
+  var uid = _durak.myUserId;
+  var phase = state.phase;
+  var isAttacker = state.attacker === uid || (state.attackers || []).includes(uid);
+  var isDefender = state.defender === uid;
+
+  var doneBtn = $('durak-done-btn');
+  var takeBtn = $('durak-take-btn');
+
+  if (doneBtn) {
+    var allBeaten = (state.table || []).every(function(sl) { return sl.defense !== null; });
+    doneBtn.style.display = (isAttacker && (phase === 'throwing' || (phase === 'defense' && allBeaten))) ? '' : 'none';
+  }
+  if (takeBtn) {
+    takeBtn.style.display = (isDefender && phase === 'defense') ? '' : 'none';
+  }
+}
+
+function _initDurakGameBtns() {
+  var doneBtn = $('durak-done-btn');
+  if (doneBtn && !doneBtn._init) {
+    doneBtn._init = true;
+    doneBtn.addEventListener('click', function() {
+      // If cards selected, attack first
+      if (_durak.selectedCards.length > 0) {
+        _durakDoAttack(_durak.state);
+      } else {
+        _sendDurakMsg({ type: 'done_attack' });
+      }
+    });
+  }
+
+  var takeBtn = $('durak-take-btn');
+  if (takeBtn && !takeBtn._init) {
+    takeBtn._init = true;
+    takeBtn.addEventListener('click', function() {
+      _sendDurakMsg({ type: 'take' });
+    });
+  }
+
+  var goNew = $('durak-go-new');
+  if (goNew && !goNew._init) {
+    goNew._init = true;
+    goNew.addEventListener('click', function() {
+      var goEl = $('durak-gameover'); if (goEl) goEl.style.display = 'none';
+      _durakDisconnect(); _showDurakScreen('durak-setup'); initDurakMode();
+    });
+  }
+
+  var goLobby = $('durak-go-lobby');
+  if (goLobby && !goLobby._init) {
+    goLobby._init = true;
+    goLobby.addEventListener('click', function() {
+      _durakDisconnect(); _showDurakScreen(null); _showChessScreen('games-lobby');
+    });
+  }
+}
+
+function _sendDurakMsg(msg) {
+  if (_durak.ws && _durak.ws.readyState === WebSocket.OPEN) {
+    _durak.ws.send(JSON.stringify(msg));
+  }
+}
+
+function _showDurakGameOver(loserId, loserName) {
+  var uid = _durak.myUserId;
+  var goEl    = $('durak-gameover');
+  var iconEl  = $('durak-go-icon');
+  var titleEl = $('durak-go-title');
+  var subEl   = $('durak-go-sub');
+  if (!goEl) return;
+  var isLoser = loserId === uid;
+  if (iconEl)  iconEl.textContent  = isLoser ? '🤡' : '🏆';
+  if (titleEl) titleEl.textContent = isLoser ? 'Ты Дурак!' : 'Ты вышел!';
+  if (subEl)   subEl.textContent   = isLoser ? 'Не повезло 😅' : ('Дурак: ' + loserName);
+  goEl.style.display = '';
 }

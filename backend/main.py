@@ -112,6 +112,11 @@ async def startup():
         database.init_chess_tables()
         print("✅ Шахматные таблицы готовы")
     except Exception as e:
+        print(f"⚠️  init_chess_tables: {e}")
+    try:
+        database.init_durak_tables()
+        print("✅ Таблицы Дурака готовы")
+    except Exception as e:
         print(f"⚠️  init_chess_tables error: {e}")
     print("✅ База данных готова")
     if not TMDB_API_KEY:
@@ -2060,6 +2065,221 @@ async def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):
 async def delete_goal(goal_id: int, user_id: int = 1):
     database.delete_goal(goal_id, user_id)
     return {"ok": True}
+
+# ════════════════════════════════════════════════════════════════
+#  ДУРАК
+# ════════════════════════════════════════════════════════════════
+import durak_logic
+
+class DurakConnectionManager:
+    def __init__(self):
+        self.rooms: dict[str, list] = {}
+
+    async def connect(self, ws: WebSocket, code: str):
+        await ws.accept()
+        self.rooms.setdefault(code, []).append(ws)
+
+    def disconnect(self, ws: WebSocket, code: str):
+        try: self.rooms.get(code, []).remove(ws)
+        except ValueError: pass
+
+    async def broadcast(self, code: str, data: dict):
+        for ws in list(self.rooms.get(code, [])):
+            try: await ws.send_json(data)
+            except: self.disconnect(ws, code)
+
+    async def send_to(self, ws: WebSocket, data: dict):
+        try: await ws.send_json(data)
+        except: pass
+
+durak_manager = DurakConnectionManager()
+
+
+def _durak_full_state(code: str) -> tuple:
+    """Returns (game, players) or (None, None)."""
+    game = database.get_durak_game(code)
+    if not game: return None, None
+    players = database.get_durak_players(game['id'])
+    return game, players
+
+
+async def _durak_broadcast_state(code: str, game: dict, players: list):
+    """Send personalised state to each connected player."""
+    state = game.get('state') or {}
+    if isinstance(state, str):
+        import json
+        state = json.loads(state)
+    for p in players:
+        uid = p['user_id']
+        view = durak_logic.public_state(state, uid, players)
+        view['my_hand'] = state.get('hands', {}).get(str(uid), [])
+        view['game_status'] = game['status']
+        view['code'] = code
+        # Find the right WS for this player
+        for ws in list(durak_manager.rooms.get(code, [])):
+            ws_uid = getattr(ws, '_durak_uid', None)
+            if ws_uid == uid:
+                await durak_manager.send_to(ws, {'type': 'state', 'state': view})
+
+
+class DurakCreateReq(BaseModel):
+    deck_size:      int  = 36
+    max_players:    int  = 2
+    variant:        str  = 'podkidnoy'
+    neighbors_only: bool = False
+
+
+@app.post('/durak/games')
+async def durak_create(req: DurakCreateReq, user_id: int = Query(...)):
+    if req.deck_size not in (24, 36, 52):
+        raise HTTPException(400, 'deck_size must be 24, 36 or 52')
+    if not (2 <= req.max_players <= 6):
+        raise HTTPException(400, 'max_players must be 2–6')
+    if req.variant not in ('podkidnoy', 'perevodnoj'):
+        raise HTTPException(400, 'invalid variant')
+    code = _gen_code()
+    for _ in range(10):
+        if not database.get_durak_game(code): break
+        code = _gen_code()
+    game = database.create_durak_game(
+        code, user_id, req.deck_size, req.max_players, req.variant, req.neighbors_only)
+    players = database.get_durak_players(game['id'])
+    return {'game': game, 'players': players}
+
+
+@app.get('/durak/games/{code}')
+async def durak_get(code: str):
+    game, players = _durak_full_state(code)
+    if not game: raise HTTPException(404, 'Игра не найдена')
+    import json
+    state = game.get('state') or {}
+    if isinstance(state, str): state = json.loads(state)
+    game['state'] = state
+    return {'game': game, 'players': players}
+
+
+@app.post('/durak/games/{code}/join')
+async def durak_join(code: str, user_id: int = Query(...)):
+    game = database.get_durak_game(code)
+    if not game: raise HTTPException(404, 'Игра не найдена')
+    if game['status'] != 'waiting':
+        raise HTTPException(400, 'Игра уже началась или завершена')
+    players = database.get_durak_players(game['id'])
+    # Already in?
+    if any(p['user_id'] == user_id for p in players):
+        return {'game': game, 'players': players}
+    if len(players) >= game['max_players']:
+        raise HTTPException(400, 'Все места заняты')
+    seat = len(players)
+    database.join_durak_game(game['id'], user_id, seat)
+    players = database.get_durak_players(game['id'])
+    # Notify existing players
+    await durak_manager.broadcast(code, {
+        'type': 'player_joined',
+        'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players],
+    })
+    # Auto-start when lobby is full
+    if len(players) == game['max_players']:
+        player_ids = [p['user_id'] for p in players]
+        state = durak_logic.init_game(player_ids, game['deck_size'], game['variant'], game['neighbors_only'])
+        database.save_durak_state(code, state, status='active')
+        game = database.get_durak_game(code)
+        await _durak_broadcast_state(code, game, players)
+    return {'game': game, 'players': players}
+
+
+@app.post('/durak/games/{code}/start')
+async def durak_start(code: str, user_id: int = Query(...)):
+    game = database.get_durak_game(code)
+    if not game: raise HTTPException(404, 'Игра не найдена')
+    if game['created_by'] != user_id:
+        raise HTTPException(403, 'Только создатель может начать')
+    if game['status'] != 'waiting':
+        raise HTTPException(400, 'Уже началась')
+    players = database.get_durak_players(game['id'])
+    if len(players) < 2:
+        raise HTTPException(400, 'Нужно минимум 2 игрока')
+    player_ids = [p['user_id'] for p in players]
+    state = durak_logic.init_game(player_ids, game['deck_size'], game['variant'], game['neighbors_only'])
+    database.save_durak_state(code, state, status='active')
+    game = database.get_durak_game(code)
+    await _durak_broadcast_state(code, game, players)
+    return {'ok': True}
+
+
+@app.websocket('/durak/ws/{code}')
+async def durak_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0)):
+    await durak_manager.connect(websocket, code)
+    websocket._durak_uid = user_id
+    import json as _json
+
+    game, players = _durak_full_state(code)
+    if game:
+        state = game.get('state') or {}
+        if isinstance(state, str): state = _json.loads(state)
+        game['state'] = state
+        if state:
+            view = durak_logic.public_state(state, user_id, players)
+            view['my_hand'] = state.get('hands', {}).get(str(user_id), [])
+            view['game_status'] = game['status']
+            view['code'] = code
+            await durak_manager.send_to(websocket, {'type': 'state', 'state': view})
+        else:
+            await durak_manager.send_to(websocket, {
+                'type': 'lobby',
+                'game': {k: v for k, v in game.items() if k != 'state'},
+                'players': [{'user_id': p['user_id'], 'display_name': p['display_name'], 'seat': p['seat']} for p in players],
+            })
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get('type')
+            game, players = _durak_full_state(code)
+            if not game:
+                continue
+            state = game.get('state') or {}
+            if isinstance(state, str): state = _json.loads(state)
+
+            error = None
+            new_state = state
+
+            if msg_type == 'attack':
+                new_state, error = durak_logic.do_attack(state, user_id, data.get('cards', []))
+            elif msg_type == 'defend':
+                new_state, error = durak_logic.do_defend(state, user_id, data['attack_card'], data['defense_card'])
+            elif msg_type == 'transfer':
+                new_state, error = durak_logic.do_transfer(state, user_id, data['card'])
+            elif msg_type == 'take':
+                new_state, error = durak_logic.do_take(state, user_id)
+            elif msg_type == 'done_attack':
+                new_state, error = durak_logic.do_done_attack(state, user_id)
+            elif msg_type == 'ping':
+                await durak_manager.send_to(websocket, {'type': 'pong'})
+                continue
+
+            if error:
+                await durak_manager.send_to(websocket, {'type': 'error', 'message': error})
+                continue
+
+            status = 'finished' if new_state.get('phase') == 'finished' else 'active'
+            database.save_durak_state(code, new_state, status=status)
+            game = database.get_durak_game(code)
+            game['state'] = new_state
+            await _durak_broadcast_state(code, game, players)
+
+            if new_state.get('phase') == 'finished':
+                loser_id = new_state.get('loser')
+                loser_name = next((p['display_name'] for p in players if p['user_id'] == loser_id), '?')
+                await durak_manager.broadcast(code, {
+                    'type': 'game_over',
+                    'loser_id': loser_id,
+                    'loser_name': loser_name,
+                })
+
+    except WebSocketDisconnect:
+        durak_manager.disconnect(websocket, code)
+
 
 # ════════════════════════════════════════════════════════════════
 #  ШАХМАТЫ

@@ -629,6 +629,11 @@
             <div class="game-card-name">Шахматы</div>
             <div class="game-card-desc">2 игрока · онлайн</div>
           </div>
+          <div class="game-card" id="durak-open-card">
+            <div class="game-card-icon">🃏</div>
+            <div class="game-card-name">Дурак</div>
+            <div class="game-card-desc">2–6 игроков · онлайн</div>
+          </div>
         </div>
         <!-- История последних партий -->
         <div class="games-history-wrap" id="games-history-wrap" style="display:none">
@@ -736,11 +741,125 @@
       </div>
 
     </div>
+
+    <!-- ══ ДУРАК ══════════════════════════════════════════════ -->
+
+    <!-- Настройки / создать -->
+    <div id="durak-setup" style="display:none">
+      <button class="games-back-btn" id="durak-back-lobby">← Игры</button>
+      <div class="durak-setup-wrap">
+        <div class="durak-setup-title">🃏 Дурак</div>
+        <div class="durak-setup-row">
+          <span class="durak-setup-lbl">Колода</span>
+          <div class="durak-radio-group" id="durak-deck-group">
+            <button class="durak-radio" data-val="24">24 карты</button>
+            <button class="durak-radio active" data-val="36">36 карт</button>
+            <button class="durak-radio" data-val="52">52 карты</button>
+          </div>
+        </div>
+        <div class="durak-setup-row">
+          <span class="durak-setup-lbl">Игроков</span>
+          <div class="durak-radio-group" id="durak-players-group">
+            <button class="durak-radio active" data-val="2">2</button>
+            <button class="durak-radio" data-val="3">3</button>
+            <button class="durak-radio" data-val="4">4</button>
+            <button class="durak-radio" data-val="5">5</button>
+            <button class="durak-radio" data-val="6">6</button>
+          </div>
+        </div>
+        <div class="durak-setup-row">
+          <span class="durak-setup-lbl">Вариант</span>
+          <div class="durak-radio-group" id="durak-variant-group">
+            <button class="durak-radio active" data-val="podkidnoy">Подкидной</button>
+            <button class="durak-radio" data-val="perevodnoj">Переводной</button>
+          </div>
+        </div>
+        <div class="durak-setup-row" id="durak-neighbors-row">
+          <span class="durak-setup-lbl">Атакуют</span>
+          <div class="durak-radio-group" id="durak-neighbors-group">
+            <button class="durak-radio active" data-val="0">Все</button>
+            <button class="durak-radio" data-val="1">Только соседи</button>
+          </div>
+        </div>
+        <div class="durak-setup-actions">
+          <button class="chess-action-btn" id="durak-create-btn">Создать игру</button>
+          <div class="durak-setup-divider">или</div>
+          <div class="durak-join-row">
+            <input class="chess-code-input" id="durak-join-input" placeholder="ABCD12" maxlength="6" />
+            <button class="chess-action-btn" id="durak-join-btn">Войти по коду</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Зал ожидания -->
+    <div id="durak-lobby" style="display:none">
+      <button class="games-back-btn" id="durak-back-setup">← Настройки</button>
+      <div class="chess-waiting-wrap">
+        <div class="chess-waiting-icon">🃏</div>
+        <div class="chess-waiting-title" id="durak-lobby-title">Игра создана!</div>
+        <div class="chess-waiting-sub" id="durak-lobby-sub">Поделись кодом</div>
+        <div class="chess-code-display" id="durak-code-display">------</div>
+        <button class="chess-copy-btn" id="durak-copy-btn">📋 Скопировать код</button>
+        <div id="durak-players-list" class="durak-players-list"></div>
+        <button class="chess-action-btn" id="durak-start-btn" style="display:none">▶ Начать игру</button>
+        <div class="chess-waiting-dots" id="durak-waiting-dots"><span></span><span></span><span></span></div>
+        <div class="chess-waiting-hint" id="durak-lobby-hint">Ожидаем игроков…</div>
+      </div>
+    </div>
+
+    <!-- Игровой стол -->
+    <div id="durak-game" style="display:none">
+      <div class="durak-table-layout">
+        <!-- Верх: соперники -->
+        <div class="durak-opponents" id="durak-opponents"></div>
+        <!-- Середина: стол + колода -->
+        <div class="durak-mid">
+          <div class="durak-deck-area">
+            <div class="durak-deck-wrap" id="durak-deck-wrap">
+              <div class="durak-card-back" id="durak-deck-card"></div>
+              <div class="durak-trump-reveal" id="durak-trump-reveal"></div>
+            </div>
+            <div class="durak-deck-count" id="durak-deck-count">36</div>
+          </div>
+          <div class="durak-table-area" id="durak-table-area">
+            <div class="durak-table-empty" id="durak-table-empty">Стол пуст — ваш ход</div>
+          </div>
+          <div class="durak-discard-area">
+            <div class="durak-discard-pile" id="durak-discard-pile"></div>
+            <div class="durak-discard-count" id="durak-discard-count"></div>
+          </div>
+        </div>
+        <!-- Статус + кнопки -->
+        <div class="durak-status-bar" id="durak-status-bar">
+          <span class="durak-status-text" id="durak-status-text">Загрузка…</span>
+          <div class="durak-action-btns">
+            <button class="durak-btn durak-btn-done" id="durak-done-btn" style="display:none">✓ Хватит</button>
+            <button class="durak-btn durak-btn-take" id="durak-take-btn" style="display:none">↙ Забрать</button>
+          </div>
+        </div>
+        <!-- Низ: ваша рука -->
+        <div class="durak-hand-wrap">
+          <div class="durak-hand" id="durak-hand"></div>
+        </div>
+      </div>
+      <!-- Конец игры -->
+      <div class="chess-gameover" id="durak-gameover" style="display:none">
+        <div class="chess-gameover-inner">
+          <div class="chess-gameover-icon" id="durak-go-icon">🃏</div>
+          <div class="chess-gameover-title" id="durak-go-title">Конец игры</div>
+          <div class="chess-gameover-sub" id="durak-go-sub"></div>
+          <button class="chess-action-btn" id="durak-go-new">Ещё раз</button>
+          <button class="chess-action-btn chess-action-btn-sec" id="durak-go-lobby">В лобби</button>
+        </div>
+      </div>
+    </div>
+
   </section>
 
   <div class="toast-container" id="toast-container"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
-  <script src="config.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="config.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

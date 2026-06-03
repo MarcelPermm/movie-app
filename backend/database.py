@@ -1969,3 +1969,114 @@ def delete_trip_expense(exp_id: int, user_id: int):
         conn.commit()
     finally:
         conn.close()
+
+
+# ─── Дурак ────────────────────────────────────────────────────────────────────
+
+def init_durak_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS durak_games (
+                id             SERIAL PRIMARY KEY,
+                code           VARCHAR(8) UNIQUE NOT NULL,
+                status         VARCHAR(20) DEFAULT 'waiting',
+                deck_size      INTEGER DEFAULT 36,
+                max_players    INTEGER DEFAULT 2,
+                variant        VARCHAR(20) DEFAULT 'podkidnoy',
+                neighbors_only BOOLEAN DEFAULT FALSE,
+                state          JSONB DEFAULT '{}',
+                created_by     INTEGER REFERENCES users(id),
+                created_at     TIMESTAMP DEFAULT NOW(),
+                updated_at     TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS durak_players (
+                id        SERIAL PRIMARY KEY,
+                game_id   INTEGER REFERENCES durak_games(id) ON DELETE CASCADE,
+                user_id   INTEGER REFERENCES users(id),
+                seat      INTEGER,
+                joined_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE(game_id, user_id)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_durak_players_game ON durak_players(game_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_durak_game(code, created_by, deck_size, max_players, variant, neighbors_only):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO durak_games (code, created_by, deck_size, max_players, variant, neighbors_only)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+        """, (code, created_by, deck_size, max_players, variant, neighbors_only))
+        game = dict(cur.fetchone())
+        cur.execute("INSERT INTO durak_players (game_id, user_id, seat) VALUES (%s, %s, 0)",
+                    (game['id'], created_by))
+        conn.commit()
+        return game
+    finally:
+        conn.close()
+
+
+def get_durak_game(code):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM durak_games WHERE code = %s", (code,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_durak_players(game_id):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT dp.*, u.display_name, u.username
+            FROM durak_players dp JOIN users u ON dp.user_id = u.id
+            WHERE dp.game_id = %s ORDER BY dp.seat
+        """, (game_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def join_durak_game(game_id, user_id, seat):
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO durak_players (game_id, user_id, seat)
+            VALUES (%s, %s, %s) ON CONFLICT DO NOTHING
+        """, (game_id, user_id, seat))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def save_durak_state(code, state, status=None):
+    import json as _json
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        if status:
+            cur.execute(
+                "UPDATE durak_games SET state=%s, status=%s, updated_at=NOW() WHERE code=%s",
+                (_json.dumps(state), status, code))
+        else:
+            cur.execute(
+                "UPDATE durak_games SET state=%s, updated_at=NOW() WHERE code=%s",
+                (_json.dumps(state), code))
+        conn.commit()
+    finally:
+        conn.close()
