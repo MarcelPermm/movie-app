@@ -7474,8 +7474,9 @@ const _chess = {
   legalSquares: [],
   myUserId: null,
   pendingPromotion: null,
-  _gamePoller: null,   // sync polling during active game
-  _lastFen: null,      // FEN last seen, to detect changes
+  _gamePoller: null,
+  _lastFen: null,
+  isLocal: false,     // true = играем вдвоём на одном экране
 };
 
 function _chessApiBase() {
@@ -7556,6 +7557,59 @@ function initChessEntry() {
     joinInput._init = true;
     joinInput.addEventListener("keydown", function(e) { if (e.key === "Enter") chessJoinGame(); });
     joinInput.addEventListener("input", function() { joinInput.value = joinInput.value.toUpperCase(); });
+  }
+  const localBtn = $("chess-local-btn");
+  if (localBtn && !localBtn._init) {
+    localBtn._init = true;
+    localBtn.addEventListener("click", chessStartLocal);
+  }
+}
+
+// ── Локальная игра: один экран, два игрока ───────────────────────
+function chessStartLocal() {
+  _chess.isLocal = true;
+  _chess.myColor = "white";   // начинаем с перспективы белых
+  _chess.engine  = new Chess();
+  _chess.selected = null;
+  _chess.legalSquares = [];
+  _chess.game = { code: null, status: "active" };
+
+  _showChessScreen("chess-game");
+
+  // Имена
+  var me = (state.user && state.user.display_name) || "Игрок";
+  var topName    = $("chess-top-name");    if (topName)    topName.textContent    = me;
+  var botName    = $("chess-bottom-name"); if (botName)    botName.textContent    = me;
+  var topColor   = $("chess-top-color");   if (topColor)   topColor.textContent   = "♚ чёрные";
+  var botColor   = $("chess-bottom-color");if (botColor)   botColor.textContent   = "♙ белые";
+  var topAv      = $("chess-top-avatar");  if (topAv)      topAv.textContent      = "♚";
+  var botAv      = $("chess-bottom-avatar");if (botAv)     botAv.textContent      = "♔";
+
+  // Прячем кнопки онлайн-режима, показываем "Новая игра"
+  var resignBtn = $("chess-resign-btn");  if (resignBtn) resignBtn.style.display = "none";
+  var drawBtn   = $("chess-draw-btn");    if (drawBtn)   drawBtn.style.display   = "none";
+
+  renderChessBoard();
+  renderChessMoves("");
+  updateChessStatus();
+  _initLocalGameOverBtns();
+}
+
+function _initLocalGameOverBtns() {
+  var goNew = $("chess-gameover-new");
+  if (goNew && !goNew._init) {
+    goNew._init = true;
+    goNew.addEventListener("click", function() {
+      var goEl = $("chess-gameover"); if (goEl) goEl.style.display = "none";
+      chessDisconnect(); chessStartLocal();
+    });
+  }
+  var goLobby = $("chess-gameover-lobby");
+  if (goLobby && !goLobby._init) {
+    goLobby._init = true;
+    goLobby.addEventListener("click", function() {
+      chessDisconnect(); _showChessScreen("chess-entry");
+    });
   }
 }
 
@@ -7686,6 +7740,7 @@ function chessDisconnect() {
   _chess.legalSquares = [];
   _chess.pendingPromotion = null;
   _chess._lastFen = null;
+  _chess.isLocal = false;
   // Сброс _init флагов кнопок — чтобы новая игра заново вешала обработчики
   ["chess-resign-btn","chess-draw-btn","chess-draw-accept","chess-draw-decline",
    "chess-gameover-new","chess-gameover-lobby","chess-back-from-waiting","chess-copy-code-btn"].forEach(function(id) {
@@ -7868,7 +7923,10 @@ function renderChessBoard() {
 function onChessSquareClick(sq) {
   var engine = _chess.engine; var myColor = _chess.myColor;
   if (!engine || !myColor) return;
-  var isMyTurn = (engine.turn() === "w" && myColor === "white") || (engine.turn() === "b" && myColor === "black");
+  // В локальном режиме — ходить может тот, чья очередь
+  var isMyTurn = _chess.isLocal
+    ? true
+    : ((engine.turn() === "w" && myColor === "white") || (engine.turn() === "b" && myColor === "black"));
   if (_chess.selected && _chess.legalSquares.indexOf(sq) >= 0) { chessDoMove(_chess.selected, sq); return; }
   if (!isMyTurn) { _chess.selected = null; _chess.legalSquares = []; renderChessBoard(); return; }
   var piece = engine.get(sq);
@@ -7888,9 +7946,30 @@ function chessDoMove(from, to) {
   if (isPromo) { showPromotionDialog(from, to); return; }
   var move = engine.move({ from: from, to: to, promotion: "q" }); if (!move) return;
   _chess.selected = null; _chess.legalSquares = [];
+
+  // В локальном режиме: переворачиваем доску после хода
+  if (_chess.isLocal) {
+    _chess.myColor = engine.turn() === "w" ? "white" : "black";
+    var topColor = $("chess-top-color");
+    var botColor = $("chess-bottom-color");
+    var topAv    = $("chess-top-avatar");
+    var botAv    = $("chess-bottom-avatar");
+    if (_chess.myColor === "white") {
+      if (topColor) topColor.textContent = "♚ чёрные";
+      if (botColor) botColor.textContent = "♙ белые";
+      if (topAv) topAv.textContent = "♚"; if (botAv) botAv.textContent = "♔";
+    } else {
+      if (topColor) topColor.textContent = "♙ белые";
+      if (botColor) botColor.textContent = "♚ чёрные";
+      if (topAv) topAv.textContent = "♔"; if (botAv) botAv.textContent = "♚";
+    }
+  }
+
   renderChessBoard(); renderChessMoves(engine.pgn()); updateChessStatus();
   var go = checkChessGameOver();
-  if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
+
+  // Онлайн-режим: шлём ход через WebSocket
+  if (!_chess.isLocal && _chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
     _chess.ws.send(JSON.stringify({
       type: go ? "game_over" : "move", from: from, to: to,
       fen: engine.fen(), pgn: engine.pgn(), san: move.san,
@@ -7903,7 +7982,8 @@ function showPromotionDialog(from, to) {
   _chess.pendingPromotion = { from: from, to: to };
   var overlay = document.createElement("div");
   overlay.className = "chess-promo-overlay";
-  var color = _chess.myColor === "white" ? "w" : "b";
+  // В локальном режиме используем цвет того кто ходит сейчас
+  var color = _chess.isLocal ? _chess.engine.turn() : (_chess.myColor === "white" ? "w" : "b");
   var pieces = ["q","r","b","n"];
   var wPieces = ["♕","♖","♗","♘"]; var bPieces = ["♛","♜","♝","♞"];
   var btns = pieces.map(function(p, i) {
@@ -7978,16 +8058,29 @@ function renderChessMoves(pgn) {
 function updateChessStatus() {
   var engine = _chess.engine; var myColor = _chess.myColor; if (!engine) return;
   var turn = engine.turn() === "w" ? "white" : "black";
-  var isMyTurn = turn === myColor;
   var text = "", dotCls = "";
+
   if (engine.game_over()) {
-    text = engine.in_checkmate() ? (isMyTurn ? "Вам поставили мат" : "Мат!") : "Ничья";
+    if (engine.in_checkmate()) {
+      var loser = turn === "white" ? "Белые" : "Чёрные";
+      text = loser + " получили мат!";
+    } else {
+      text = "Ничья";
+    }
     dotCls = "dot-over";
-  } else if (isMyTurn) {
-    text = engine.in_check() ? "Ваш ход — шах!" : "Ваш ход";
+  } else if (_chess.isLocal) {
+    // В локальном режиме — просто показываем чья очередь
+    var whoLabel = turn === "white" ? "⬜ Ход белых" : "⬛ Ход чёрных";
+    text = engine.in_check() ? whoLabel + " — шах!" : whoLabel;
     dotCls = "dot-mine";
   } else {
-    text = "Ход соперника…"; dotCls = "dot-opp";
+    var isMyTurn = turn === myColor;
+    if (isMyTurn) {
+      text = engine.in_check() ? "Ваш ход — шах!" : "Ваш ход";
+      dotCls = "dot-mine";
+    } else {
+      text = "Ход соперника…"; dotCls = "dot-opp";
+    }
   }
   var st = $("chess-status-text"); if (st) st.textContent = text;
   var sd = $("chess-status-dot"); if (sd) sd.className = "chess-status-dot " + dotCls;

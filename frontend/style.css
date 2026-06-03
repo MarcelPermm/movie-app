@@ -6070,3 +6070,13 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   .durak-card-back { width: 42px; height: 66px; }
   .durak-table-layout { padding: 8px; gap: 8px; }
 }
+
+/* Chess local game button */
+.chess-local-row { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 8px; }
+.chess-local-btn {
+  padding: 12px 24px; border-radius: 10px;
+  border: 1px dashed var(--rule); background: none;
+  color: var(--ink-2); font-family: 'JetBrains Mono',monospace; font-size: 13px;
+  cursor: pointer; transition: all .15s;
+}
+.chess-local-btn:hover { border-color: var(--terracotta); color: var(--ink); background: rgba(180,72,64,.06); }
