@@ -1615,6 +1615,7 @@ async function loadRecommendations() {
     if (incCountries) params.set("country", incCountries);
     const recs   = await apiFetch(`/recommendations?${params}`);
     state.allRecs = recs;
+    updateGenrePanel(recs);  // заполняем жанры из пула рекомендаций
     $("sort-wrap").style.display = "flex";
     if (!recs.length) {
       $("recs-grid").innerHTML = `<div class="empty-state"><span class="empty-icon">◌</span><p>Ничего не найдено</p></div>`;
@@ -1652,7 +1653,21 @@ function buildMfPanel(key) {
   panel.innerHTML = "";
 
   if (!items.length) {
-    panel.innerHTML = `<div style="padding:12px 8px;color:var(--text-dim);font-size:13px">Сначала загрузи рекомендации</div>`;
+    if (key === "genre") {
+      panel.innerHTML = `<div style="padding:12px 8px;color:var(--text-dim);font-size:13px">Загрузка жанров…</div>`;
+      apiFetch(`/genres?media_type=${state.recsMode}`).then(list => {
+        if (list?.length) {
+          mfItems.genre = list.map(g => ({ value: g.name, label: g.name }));
+          buildMfPanel("genre");
+        } else {
+          panel.innerHTML = `<div style="padding:12px 8px;color:var(--text-dim);font-size:13px">Нет жанров — загрузи рекомендации</div>`;
+        }
+      }).catch(() => {
+        panel.innerHTML = `<div style="padding:12px 8px;color:var(--text-dim);font-size:13px">Нет жанров — загрузи рекомендации</div>`;
+      });
+      return;
+    }
+    panel.innerHTML = `<div style="padding:12px 8px;color:var(--text-dim);font-size:13px">Нет данных</div>`;
     return;
   }
   items.forEach(({ value, label }) => {
