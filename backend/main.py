@@ -2118,7 +2118,10 @@ async def chess_join(code: str, user_id: int = Query(...)):
         raise HTTPException(400, "Оба места заняты")
     if not updated:
         raise HTTPException(400, "Не удалось подключиться")
-    return database.get_chess_game(code)
+    full_game = database.get_chess_game(code)
+    # Сразу уведомляем Player 1 через WebSocket — не ждём когда Player 2 подключит WS
+    await chess_manager.broadcast(code, {"type": "game_ready", "game": full_game})
+    return full_game
 
 
 @app.get("/chess/stats")
@@ -2139,9 +2142,9 @@ async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default
         game = database.get_chess_game(code)
         if game:
             await chess_manager.send_to(websocket, {"type": "state", "game": game})
-            # Если оба игрока уже есть — уведомляем всех о старте
+            # Если игра уже активна (например, переподключение после обрыва) — шлём game_ready только этому игроку
             if game["white_user_id"] and game["black_user_id"] and game["status"] == "active":
-                await chess_manager.broadcast(code, {"type": "game_ready", "game": game})
+                await chess_manager.send_to(websocket, {"type": "game_ready", "game": game})
 
         while True:
             data = await websocket.receive_json()

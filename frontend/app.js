@@ -7596,6 +7596,21 @@ async function chessCreateGame() {
       });
     }
     chessConnect(game.code);
+    // Polling-страховка: если WebSocket не доставил game_ready — проверяем каждые 3 сек
+    _chess._waitPoll = setInterval(async function() {
+      // Прекращаем polling если уже перешли на игровой экран
+      var gameEl = $("chess-game");
+      if (!gameEl || gameEl.style.display !== "none") {
+        clearInterval(_chess._waitPoll); _chess._waitPoll = null; return;
+      }
+      try {
+        var g = await apiFetch("/chess/games/" + game.code);
+        if (g && g.status === "active") {
+          clearInterval(_chess._waitPoll); _chess._waitPoll = null;
+          chessStartGameUI(g);
+        }
+      } catch(e) {}
+    }, 3000);
   } catch(e) {
     console.error("chess create error:", e);
     const msg = (e && (e.detail || e.message)) || "Ошибка создания игры";
@@ -7640,6 +7655,7 @@ function chessConnect(code) {
 }
 
 function chessDisconnect() {
+  if (_chess._waitPoll) { clearInterval(_chess._waitPoll); _chess._waitPoll = null; }
   if (_chess.ws) { clearInterval(_chess.ws._pingInterval); try { _chess.ws.close(); } catch(e) {} _chess.ws = null; }
   _chess.game = null; _chess.engine = null; _chess.myColor = null; _chess.selected = null;
 }
