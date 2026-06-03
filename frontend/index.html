@@ -22,6 +22,7 @@
         <button class="mode-btn active" data-mode="cinema" title="Кино и сериалы">🎬</button>
         <button class="mode-btn" data-mode="books" title="Книги">📚</button>
         <button class="mode-btn" data-mode="notebook" title="Тетрадь">📓</button>
+        <button class="mode-btn" data-mode="games" title="Игры">🎮</button>
       </div>
       <div class="user-badge" id="user-badge">
         <span class="user-name" id="user-name"></span>
@@ -595,20 +596,150 @@
         <button class="auth-tab" id="auth-tab-register" onclick="switchAuthTab('register')">Регистрация</button>
       </div>
       <div id="auth-login-form">
-        <input type="text" id="auth-username-input" class="auth-input" placeholder="Твой логин" />
+        <input type="text"     id="auth-username-input"  class="auth-input" placeholder="Логин" autocomplete="username" />
+        <input type="password" id="auth-password-input"  class="auth-input" placeholder="Пароль" autocomplete="current-password" />
         <button class="auth-btn" onclick="authLogin()">Войти</button>
         <p class="auth-error" id="auth-login-error"></p>
       </div>
       <div id="auth-register-form" style="display:none">
-        <input type="text" id="auth-reg-username" class="auth-input" placeholder="Придумай логин" />
-        <input type="text" id="auth-reg-display" class="auth-input" placeholder="Твоё имя" />
+        <input type="text"     id="auth-reg-username" class="auth-input" placeholder="Придумай логин" autocomplete="username" />
+        <input type="text"     id="auth-reg-display"  class="auth-input" placeholder="Твоё имя" autocomplete="name" />
+        <input type="password" id="auth-reg-password" class="auth-input" placeholder="Пароль (мин. 4 символа)" autocomplete="new-password" />
         <button class="auth-btn" onclick="authRegister()">Зарегистрироваться</button>
         <p class="auth-error" id="auth-reg-error"></p>
       </div>
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════
+       ИГРЫ — отдельная секция (mode = games)
+  ════════════════════════════════════════════════════════════════ -->
+  <section class="tab games-section" id="tab-games" style="display:none">
+    <div class="games-page">
+
+      <!-- Лобби: список игр -->
+      <div id="games-lobby">
+        <div class="games-header">
+          <h1 class="games-title">🎮 Игры</h1>
+          <p class="games-sub">Сыграй с другом онлайн</p>
+        </div>
+        <div class="games-grid">
+          <div class="game-card" id="chess-open-card">
+            <div class="game-card-icon">♟</div>
+            <div class="game-card-name">Шахматы</div>
+            <div class="game-card-desc">2 игрока · онлайн</div>
+          </div>
+        </div>
+        <!-- История последних партий -->
+        <div class="games-history-wrap" id="games-history-wrap" style="display:none">
+          <div class="games-history-title">Последние партии</div>
+          <div id="games-history-list"></div>
+        </div>
+      </div>
+
+      <!-- Chess: экран выбора (создать / войти по коду) -->
+      <div id="chess-entry" style="display:none">
+        <button class="games-back-btn" id="chess-back-to-lobby">← Игры</button>
+        <div class="chess-entry-wrap">
+          <div class="chess-entry-card" id="chess-create-card">
+            <div class="chess-entry-icon">✚</div>
+            <div class="chess-entry-title">Создать игру</div>
+            <div class="chess-entry-desc">Получи код и поделись с другом</div>
+            <div class="chess-color-choice">
+              <button class="chess-color-btn active" data-color="white">♔ Белые</button>
+              <button class="chess-color-btn" data-color="random">🎲 Случайно</button>
+              <button class="chess-color-btn" data-color="black">♚ Чёрные</button>
+            </div>
+            <button class="chess-action-btn" id="chess-create-btn">Создать</button>
+          </div>
+          <div class="chess-entry-divider">или</div>
+          <div class="chess-entry-card" id="chess-join-card">
+            <div class="chess-entry-icon">🔑</div>
+            <div class="chess-entry-title">Войти по коду</div>
+            <div class="chess-entry-desc">Введи код от друга</div>
+            <input class="chess-code-input" id="chess-join-input" placeholder="ABC123" maxlength="6" autocomplete="off" />
+            <button class="chess-action-btn" id="chess-join-btn">Войти</button>
+          </div>
+        </div>
+        <!-- Статистика личных встреч -->
+        <div class="chess-stats-wrap" id="chess-stats-wrap" style="display:none">
+          <div class="chess-stats-title">Счёт личных встреч</div>
+          <div id="chess-stats-list"></div>
+        </div>
+      </div>
+
+      <!-- Chess: ожидание второго игрока -->
+      <div id="chess-waiting" style="display:none">
+        <button class="games-back-btn" id="chess-back-from-waiting">← Отмена</button>
+        <div class="chess-waiting-wrap">
+          <div class="chess-waiting-icon">♟</div>
+          <div class="chess-waiting-title">Игра создана!</div>
+          <div class="chess-waiting-sub">Поделись кодом с другом</div>
+          <div class="chess-code-display" id="chess-game-code-display">------</div>
+          <button class="chess-copy-btn" id="chess-copy-code-btn">📋 Скопировать код</button>
+          <div class="chess-waiting-dots"><span></span><span></span><span></span></div>
+          <div class="chess-waiting-hint">Ожидаем второго игрока…</div>
+        </div>
+      </div>
+
+      <!-- Chess: игровой экран -->
+      <div id="chess-game" style="display:none">
+        <div class="chess-layout">
+          <!-- Колонка: доска -->
+          <div class="chess-board-col">
+            <div class="chess-player-bar" id="chess-top-player">
+              <span class="chess-player-avatar" id="chess-top-avatar">♟</span>
+              <span class="chess-player-name" id="chess-top-name">Соперник</span>
+              <span class="chess-player-color" id="chess-top-color"></span>
+              <span class="chess-captures" id="chess-top-captures"></span>
+            </div>
+            <div class="chess-board-wrap">
+              <div class="chess-board" id="chess-board"></div>
+            </div>
+            <div class="chess-player-bar chess-player-bar-me" id="chess-bottom-player">
+              <span class="chess-player-avatar" id="chess-bottom-avatar">♙</span>
+              <span class="chess-player-name" id="chess-bottom-name">Вы</span>
+              <span class="chess-player-color" id="chess-bottom-color"></span>
+              <span class="chess-captures" id="chess-bottom-captures"></span>
+            </div>
+          </div>
+          <!-- Колонка: сайдбар -->
+          <div class="chess-sidebar">
+            <div class="chess-status-bar" id="chess-status-bar">
+              <span class="chess-status-dot" id="chess-status-dot"></span>
+              <span id="chess-status-text">Загрузка…</span>
+            </div>
+            <div class="chess-moves-title">История ходов</div>
+            <div class="chess-moves-list" id="chess-moves-list"></div>
+            <div class="chess-sidebar-actions">
+              <button class="chess-sidebar-btn chess-resign-btn" id="chess-resign-btn">🏳 Сдаться</button>
+              <button class="chess-sidebar-btn chess-draw-btn" id="chess-draw-btn">🤝 Ничья</button>
+            </div>
+          </div>
+        </div>
+        <!-- Draw offer banner -->
+        <div class="chess-draw-offer" id="chess-draw-offer" style="display:none">
+          <span>Соперник предлагает ничью</span>
+          <button id="chess-draw-accept">Принять</button>
+          <button id="chess-draw-decline">Отклонить</button>
+        </div>
+        <!-- Game over overlay -->
+        <div class="chess-gameover" id="chess-gameover" style="display:none">
+          <div class="chess-gameover-inner">
+            <div class="chess-gameover-icon" id="chess-gameover-icon">🏆</div>
+            <div class="chess-gameover-title" id="chess-gameover-title">Конец партии</div>
+            <div class="chess-gameover-sub" id="chess-gameover-sub"></div>
+            <button class="chess-action-btn" id="chess-gameover-new">Новая игра</button>
+            <button class="chess-action-btn chess-action-btn-sec" id="chess-gameover-lobby">В лобби</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <div class="toast-container" id="toast-container"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

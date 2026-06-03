@@ -9,3 +9,5 @@ openai>=1.0.0
 pdfplumber==0.11.0
 python-multipart==0.0.9
 aiofiles==23.2.1
+passlib[bcrypt]==1.7.4
+websockets==12.0

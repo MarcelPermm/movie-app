@@ -251,16 +251,16 @@ def init_db():
 
 # ─── Пользователи ─────────────────────────────────────────────────────────────
 
-def create_user(username: str, display_name: str) -> dict | None:
+def create_user(username: str, display_name: str, password_hash: str = "") -> dict | None:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO users (username, display_name)
-            VALUES (%s, %s)
+            INSERT INTO users (username, display_name, password_hash)
+            VALUES (%s, %s, %s)
             ON CONFLICT (username) DO NOTHING
             RETURNING id, username, display_name
-        """, (username, display_name))
+        """, (username, display_name, password_hash))
         row = cur.fetchone()
         conn.commit()
         return dict(row) if row else None
@@ -272,9 +272,183 @@ def get_user_by_username(username: str) -> dict | None:
     conn = _get_conn()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id, username, display_name FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+        cur.execute("SELECT id, username, display_name, password_hash FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
         row = cur.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, username, display_name FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ─── Шахматы ──────────────────────────────────────────────────────────────────
+
+CHESS_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+def init_chess_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        # Добавляем password_hash к users
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT DEFAULT ''")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chess_games (
+                id             SERIAL PRIMARY KEY,
+                code           VARCHAR(8) UNIQUE NOT NULL,
+                fen            TEXT NOT NULL DEFAULT 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                status         VARCHAR(20) DEFAULT 'waiting',
+                white_user_id  INTEGER REFERENCES users(id),
+                black_user_id  INTEGER REFERENCES users(id),
+                winner         VARCHAR(10) DEFAULT NULL,
+                moves_pgn      TEXT DEFAULT '',
+                created_at     TIMESTAMP DEFAULT NOW(),
+                updated_at     TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_chess_white ON chess_games (white_user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_chess_black ON chess_games (black_user_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_chess_game(code: str, white_user_id, black_user_id) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO chess_games (code, white_user_id, black_user_id, fen, status)
+            VALUES (%s, %s, %s, %s, 'waiting')
+            RETURNING *
+        """, (code, white_user_id, black_user_id, CHESS_INITIAL_FEN))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_chess_game(code: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cg.*,
+                   wu.display_name AS white_name, wu.username AS white_username,
+                   bu.display_name AS black_name,  bu.username AS black_username
+            FROM chess_games cg
+            LEFT JOIN users wu ON cg.white_user_id = wu.id
+            LEFT JOIN users bu ON cg.black_user_id = bu.id
+            WHERE cg.code = %s
+        """, (code,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def join_chess_game(code: str, user_id: int, color: str) -> dict | None:
+    """color = 'white' | 'black' — заполняет свободный слот"""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        col = "white_user_id" if color == "white" else "black_user_id"
+        cur.execute(f"""
+            UPDATE chess_games
+            SET {col} = %s, status = 'active', updated_at = NOW()
+            WHERE code = %s AND {col} IS NULL
+            RETURNING *
+        """, (user_id, code))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_chess_game(code: str, fen=None, status=None, winner=None, moves_pgn=None) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        fields, vals = [], []
+        if fen       is not None: fields.append("fen = %s");       vals.append(fen)
+        if status    is not None: fields.append("status = %s");    vals.append(status)
+        if winner    is not None: fields.append("winner = %s");    vals.append(winner)
+        if moves_pgn is not None: fields.append("moves_pgn = %s"); vals.append(moves_pgn)
+        if not fields:
+            return None
+        fields.append("updated_at = NOW()")
+        vals.append(code)
+        cur.execute(f"UPDATE chess_games SET {', '.join(fields)} WHERE code = %s RETURNING *", vals)
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_chess_stats(user_id: int) -> list:
+    """Статистика личных встреч с каждым соперником"""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                opp.id            AS opponent_id,
+                opp.display_name  AS opponent_name,
+                opp.username      AS opponent_username,
+                COUNT(*)          AS total,
+                COUNT(*) FILTER (WHERE
+                    (cg.winner = 'white' AND cg.white_user_id = %(uid)s) OR
+                    (cg.winner = 'black' AND cg.black_user_id = %(uid)s)
+                ) AS wins,
+                COUNT(*) FILTER (WHERE
+                    (cg.winner = 'white' AND cg.black_user_id = %(uid)s) OR
+                    (cg.winner = 'black' AND cg.white_user_id = %(uid)s)
+                ) AS losses,
+                COUNT(*) FILTER (WHERE cg.winner = 'draw') AS draws
+            FROM chess_games cg
+            JOIN users opp ON (
+                CASE WHEN cg.white_user_id = %(uid)s
+                     THEN cg.black_user_id
+                     ELSE cg.white_user_id END = opp.id
+            )
+            WHERE (cg.white_user_id = %(uid)s OR cg.black_user_id = %(uid)s)
+              AND cg.status = 'finished'
+            GROUP BY opp.id, opp.display_name, opp.username
+            ORDER BY total DESC
+        """, {"uid": user_id})
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_chess_history(user_id: int, limit: int = 20) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT cg.*,
+                   wu.display_name AS white_name,
+                   bu.display_name AS black_name
+            FROM chess_games cg
+            LEFT JOIN users wu ON cg.white_user_id = wu.id
+            LEFT JOIN users bu ON cg.black_user_id = bu.id
+            WHERE (cg.white_user_id = %s OR cg.black_user_id = %s)
+              AND cg.status = 'finished'
+            ORDER BY cg.updated_at DESC
+            LIMIT %s
+        """, (user_id, user_id, limit))
+        return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 

@@ -5636,3 +5636,271 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   font-family: inherit; outline: none;
 }
 .task-add-btn.sm { font-size: 12px; padding: 6px 0; }
+
+/* ════════════════════════════════════════════════════════════════
+   🎮 ИГРЫ — общий раздел
+════════════════════════════════════════════════════════════════ */
+.games-section { padding: 0; overflow: hidden; }
+.games-page { padding: 32px 40px; max-width: 900px; margin: 0 auto; }
+
+.games-header { margin-bottom: 32px; }
+.games-title { font-family: 'Fraunces', Georgia, serif; font-size: 40px; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
+.games-sub { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-3); margin: 0; }
+
+.games-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 36px; }
+.game-card {
+  width: 160px; padding: 28px 20px; border-radius: 16px;
+  background: var(--card); border: 1px solid var(--rule);
+  cursor: pointer; text-align: center; transition: all .2s;
+}
+.game-card:hover { border-color: var(--terracotta); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.game-card-icon { font-size: 48px; margin-bottom: 12px; }
+.game-card-name { font-family: 'Fraunces', Georgia, serif; font-size: 18px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.game-card-desc { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+
+.games-history-wrap { margin-top: 16px; }
+.games-history-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+.games-hist-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--rule); margin-bottom: 6px; }
+.games-hist-vs { font-family: 'Fraunces', Georgia, serif; font-size: 14px; color: var(--ink); flex: 1; }
+.games-hist-color { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+.games-hist-result { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; }
+.games-hist-result.win  { color: #5a8a5a; }
+.games-hist-result.loss { color: var(--terracotta); }
+.games-hist-result.draw { color: var(--ink-2); }
+
+.games-back-btn {
+  background: none; border: none; color: var(--ink-3); font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; cursor: pointer; padding: 0 0 20px; display: block;
+}
+.games-back-btn:hover { color: var(--ink); }
+
+/* ════════════════════════════════════════════════════════════════
+   Шахматы: экран выбора (создать / войти по коду)
+════════════════════════════════════════════════════════════════ */
+.chess-entry-wrap { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin-bottom: 40px; }
+.chess-entry-divider { align-self: center; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-3); padding: 12px; }
+.chess-entry-card {
+  flex: 1; min-width: 220px; max-width: 300px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 28px 24px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.chess-entry-icon { font-size: 36px; }
+.chess-entry-title { font-family: 'Fraunces', Georgia, serif; font-size: 22px; font-weight: 700; color: var(--ink); }
+.chess-entry-desc { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-3); }
+
+.chess-color-choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.chess-color-btn {
+  flex: 1; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--rule);
+  background: none; color: var(--ink-2); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  cursor: pointer; transition: all .15s; white-space: nowrap;
+}
+.chess-color-btn.active { background: var(--terracotta); color: #fff; border-color: var(--terracotta); }
+.chess-color-btn:hover:not(.active) { border-color: var(--terracotta); color: var(--ink); }
+
+.chess-action-btn {
+  padding: 12px 20px; border-radius: 10px; border: none;
+  background: var(--terracotta); color: #fff;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: all .15s; text-align: center;
+}
+.chess-action-btn:hover { opacity: .85; }
+.chess-action-btn-sec { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
+
+.chess-code-input {
+  padding: 12px 14px; border-radius: 10px; border: 1px solid var(--rule);
+  background: var(--paper-2, rgba(255,255,255,.04)); color: var(--ink);
+  font-family: 'JetBrains Mono', monospace; font-size: 20px; letter-spacing: .2em;
+  text-align: center; text-transform: uppercase; width: 100%; box-sizing: border-box;
+}
+.chess-code-input:focus { outline: none; border-color: var(--terracotta); }
+
+/* Статистика */
+.chess-stats-wrap { margin-top: 32px; }
+.chess-stats-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+.chess-stats-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--card); border: 1px solid var(--rule); border-radius: 8px; margin-bottom: 6px; }
+.chess-stats-name { font-family: 'Fraunces', Georgia, serif; font-size: 15px; color: var(--ink); flex: 1; }
+.chess-stats-wld  { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.chess-stats-total { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+.chess-stats-wld .win  { color: #5a8a5a; font-weight: 700; }
+.chess-stats-wld .loss { color: var(--terracotta); font-weight: 700; }
+.chess-stats-wld .draw { color: var(--ink-3); }
+
+/* ════════════════════════════════════════════════════════════════
+   Шахматы: ожидание соперника
+════════════════════════════════════════════════════════════════ */
+.chess-waiting-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 48px 24px; text-align: center; }
+.chess-waiting-icon  { font-size: 64px; }
+.chess-waiting-title { font-family: 'Fraunces', Georgia, serif; font-size: 32px; font-weight: 700; color: var(--ink); }
+.chess-waiting-sub   { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-3); }
+.chess-code-display  {
+  font-family: 'JetBrains Mono', monospace; font-size: 48px; font-weight: 700;
+  letter-spacing: .25em; color: var(--terracotta); padding: 20px 32px;
+  background: var(--card); border: 2px solid var(--terracotta); border-radius: 16px;
+}
+.chess-copy-btn {
+  padding: 10px 20px; border-radius: 10px; border: 1px solid var(--rule);
+  background: var(--card); color: var(--ink-2); font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.chess-copy-btn:hover { border-color: var(--terracotta); color: var(--ink); }
+.chess-waiting-dots { display: flex; gap: 8px; }
+.chess-waiting-dots span {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3);
+  animation: chess-pulse 1.4s infinite;
+}
+.chess-waiting-dots span:nth-child(2) { animation-delay: .3s; }
+.chess-waiting-dots span:nth-child(3) { animation-delay: .6s; }
+@keyframes chess-pulse { 0%,80%,100% { opacity:.2 } 40% { opacity:1 } }
+.chess-waiting-hint { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-3); }
+
+/* ════════════════════════════════════════════════════════════════
+   Шахматы: игровой экран
+════════════════════════════════════════════════════════════════ */
+.chess-layout {
+  display: flex; gap: 28px; align-items: flex-start;
+  flex-wrap: wrap;
+}
+.chess-board-col { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+.chess-player-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--card); border-radius: 10px;
+  border: 1px solid var(--rule);
+}
+.chess-player-bar-me { background: var(--paper-2, rgba(255,255,255,.05)); }
+.chess-player-avatar { font-size: 22px; }
+.chess-player-name { font-family: 'Fraunces', Georgia, serif; font-size: 15px; color: var(--ink); font-weight: 600; flex: 1; }
+.chess-player-color { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+.chess-captures { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-3); }
+
+.chess-board-wrap { position: relative; }
+.chess-board {
+  display: grid; grid-template-columns: repeat(8, 1fr);
+  width: min(480px, calc(100vw - 80px));
+  aspect-ratio: 1;
+  border: 2px solid #5a3e28; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.chess-sq {
+  aspect-ratio: 1; position: relative; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .1s;
+}
+.chess-sq-light { background: #f0d9b5; }
+.chess-sq-dark  { background: #b58863; }
+.chess-sq-selected { background: #7fc97f !important; }
+.chess-sq-legal { cursor: pointer; }
+.chess-sq-capture { outline: 3px solid #7fc97f; outline-offset: -3px; }
+.chess-sq:hover:not(.chess-sq-selected) { filter: brightness(1.1); }
+
+.chess-piece {
+  font-size: min(46px, calc((100vw - 80px) / 8 * 0.72));
+  line-height: 1; user-select: none; pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.3));
+  transition: transform .1s;
+}
+.chess-piece-w { color: #fffde7; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+.chess-piece-b { color: #1a1a1a; text-shadow: 0 1px 3px rgba(255,255,255,.2); }
+
+.chess-move-dot {
+  width: 28%; height: 28%; border-radius: 50%;
+  background: rgba(0, 120, 0, .45); pointer-events: none;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+}
+
+.chess-coord {
+  position: absolute; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  font-weight: 700; pointer-events: none; opacity: .65;
+}
+.chess-coord-rank { top: 2px; left: 3px; }
+.chess-coord-file { bottom: 2px; right: 3px; }
+.chess-sq-light .chess-coord { color: #b58863; }
+.chess-sq-dark  .chess-coord { color: #f0d9b5; }
+
+/* Сайдбар */
+.chess-sidebar {
+  flex: 1; min-width: 200px; max-width: 260px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.chess-status-bar {
+  display: flex; align-items: center; gap: 8px; padding: 12px 14px;
+  background: var(--card); border-radius: 10px; border: 1px solid var(--rule);
+}
+.chess-status-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; transition: background .3s;
+}
+.chess-status-dot.dot-mine { background: #5a8a5a; box-shadow: 0 0 6px #5a8a5a; }
+.chess-status-dot.dot-opp  { background: var(--ink-3); }
+.chess-status-dot.dot-over { background: var(--terracotta); }
+.chess-status-dot.dot-draw { background: #c9873a; }
+#chess-status-text { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink); }
+
+.chess-moves-title { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; }
+.chess-moves-list {
+  flex: 1; min-height: 120px; max-height: 300px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 8px;
+}
+.chess-move-row {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2);
+  padding: 3px 4px; border-radius: 4px;
+}
+.chess-move-row:hover { background: var(--rule); }
+.chess-move-num { color: var(--ink-3); margin-right: 4px; }
+
+.chess-sidebar-actions { display: flex; flex-direction: column; gap: 8px; }
+.chess-sidebar-btn {
+  padding: 10px 16px; border-radius: 8px; border: 1px solid var(--rule);
+  background: var(--card); color: var(--ink-2); font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; cursor: pointer; transition: all .15s; text-align: center;
+}
+.chess-resign-btn:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.chess-draw-btn:hover   { border-color: #5a8a5a; color: #5a8a5a; }
+
+/* Draw offer banner */
+.chess-draw-offer {
+  margin-top: 16px; padding: 14px 18px; background: var(--card);
+  border: 1px solid #c9873a; border-radius: 10px;
+  display: flex; align-items: center; gap: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+}
+.chess-draw-offer button {
+  padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+#chess-draw-accept  { background: #5a8a5a; color: #fff; }
+#chess-draw-decline { background: var(--card); border: 1px solid var(--rule); color: var(--ink-2); }
+
+/* Game over overlay */
+.chess-gameover {
+  position: absolute; inset: 0; background: rgba(0,0,0,.8);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 16px; z-index: 10;
+}
+.chess-layout { position: relative; }
+.chess-gameover-inner {
+  background: var(--card); border-radius: 20px; padding: 40px 48px;
+  text-align: center; display: flex; flex-direction: column; gap: 12px;
+  max-width: 320px; box-shadow: 0 16px 48px rgba(0,0,0,.5);
+}
+.chess-gameover-icon  { font-size: 64px; }
+.chess-gameover-title { font-family: 'Fraunces', Georgia, serif; font-size: 32px; font-weight: 700; color: var(--ink); }
+.chess-gameover-sub   { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-3); }
+
+/* Promotion dialog */
+.chess-promo-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.chess-promo-box {
+  background: var(--card); border-radius: 16px; padding: 28px 32px;
+  text-align: center;
+}
+.chess-promo-title { font-family: 'Fraunces', Georgia, serif; font-size: 20px; color: var(--ink); margin-bottom: 16px; }
+.chess-promo-btns  { display: flex; gap: 12px; }
+.chess-promo-btn {
+  width: 60px; height: 60px; font-size: 40px; border-radius: 10px;
+  border: 2px solid var(--rule); background: var(--card); cursor: pointer;
+  transition: all .15s; display: flex; align-items: center; justify-content: center;
+}
+.chess-promo-btn:hover { border-color: var(--terracotta); background: rgba(180,72,64,.1); }
+
+/* Пароль в форме авторизации */
+.auth-input + .auth-input { margin-top: 10px; }

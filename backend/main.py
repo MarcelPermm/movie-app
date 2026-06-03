@@ -1,12 +1,15 @@
 import os
 import asyncio
 import httpx
-from fastapi import FastAPI, HTTPException, UploadFile, Body
+import random
+import string
+from fastapi import FastAPI, HTTPException, UploadFile, Body, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
+from passlib.context import CryptContext
 
 import database
 import recommender
@@ -21,6 +24,39 @@ GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1"
 
 app = FastAPI(title="Movie Recommender API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ─── WebSocket-менеджер шахмат ────────────────────────────────────────────────
+class ChessConnectionManager:
+    def __init__(self):
+        self.rooms: dict[str, list] = {}
+
+    async def connect(self, ws: WebSocket, code: str):
+        await ws.accept()
+        self.rooms.setdefault(code, []).append(ws)
+
+    def disconnect(self, ws: WebSocket, code: str):
+        room = self.rooms.get(code, [])
+        try:
+            room.remove(ws)
+        except ValueError:
+            pass
+
+    async def broadcast(self, code: str, data: dict):
+        for ws in list(self.rooms.get(code, [])):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                self.disconnect(ws, code)
+
+    async def send_to(self, ws: WebSocket, data: dict):
+        try:
+            await ws.send_json(data)
+        except Exception:
+            pass
+
+chess_manager = ChessConnectionManager()
 
 STUDIOS = [
     {"id": 2,    "name": "Walt Disney Pictures"},
@@ -72,6 +108,7 @@ async def startup():
     database.init_budget_tables()
     database.init_trips_tables()
     database.init_goals_table()
+    database.init_chess_tables()
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -231,17 +268,23 @@ def normalize_tv(item: dict) -> dict:
 class RegisterRequest(BaseModel):
     username:     str
     display_name: str
+    password:     str
 
 class LoginRequest(BaseModel):
     username: str
+    password: str = ""
 
 @app.post("/auth/register")
 async def register(req: RegisterRequest):
     username     = req.username.strip().lower()
     display_name = req.display_name.strip()
+    password     = req.password.strip()
     if not username or not display_name:
         raise HTTPException(400, "Логин и имя не могут быть пустыми")
-    user = database.create_user(username, display_name)
+    if not password or len(password) < 4:
+        raise HTTPException(400, "Пароль должен быть не короче 4 символов")
+    hashed = pwd_context.hash(password)
+    user = database.create_user(username, display_name, hashed)
     if not user:
         raise HTTPException(409, "Такой логин уже занят")
     return user
@@ -249,6 +292,17 @@ async def register(req: RegisterRequest):
 @app.post("/auth/login")
 async def login(req: LoginRequest):
     user = database.get_user_by_username(req.username.strip().lower())
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    # Обратная совместимость: если пароль ещё не задан — пускаем без проверки
+    if user.get("password_hash"):
+        if not pwd_context.verify(req.password, user["password_hash"]):
+            raise HTTPException(401, "Неверный пароль")
+    return {"id": user["id"], "username": user["username"], "display_name": user["display_name"]}
+
+@app.get("/auth/user/{user_id}")
+async def get_user(user_id: int):
+    user = database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(404, "Пользователь не найден")
     return user
@@ -2002,6 +2056,159 @@ async def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):
 async def delete_goal(goal_id: int, user_id: int = 1):
     database.delete_goal(goal_id, user_id)
     return {"ok": True}
+
+# ════════════════════════════════════════════════════════════════
+#  ШАХМАТЫ
+# ════════════════════════════════════════════════════════════════
+
+def _gen_code() -> str:
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+class ChessCreateRequest(BaseModel):
+    color_choice: str  # 'white' | 'black' | 'random'
+
+
+@app.post("/chess/games")
+async def chess_create(req: ChessCreateRequest, user_id: int = Query(...)):
+    code = _gen_code()
+    for _ in range(10):
+        if not database.get_chess_game(code):
+            break
+        code = _gen_code()
+
+    color = req.color_choice
+    if color == "random":
+        color = random.choice(["white", "black"])
+
+    white_id = user_id if color == "white" else None
+    black_id = user_id if color == "black" else None
+    game = database.create_chess_game(code, white_id, black_id)
+    return game
+
+
+@app.get("/chess/games/{code}")
+async def chess_get(code: str):
+    game = database.get_chess_game(code)
+    if not game:
+        raise HTTPException(404, "Игра не найдена")
+    return game
+
+
+@app.post("/chess/games/{code}/join")
+async def chess_join(code: str, user_id: int = Query(...)):
+    game = database.get_chess_game(code)
+    if not game:
+        raise HTTPException(404, "Игра не найдена")
+    if game["status"] not in ("waiting",):
+        raise HTTPException(400, "Игра уже началась или завершена")
+    # Проверяем, что не подключается тот же игрок
+    if game["white_user_id"] == user_id or game["black_user_id"] == user_id:
+        raise HTTPException(400, "Вы уже в этой игре")
+    # Определяем свободный слот
+    if game["white_user_id"] is None:
+        updated = database.join_chess_game(code, user_id, "white")
+    elif game["black_user_id"] is None:
+        updated = database.join_chess_game(code, user_id, "black")
+    else:
+        raise HTTPException(400, "Оба места заняты")
+    if not updated:
+        raise HTTPException(400, "Не удалось подключиться")
+    return database.get_chess_game(code)
+
+
+@app.get("/chess/stats")
+async def chess_stats(user_id: int = Query(...)):
+    return database.get_chess_stats(user_id)
+
+
+@app.get("/chess/history")
+async def chess_history(user_id: int = Query(...)):
+    return database.get_chess_history(user_id)
+
+
+@app.websocket("/chess/ws/{code}")
+async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0)):
+    await chess_manager.connect(websocket, code)
+    try:
+        # Отправляем текущее состояние сразу при подключении
+        game = database.get_chess_game(code)
+        if game:
+            await chess_manager.send_to(websocket, {"type": "state", "game": game})
+            # Если оба игрока уже есть — уведомляем всех о старте
+            if game["white_user_id"] and game["black_user_id"] and game["status"] == "active":
+                await chess_manager.broadcast(code, {"type": "game_ready", "game": game})
+
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type")
+
+            if msg_type == "move":
+                game = database.update_chess_game(
+                    code,
+                    fen=data.get("fen"),
+                    moves_pgn=data.get("pgn", ""),
+                )
+                await chess_manager.broadcast(code, {
+                    "type": "move",
+                    "from":      data.get("from"),
+                    "to":        data.get("to"),
+                    "fen":       data.get("fen"),
+                    "pgn":       data.get("pgn", ""),
+                    "promotion": data.get("promotion"),
+                    "san":       data.get("san", ""),
+                    "user_id":   user_id,
+                })
+
+            elif msg_type == "game_over":
+                winner = data.get("winner")  # 'white' | 'black' | 'draw'
+                database.update_chess_game(
+                    code, fen=data.get("fen"), status="finished",
+                    winner=winner, moves_pgn=data.get("pgn", ""),
+                )
+                await chess_manager.broadcast(code, {
+                    "type":   "game_over",
+                    "winner": winner,
+                    "reason": data.get("reason", ""),
+                    "fen":    data.get("fen"),
+                })
+
+            elif msg_type == "resign":
+                game = database.get_chess_game(code)
+                if game:
+                    winner = "black" if game.get("white_user_id") == user_id else "white"
+                    database.update_chess_game(code, status="finished", winner=winner)
+                    await chess_manager.broadcast(code, {
+                        "type":    "game_over",
+                        "winner":  winner,
+                        "reason":  "resign",
+                        "user_id": user_id,
+                    })
+
+            elif msg_type == "draw_offer":
+                await chess_manager.broadcast(code, {"type": "draw_offer", "user_id": user_id})
+
+            elif msg_type == "draw_accept":
+                database.update_chess_game(code, status="finished", winner="draw")
+                await chess_manager.broadcast(code, {
+                    "type": "game_over", "winner": "draw", "reason": "agreement",
+                })
+
+            elif msg_type == "draw_decline":
+                await chess_manager.broadcast(code, {"type": "draw_decline", "user_id": user_id})
+
+            elif msg_type == "ping":
+                await chess_manager.send_to(websocket, {"type": "pong"})
+
+    except WebSocketDisconnect:
+        chess_manager.disconnect(websocket, code)
+        game = database.get_chess_game(code)
+        if game and game.get("status") == "active":
+            await chess_manager.broadcast(code, {
+                "type":    "opponent_disconnected",
+                "user_id": user_id,
+            })
+
 
 # ─── Раздача фронтенда ───────────────────────────────────────────────────────
 # Должно быть ПОСЛЕ всех API-роутов, чтобы не перехватывать /api/* запросы

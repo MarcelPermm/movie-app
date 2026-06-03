@@ -86,6 +86,11 @@ function switchAppMode(mode) {
     nb.classList.add("active");
     nb.style.display = "";
     openNotebookTab(state.activeNotebookTab || "today");
+  } else if (mode === "games") {
+    const gTab = $("tab-games");
+    gTab.classList.add("active");
+    gTab.style.display = "";
+    initGamesMode();
   }
 }
 
@@ -2662,6 +2667,7 @@ async function authFetch(path, body) {
 
 async function authLogin() {
   const username = $("auth-username-input").value.trim();
+  const password = $("auth-password-input")?.value || "";
   const errEl    = $("auth-login-error");
   const btn      = document.querySelector("#auth-login-form .auth-btn");
   errEl.textContent = "";
@@ -2672,7 +2678,7 @@ async function authLogin() {
   errEl.textContent = "⏳ Сервер просыпается, подожди до 60 сек…";
 
   try {
-    const resp = await authFetch("/auth/login", { username });
+    const resp = await authFetch("/auth/login", { username, password });
     if (!resp.ok) {
       const e = await resp.json().catch(() => ({}));
       errEl.textContent = e.detail || "Пользователь не найден";
@@ -2696,18 +2702,20 @@ async function authLogin() {
 async function authRegister() {
   const username = $("auth-reg-username").value.trim();
   const display  = $("auth-reg-display").value.trim();
+  const password = $("auth-reg-password")?.value || "";
   const errEl    = $("auth-reg-error");
   const btn      = document.querySelector("#auth-register-form .auth-btn");
   errEl.textContent = "";
   if (!username) { errEl.textContent = "Введи логин"; return; }
   if (!display)  { errEl.textContent = "Введи своё имя"; return; }
+  if (!password || password.length < 4) { errEl.textContent = "Пароль должен быть не короче 4 символов"; return; }
 
   btn.disabled = true;
   btn.textContent = "Подключаемся…";
   errEl.textContent = "⏳ Сервер просыпается, подожди до 60 сек…";
 
   try {
-    const resp = await authFetch("/auth/register", { username, display_name: display });
+    const resp = await authFetch("/auth/register", { username, display_name: display, password });
     if (!resp.ok) {
       const e = await resp.json().catch(() => ({}));
       errEl.textContent = e.detail || "Ошибка регистрации";
@@ -2819,9 +2827,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ─── Запуск ────────────────────────────────────────────────────────────────
 (function startup() {
-  // Восстанавливаем сохранённый режим (кино/книги/тетрадь)
+  // Восстанавливаем сохранённый режим (кино/книги/тетрадь/игры)
   const savedMode = localStorage.getItem("appMode") || "cinema";
-  if (savedMode === "books" || savedMode === "notebook") {
+  if (["books", "notebook", "games"].includes(savedMode)) {
     state.appMode = savedMode;
   }
 
@@ -2831,7 +2839,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const user = JSON.parse(saved);
       setUser(user);
       init().then(() => {
-        if (state.appMode === "books" || state.appMode === "notebook") {
+        if (["books", "notebook", "games"].includes(state.appMode)) {
           setTimeout(() => switchAppMode(state.appMode), 100);
         }
       });
@@ -7447,4 +7455,451 @@ function _showBudgetToast(msg) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 3500);
+}
+// ════════════════════════════════════════════════════════════════
+//  🎮 ИГРЫ — ШАХМАТЫ
+// ════════════════════════════════════════════════════════════════
+
+const CHESS_PIECES = {
+  wK: '♔', wQ: '♕', wR: '♖', wB: '♗', wN: '♘', wP: '♙',
+  bK: '♚', bQ: '♛', bR: '♜', bB: '♝', bN: '♞', bP: '♟',
+};
+
+const _chess = {
+  game: null,
+  engine: null,
+  ws: null,
+  myColor: null,
+  selected: null,
+  legalSquares: [],
+  myUserId: null,
+  pendingPromotion: null,
+};
+
+function _chessApiBase() { return window.API_BASE || ""; }
+function _chessWsBase() {
+  const base = _chessApiBase();
+  if (base.startsWith("http")) return base.replace(/^http/, "ws");
+  const loc = window.location;
+  return (loc.protocol === "https:" ? "wss" : "ws") + "://" + loc.host;
+}
+function _showChessScreen(id) {
+  ["games-lobby","chess-entry","chess-waiting","chess-game"].forEach(s => {
+    const el = $(s); if (el) el.style.display = s === id ? "" : "none";
+  });
+}
+
+function initGamesMode() {
+  const uid = state.user && state.user.id;
+  if (!uid) return;
+  _chess.myUserId = uid;
+  _showChessScreen("games-lobby");
+  const card = $("chess-open-card");
+  if (card && !card._init) { card._init = true; card.addEventListener("click", openChessEntry); }
+  loadGamesHistory(uid);
+}
+
+async function loadGamesHistory(uid) {
+  try {
+    const history = await apiFetch("/chess/history?user_id=" + uid);
+    const wrap = $("games-history-wrap"); const list = $("games-history-list");
+    if (!wrap || !list || !history.length) return;
+    wrap.style.display = "";
+    list.innerHTML = history.slice(0, 5).map(g => {
+      const isW = g.white_user_id === uid;
+      const opp = isW ? (g.black_name || "?") : (g.white_name || "?");
+      const res = g.winner === "draw" ? "Ничья"
+        : ((g.winner === "white" && isW) || (g.winner === "black" && !isW)) ? "Победа 🏆" : "Поражение";
+      const cls = res === "Победа 🏆" ? "win" : res === "Ничья" ? "draw" : "loss";
+      return '<div class="games-hist-row"><span class="games-hist-vs">vs ' + opp + '</span>'
+        + '<span class="games-hist-color">' + (isW ? "белыми" : "чёрными") + '</span>'
+        + '<span class="games-hist-result ' + cls + '">' + res + '</span></div>';
+    }).join("");
+  } catch(e) {}
+}
+
+function openChessEntry() {
+  _showChessScreen("chess-entry");
+  initChessEntry();
+  loadChessStats();
+}
+
+function initChessEntry() {
+  const backBtn = $("chess-back-to-lobby");
+  if (backBtn && !backBtn._init) {
+    backBtn._init = true;
+    backBtn.addEventListener("click", function() { _showChessScreen("games-lobby"); });
+  }
+  document.querySelectorAll(".chess-color-btn").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      document.querySelectorAll(".chess-color-btn").forEach(function(b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+    });
+  });
+  const createBtn = $("chess-create-btn");
+  if (createBtn && !createBtn._init) { createBtn._init = true; createBtn.addEventListener("click", chessCreateGame); }
+  const joinBtn = $("chess-join-btn");
+  if (joinBtn && !joinBtn._init) { joinBtn._init = true; joinBtn.addEventListener("click", chessJoinGame); }
+  const joinInput = $("chess-join-input");
+  if (joinInput && !joinInput._init) {
+    joinInput._init = true;
+    joinInput.addEventListener("keydown", function(e) { if (e.key === "Enter") chessJoinGame(); });
+    joinInput.addEventListener("input", function() { joinInput.value = joinInput.value.toUpperCase(); });
+  }
+}
+
+async function loadChessStats() {
+  const uid = _chess.myUserId; if (!uid) return;
+  try {
+    const stats = await apiFetch("/chess/stats?user_id=" + uid);
+    const wrap = $("chess-stats-wrap"); const list = $("chess-stats-list");
+    if (!wrap || !list || !stats.length) return;
+    wrap.style.display = "";
+    list.innerHTML = stats.map(function(s) {
+      return '<div class="chess-stats-row">'
+        + '<span class="chess-stats-name">' + s.opponent_name + '</span>'
+        + '<span class="chess-stats-wld"><span class="win">' + s.wins + 'В</span> / '
+        + '<span class="loss">' + s.losses + 'П</span> / <span class="draw">' + s.draws + 'Н</span></span>'
+        + '<span class="chess-stats-total">' + s.total + ' партий</span></div>';
+    }).join("");
+  } catch(e) {}
+}
+
+async function chessCreateGame() {
+  const colorBtn = document.querySelector(".chess-color-btn.active");
+  const colorChoice = colorBtn ? colorBtn.dataset.color : "random";
+  const uid = _chess.myUserId; if (!uid) return;
+  try {
+    const game = await apiFetch("/chess/games?user_id=" + uid, {
+      method: "POST", body: JSON.stringify({ color_choice: colorChoice }),
+    });
+    _chess.game = game;
+    _chess.myColor = game.white_user_id === uid ? "white" : "black";
+    _showChessScreen("chess-waiting");
+    const codeEl = $("chess-game-code-display");
+    if (codeEl) codeEl.textContent = game.code;
+    const backBtn = $("chess-back-from-waiting");
+    if (backBtn && !backBtn._init) {
+      backBtn._init = true;
+      backBtn.addEventListener("click", function() { chessDisconnect(); _showChessScreen("chess-entry"); });
+    }
+    const copyBtn = $("chess-copy-code-btn");
+    if (copyBtn && !copyBtn._init) {
+      copyBtn._init = true;
+      copyBtn.addEventListener("click", function() {
+        navigator.clipboard.writeText(game.code).then(function() {
+          copyBtn.textContent = "✓ Скопировано!";
+          setTimeout(function() { copyBtn.textContent = "📋 Скопировать код"; }, 2000);
+        });
+      });
+    }
+    chessConnect(game.code);
+  } catch(e) { toast("Ошибка создания игры", "error"); }
+}
+
+async function chessJoinGame() {
+  const inp = $("chess-join-input");
+  const code = (inp ? inp.value.trim().toUpperCase() : "");
+  if (!code || code.length < 4) { toast("Введи код игры", "error"); return; }
+  const uid = _chess.myUserId;
+  try {
+    const game = await apiFetch("/chess/games/" + code + "/join?user_id=" + uid, { method: "POST" });
+    _chess.game = game;
+    _chess.myColor = game.white_user_id === uid ? "white" : "black";
+    chessStartGameUI(game);
+    chessConnect(game.code);
+  } catch(e) {
+    toast((e && e.detail) || "Игра не найдена или уже началась", "error");
+  }
+}
+
+function chessConnect(code) {
+  if (_chess.ws) { try { _chess.ws.close(); } catch(e) {} }
+  const uid = _chess.myUserId;
+  const ws = new WebSocket(_chessWsBase() + "/chess/ws/" + code + "?user_id=" + uid);
+  _chess.ws = ws;
+  ws.onmessage = function(e) { try { handleChessMessage(JSON.parse(e.data)); } catch(err) {} };
+  ws.onerror = function() {};
+  ws.onclose = function() {
+    if (_chess.game && _chess.game.status === "active") {
+      setTimeout(function() {
+        var gameEl = $("chess-game");
+        if (_chess.game && gameEl && gameEl.style.display !== "none") chessConnect(_chess.game.code);
+      }, 3000);
+    }
+  };
+  ws._pingInterval = setInterval(function() {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:"ping"}));
+  }, 25000);
+}
+
+function chessDisconnect() {
+  if (_chess.ws) { clearInterval(_chess.ws._pingInterval); try { _chess.ws.close(); } catch(e) {} _chess.ws = null; }
+  _chess.game = null; _chess.engine = null; _chess.myColor = null; _chess.selected = null;
+}
+
+function handleChessMessage(msg) {
+  if (msg.type === "state") {
+    _chess.game = msg.game;
+    if (msg.game.status === "active") chessStartGameUI(msg.game);
+  } else if (msg.type === "game_ready") {
+    _chess.game = msg.game; chessStartGameUI(msg.game);
+  } else if (msg.type === "move") {
+    if (_chess.engine) {
+      _chess.engine.load(msg.fen); renderChessBoard(); renderChessMoves(msg.pgn); updateChessStatus();
+    }
+  } else if (msg.type === "game_over") {
+    handleChessGameOver(msg);
+  } else if (msg.type === "draw_offer") {
+    if (msg.user_id !== _chess.myUserId) { var o = $("chess-draw-offer"); if (o) o.style.display = ""; }
+  } else if (msg.type === "draw_decline") {
+    toast("Соперник отклонил ничью");
+  } else if (msg.type === "opponent_disconnected") {
+    updateChessStatusText("Соперник отключился…");
+  }
+}
+
+function chessStartGameUI(game) {
+  _chess.game = game;
+  var uid = _chess.myUserId;
+  _chess.myColor = game.white_user_id === uid ? "white" : "black";
+  if (!_chess.engine) { _chess.engine = new Chess(); }
+  var fen = game.fen;
+  if (fen && fen !== "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") _chess.engine.load(fen);
+  _showChessScreen("chess-game");
+  var isW = _chess.myColor === "white";
+  var myName = (state.user && state.user.display_name) || "Вы";
+  var oppName = isW ? (game.black_name || "Соперник") : (game.white_name || "Соперник");
+  var topName = $("chess-top-name"); if (topName) topName.textContent = oppName;
+  var botName = $("chess-bottom-name"); if (botName) botName.textContent = myName;
+  var topColor = $("chess-top-color"); if (topColor) topColor.textContent = isW ? "♟ чёрные" : "♙ белые";
+  var botColor = $("chess-bottom-color"); if (botColor) botColor.textContent = isW ? "♙ белые" : "♟ чёрные";
+  var topAv = $("chess-top-avatar"); if (topAv) topAv.textContent = isW ? "♚" : "♔";
+  var botAv = $("chess-bottom-avatar"); if (botAv) botAv.textContent = isW ? "♔" : "♚";
+  renderChessBoard(); renderChessMoves(game.moves_pgn || ""); updateChessStatus();
+
+  var resignBtn = $("chess-resign-btn");
+  if (resignBtn && !resignBtn._init) {
+    resignBtn._init = true;
+    resignBtn.addEventListener("click", function() {
+      if (confirm("Сдаться?") && _chess.ws && _chess.ws.readyState === WebSocket.OPEN)
+        _chess.ws.send(JSON.stringify({type:"resign"}));
+    });
+  }
+  var drawBtn = $("chess-draw-btn");
+  if (drawBtn && !drawBtn._init) {
+    drawBtn._init = true;
+    drawBtn.addEventListener("click", function() {
+      if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN)
+        _chess.ws.send(JSON.stringify({type:"draw_offer"}));
+      toast("Предложение ничьей отправлено");
+    });
+  }
+  var drawAccept = $("chess-draw-accept");
+  if (drawAccept && !drawAccept._init) {
+    drawAccept._init = true;
+    drawAccept.addEventListener("click", function() {
+      if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN)
+        _chess.ws.send(JSON.stringify({type:"draw_accept"}));
+      var o = $("chess-draw-offer"); if (o) o.style.display = "none";
+    });
+  }
+  var drawDecline = $("chess-draw-decline");
+  if (drawDecline && !drawDecline._init) {
+    drawDecline._init = true;
+    drawDecline.addEventListener("click", function() {
+      if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN)
+        _chess.ws.send(JSON.stringify({type:"draw_decline"}));
+      var o = $("chess-draw-offer"); if (o) o.style.display = "none";
+    });
+  }
+  var goNew = $("chess-gameover-new");
+  if (goNew && !goNew._init) {
+    goNew._init = true;
+    goNew.addEventListener("click", function() {
+      var goEl = $("chess-gameover"); if (goEl) goEl.style.display = "none";
+      chessDisconnect(); openChessEntry();
+    });
+  }
+  var goLobby = $("chess-gameover-lobby");
+  if (goLobby && !goLobby._init) {
+    goLobby._init = true;
+    goLobby.addEventListener("click", function() { chessDisconnect(); _showChessScreen("games-lobby"); });
+  }
+}
+
+function renderChessBoard() {
+  var boardEl = $("chess-board"); var engine = _chess.engine;
+  if (!boardEl || !engine) return;
+  var myColor = _chess.myColor || "white";
+  var files = ["a","b","c","d","e","f","g","h"];
+  var ranks = myColor === "black" ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  var ordFiles = myColor === "black" ? ["h","g","f","e","d","c","b","a"] : files;
+  boardEl.innerHTML = "";
+  for (var ri = 0; ri < ranks.length; ri++) {
+    var rank = ranks[ri];
+    for (var fi = 0; fi < ordFiles.length; fi++) {
+      var file = ordFiles[fi];
+      var sq = file + rank;
+      var piece = engine.get(sq);
+      var light = (files.indexOf(file) + rank) % 2 === 1;
+      var isSel = _chess.selected === sq;
+      var isLeg = _chess.legalSquares.indexOf(sq) >= 0;
+      var cls = "chess-sq " + (light ? "chess-sq-light" : "chess-sq-dark");
+      if (isSel) cls += " chess-sq-selected";
+      else if (isLeg && piece) cls += " chess-sq-capture";
+      else if (isLeg) cls += " chess-sq-legal";
+      var div = document.createElement("div");
+      div.className = cls; div.dataset.sq = sq;
+      if (piece) {
+        var span = document.createElement("span");
+        span.className = "chess-piece chess-piece-" + piece.color;
+        span.textContent = CHESS_PIECES[piece.color + piece.type.toUpperCase()] || "?";
+        div.appendChild(span);
+      }
+      if (isLeg && !piece) {
+        var dot = document.createElement("div"); dot.className = "chess-move-dot"; div.appendChild(dot);
+      }
+      if (file === (myColor === "black" ? "h" : "a")) {
+        var lbl = document.createElement("span"); lbl.className = "chess-coord chess-coord-rank"; lbl.textContent = rank; div.appendChild(lbl);
+      }
+      if (rank === (myColor === "black" ? 8 : 1)) {
+        var lbl2 = document.createElement("span"); lbl2.className = "chess-coord chess-coord-file"; lbl2.textContent = file; div.appendChild(lbl2);
+      }
+      (function(s) { div.addEventListener("click", function() { onChessSquareClick(s); }); })(sq);
+      boardEl.appendChild(div);
+    }
+  }
+}
+
+function onChessSquareClick(sq) {
+  var engine = _chess.engine; var myColor = _chess.myColor;
+  if (!engine || !myColor) return;
+  var isMyTurn = (engine.turn() === "w" && myColor === "white") || (engine.turn() === "b" && myColor === "black");
+  if (_chess.selected && _chess.legalSquares.indexOf(sq) >= 0) { chessDoMove(_chess.selected, sq); return; }
+  if (!isMyTurn) { _chess.selected = null; _chess.legalSquares = []; renderChessBoard(); return; }
+  var piece = engine.get(sq);
+  if (piece && piece.color === engine.turn()) {
+    _chess.selected = sq;
+    var moves = engine.moves({ square: sq, verbose: true });
+    _chess.legalSquares = moves.map(function(m) { return m.to; });
+  } else { _chess.selected = null; _chess.legalSquares = []; }
+  renderChessBoard();
+}
+
+function chessDoMove(from, to) {
+  var engine = _chess.engine; if (!engine) return;
+  var piece = engine.get(from);
+  var isPromo = piece && piece.type === "p" &&
+    ((piece.color === "w" && to[1] === "8") || (piece.color === "b" && to[1] === "1"));
+  if (isPromo) { showPromotionDialog(from, to); return; }
+  var move = engine.move({ from: from, to: to, promotion: "q" }); if (!move) return;
+  _chess.selected = null; _chess.legalSquares = [];
+  renderChessBoard(); renderChessMoves(engine.pgn()); updateChessStatus();
+  var go = checkChessGameOver();
+  if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
+    _chess.ws.send(JSON.stringify({
+      type: go ? "game_over" : "move", from: from, to: to,
+      fen: engine.fen(), pgn: engine.pgn(), san: move.san,
+      winner: go ? go.winner : undefined, reason: go ? go.reason : undefined,
+    }));
+  }
+}
+
+function showPromotionDialog(from, to) {
+  _chess.pendingPromotion = { from: from, to: to };
+  var overlay = document.createElement("div");
+  overlay.className = "chess-promo-overlay";
+  var color = _chess.myColor === "white" ? "w" : "b";
+  var pieces = ["q","r","b","n"];
+  var wPieces = ["♕","♖","♗","♘"]; var bPieces = ["♛","♜","♝","♞"];
+  var btns = pieces.map(function(p, i) {
+    return '<button class="chess-promo-btn" data-piece="' + p + '">' + (color === "w" ? wPieces[i] : bPieces[i]) + '</button>';
+  }).join("");
+  overlay.innerHTML = '<div class="chess-promo-box"><div class="chess-promo-title">Выбери фигуру</div><div class="chess-promo-btns">' + btns + '</div></div>';
+  overlay.querySelectorAll(".chess-promo-btn").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var prom = btn.dataset.piece; overlay.remove();
+      var f = _chess.pendingPromotion.from; var t = _chess.pendingPromotion.to; _chess.pendingPromotion = null;
+      var move = _chess.engine.move({ from: f, to: t, promotion: prom }); if (!move) return;
+      _chess.selected = null; _chess.legalSquares = [];
+      renderChessBoard(); renderChessMoves(_chess.engine.pgn()); updateChessStatus();
+      var go = checkChessGameOver();
+      if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
+        _chess.ws.send(JSON.stringify({
+          type: go ? "game_over" : "move", from: f, to: t, promotion: prom,
+          fen: _chess.engine.fen(), pgn: _chess.engine.pgn(), san: move.san,
+          winner: go ? go.winner : undefined, reason: go ? go.reason : undefined,
+        }));
+      }
+    });
+  });
+  document.body.appendChild(overlay);
+}
+
+function checkChessGameOver() {
+  var engine = _chess.engine; if (!engine) return null;
+  if (engine.in_checkmate()) {
+    var winner = engine.turn() === "w" ? "black" : "white";
+    handleChessGameOver({ winner: winner, reason: "checkmate", fen: engine.fen() });
+    return { winner: winner, reason: "checkmate" };
+  }
+  if (engine.in_draw() || engine.in_stalemate() || engine.in_threefold_repetition() || engine.insufficient_material()) {
+    handleChessGameOver({ winner: "draw", reason: engine.in_stalemate() ? "stalemate" : "draw", fen: engine.fen() });
+    return { winner: "draw", reason: "draw" };
+  }
+  return null;
+}
+
+function handleChessGameOver(msg) {
+  var goEl = $("chess-gameover"); if (!goEl) return;
+  var myColor = _chess.myColor;
+  var icon = "🏆", title = "", sub = "";
+  if (msg.winner === "draw") {
+    icon = "🤝"; title = "Ничья!";
+    sub = msg.reason === "agreement" ? "По соглашению" : msg.reason === "stalemate" ? "Пат" : "Ничья";
+  } else if (msg.winner === myColor) {
+    icon = "🏆"; title = "Победа!";
+    sub = msg.reason === "resign" ? "Соперник сдался" : msg.reason === "checkmate" ? "Мат!" : "";
+  } else {
+    icon = "😔"; title = "Поражение";
+    sub = msg.reason === "resign" ? "Вы сдались" : msg.reason === "checkmate" ? "Вам поставили мат" : "";
+  }
+  var iconEl = $("chess-gameover-icon"); if (iconEl) iconEl.textContent = icon;
+  var titleEl = $("chess-gameover-title"); if (titleEl) titleEl.textContent = title;
+  var subEl = $("chess-gameover-sub"); if (subEl) subEl.textContent = sub;
+  goEl.style.display = "";
+}
+
+function renderChessMoves(pgn) {
+  var list = $("chess-moves-list"); if (!list) return;
+  if (!pgn) { list.innerHTML = ""; return; }
+  var clean = pgn.replace(/\{[^}]*\}/g, "").trim();
+  var rows = clean.split(/\d+\./).filter(function(s) { return s.trim(); });
+  list.innerHTML = rows.map(function(s, i) {
+    return '<div class="chess-move-row"><span class="chess-move-num">' + (i+1) + '.</span>' + s.trim() + '</div>';
+  }).join("");
+  list.scrollTop = list.scrollHeight;
+}
+
+function updateChessStatus() {
+  var engine = _chess.engine; var myColor = _chess.myColor; if (!engine) return;
+  var turn = engine.turn() === "w" ? "white" : "black";
+  var isMyTurn = turn === myColor;
+  var text = "", dotCls = "";
+  if (engine.game_over()) {
+    text = engine.in_checkmate() ? (isMyTurn ? "Вам поставили мат" : "Мат!") : "Ничья";
+    dotCls = "dot-over";
+  } else if (isMyTurn) {
+    text = engine.in_check() ? "Ваш ход — шах!" : "Ваш ход";
+    dotCls = "dot-mine";
+  } else {
+    text = "Ход соперника…"; dotCls = "dot-opp";
+  }
+  var st = $("chess-status-text"); if (st) st.textContent = text;
+  var sd = $("chess-status-dot"); if (sd) sd.className = "chess-status-dot " + dotCls;
+}
+
+function updateChessStatusText(text) {
+  var el = $("chess-status-text"); if (el) el.textContent = text;
 }
