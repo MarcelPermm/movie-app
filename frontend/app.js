@@ -7494,6 +7494,8 @@ function _showChessScreen(id) {
 function initGamesMode() {
   const uid = state.user && state.user.id;
   if (!uid) return;
+  // Полный сброс состояния при каждом заходе на вкладку
+  chessDisconnect();
   _chess.myUserId = uid;
   _showChessScreen("games-lobby");
   const card = $("chess-open-card");
@@ -7607,9 +7609,14 @@ async function chessCreateGame() {
         var g = await apiFetch("/chess/games/" + game.code);
         if (g && g.status === "active") {
           clearInterval(_chess._waitPoll); _chess._waitPoll = null;
-          chessStartGameUI(g);
+          try {
+            chessStartGameUI(g);
+          } catch(err) {
+            console.error("chessStartGameUI error:", err);
+            toast("Ошибка запуска игры: " + (err && err.message || err), "error");
+          }
         }
-      } catch(e) {}
+      } catch(e) { console.error("poll error:", e); }
     }, 3000);
   } catch(e) {
     console.error("chess create error:", e);
@@ -7639,7 +7646,10 @@ function chessConnect(code) {
   const uid = _chess.myUserId;
   const ws = new WebSocket(_chessWsBase() + "/chess/ws/" + code + "?user_id=" + uid);
   _chess.ws = ws;
-  ws.onmessage = function(e) { try { handleChessMessage(JSON.parse(e.data)); } catch(err) {} };
+  ws.onmessage = function(e) {
+    try { handleChessMessage(JSON.parse(e.data)); }
+    catch(err) { console.error("chess WS message error:", err); }
+  };
   ws.onerror = function() {};
   ws.onclose = function() {
     if (_chess.game && _chess.game.status === "active") {
@@ -7656,8 +7666,22 @@ function chessConnect(code) {
 
 function chessDisconnect() {
   if (_chess._waitPoll) { clearInterval(_chess._waitPoll); _chess._waitPoll = null; }
-  if (_chess.ws) { clearInterval(_chess.ws._pingInterval); try { _chess.ws.close(); } catch(e) {} _chess.ws = null; }
-  _chess.game = null; _chess.engine = null; _chess.myColor = null; _chess.selected = null;
+  if (_chess.ws) {
+    clearInterval(_chess.ws._pingInterval);
+    try { _chess.ws.close(); } catch(e) {}
+    _chess.ws = null;
+  }
+  _chess.game = null;
+  _chess.engine = null;
+  _chess.myColor = null;
+  _chess.selected = null;
+  _chess.legalSquares = [];
+  _chess.pendingPromotion = null;
+  // Сброс _init флагов кнопок — чтобы новая игра заново вешала обработчики
+  ["chess-resign-btn","chess-draw-btn","chess-draw-accept","chess-draw-decline",
+   "chess-gameover-new","chess-gameover-lobby","chess-back-from-waiting","chess-copy-code-btn"].forEach(function(id) {
+    var el = $(id); if (el) el._init = false;
+  });
 }
 
 function handleChessMessage(msg) {
@@ -7685,9 +7709,13 @@ function chessStartGameUI(game) {
   _chess.game = game;
   var uid = _chess.myUserId;
   _chess.myColor = game.white_user_id === uid ? "white" : "black";
-  if (!_chess.engine) { _chess.engine = new Chess(); }
+  // Всегда создаём свежий движок — никогда не используем старый
+  _chess.engine = new Chess();
+  _chess.selected = null;
+  _chess.legalSquares = [];
+  // Загружаем позицию из БД (может быть не начальная, если игра была прервана)
   var fen = game.fen;
-  if (fen && fen !== "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") _chess.engine.load(fen);
+  if (fen) { try { _chess.engine.load(fen); } catch(e) {} }
   _showChessScreen("chess-game");
   var isW = _chess.myColor === "white";
   var myName = (state.user && state.user.display_name) || "Вы";
