@@ -108,6 +108,7 @@ def do_play(state: dict, player_id: int, card: str, chosen_suit: str = None) -> 
         if chosen_suit and chosen_suit in SUITS:
             s['current_suit'] = chosen_suit
             s['phase'] = 'play'
+            s['current'] = _next_player(s)
         else:
             s['phase'] = 'choose_suit'
             s['pending_q_player'] = player_id
@@ -208,6 +209,12 @@ def do_draw_pass(state: dict, player_id: int) -> tuple:
     if state.get('draw6_pending') or state.get('draw5_pending'):
         return state, 'Нужно взять обязательные карты'
     s = copy.deepcopy(state)
+    if not s['deck'] and len(s['discard']) > 1:
+        # Перетасовать сброс (кроме верхней карты) обратно в колоду
+        top = s['discard'].pop()
+        s['deck'] = s['discard'][:]
+        random.shuffle(s['deck'])
+        s['discard'] = [top]
     if s['deck']:
         s['hands'][str(player_id)].append(s['deck'].pop())
     s['current'] = _next_player(s)

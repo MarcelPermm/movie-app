@@ -12,7 +12,7 @@ def _make_deck() -> list:
     for c in COLORS:
         deck.append(f'{c}-0')
         for n in NUMS[1:]:   deck += [f'{c}-{n}', f'{c}-{n}']
-        for a in ACTIONS:    deck += [f'{a}-{c}', f'{a}-{c}']
+        for a in ACTIONS:    deck += [f'{c}-{a}', f'{c}-{a}']
     deck += ['wild', 'wild', 'wild', 'wild',
              'wild4','wild4','wild4','wild4']
     random.shuffle(deck)
@@ -98,16 +98,18 @@ def do_play(state: dict, player_id: int, card: str, chosen_color: str = None) ->
     val = _value(card)
     skip_next = False
 
-    if card == 'wild4':
-        s['draw_pending'] = (s['draw_pending'] or 0) + 4
-        s['phase'] = 'choose_color'
-        s['pending_wild_player'] = player_id
-    elif card == 'wild':
-        s['phase'] = 'choose_color'
-        s['pending_wild_player'] = player_id
+    if card in ('wild', 'wild4'):
+        if card == 'wild4':
+            s['draw_pending'] = (s['draw_pending'] or 0) + 4
+        if chosen_color in COLORS:
+            # Цвет пришёл вместе с картой — сразу применяем
+            s['current_color'] = chosen_color
+        else:
+            s['phase'] = 'choose_color'
+            s['pending_wild_player'] = player_id
     elif val == 'draw2':
+        # Следующий игрок получает ход: может подложить ещё +2 или взять карты
         s['draw_pending'] = (s['draw_pending'] or 0) + 2
-        skip_next = True
         s['current_color'] = _color(card)
     elif val == 'skip':
         skip_next = True
@@ -128,9 +130,6 @@ def do_play(state: dict, player_id: int, card: str, chosen_color: str = None) ->
 
     if s['phase'] == 'play':
         s['current'] = _next_player(s, skip=1 if skip_next else 0)
-        if skip_next and s['draw_pending'] > 0:
-            # next player must draw
-            pass
 
     return s, None
 
@@ -145,29 +144,35 @@ def do_choose_color(state: dict, player_id: int, color: str) -> tuple:
     s['current_color'] = color
     s['phase'] = 'play'
     s['pending_wild_player'] = None
-    val = _value(s['top_card'])
-    if val == 'wild4':
-        s['current'] = _next_player(s, skip=1)
-    else:
-        s['current'] = _next_player(s)
+    # Следующий игрок получает ход даже после wild4 —
+    # он сможет подложить свою wild4 или взять карты
+    s['current'] = _next_player(s)
     return s, None
+
+def _draw_cards(s: dict, player_id: int, n: int) -> int:
+    """Draw up to n cards, reshuffling discard as needed. Returns drawn count."""
+    drawn = 0
+    for _ in range(n):
+        if not s['deck']:
+            if len(s['discard']) > 1:
+                top = s['discard'].pop()
+                s['deck'] = s['discard']
+                random.shuffle(s['deck'])
+                s['discard'] = [top]
+            else:
+                break
+        s['hands'][str(player_id)].append(s['deck'].pop())
+        drawn += 1
+    return drawn
 
 def do_draw(state: dict, player_id: int) -> tuple:
     if player_id != state['current']:
         return state, 'Сейчас не ваш ход'
     s = copy.deepcopy(state)
-    if not s['deck']:
-        # Reshuffle discard into deck
-        top = s['discard'].pop()
-        s['deck'] = s['discard'][:]
-        random.shuffle(s['deck'])
-        s['discard'] = [top]
-    if not s['deck']:
-        return s, 'Колода пуста'
     n = s['draw_pending'] if s['draw_pending'] > 0 else 1
-    for _ in range(min(n, len(s['deck']))):
-        s['hands'][str(player_id)].append(s['deck'].pop())
+    _draw_cards(s, player_id, n)
     s['draw_pending'] = 0
+    s['uno_said'] = [u for u in s['uno_said'] if u != player_id]
     s['current'] = _next_player(s)
     return s, None
 

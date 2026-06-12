@@ -4231,6 +4231,67 @@ async function loadNotebookToday() {
   } catch {
     listEl.innerHTML = `<div style="color:var(--nb-red);font-size:13px;padding:8px 0">Ошибка загрузки</div>`;
   }
+
+  loadMiniBudget(); // мини-виджет бюджета (не блокирует задачи)
+}
+
+// ── Мини-бюджет на «Сегодня» ───────────────────────────────────────
+async function loadMiniBudget() {
+  const wrap = $("nb-mini-budget");
+  if (!wrap) return;
+  try {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth() + 1;
+    const [cats, expenses, events] = await Promise.all([
+      apiFetch("/budget/categories"),
+      apiFetch(`/budget/expenses?year=${y}&month=${m}`),
+      apiFetch(`/budget/events?year=${y}&month=${m}`).catch(() => []),
+    ]);
+    const planReg = cats.reduce((s, c) => s + (c.plan_monthly || 0), 0);
+    const topEvents = (events || []).filter(e => !e.parent_id);
+    const planEv = topEvents.reduce((s, ev) => {
+      if (ev.event_type === "group") {
+        const kids = events.filter(k => k.parent_id === ev.id);
+        const ks = kids.reduce((a, k) => a + (k.planned_total || 0), 0);
+        return s + (ks || (ev.planned_total || 0));
+      }
+      return s + (ev.planned_total || 0);
+    }, 0);
+    const actualEv = topEvents.reduce((s, ev) => {
+      const direct = Number(ev.actual_total) || 0;
+      if (ev.event_type === "group") {
+        const kids = events.filter(k => k.parent_id === ev.id);
+        return s + direct + kids.reduce((a, k) => a + (Number(k.actual_total) || 0), 0);
+      }
+      return s + direct;
+    }, 0);
+    const actualExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
+    const plan = planReg + planEv;
+    const actual = actualExp + actualEv;
+    const left = plan - actual;
+    const pct = plan > 0 ? Math.min(100, Math.round((actual / plan) * 100)) : 0;
+
+    const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+    const moEl = $("nb-mini-budget-month");
+    if (moEl) moEl.textContent = MONTHS[m - 1];
+    const numsEl = $("nb-mini-budget-nums");
+    if (numsEl) {
+      const leftStr = left >= 0
+        ? `осталось ${left.toLocaleString("ru")} ₽`
+        : `перерасход ${Math.abs(left).toLocaleString("ru")} ₽`;
+      numsEl.innerHTML = `<b>${actual.toLocaleString("ru")} ₽</b><span>из ${plan.toLocaleString("ru")} ₽ · ${leftStr}</span>`;
+    }
+    const fill = $("nb-mini-budget-fill");
+    if (fill) {
+      fill.style.width = pct + "%";
+      fill.style.background = actual > plan ? "var(--nb-red)" : "var(--honey)";
+    }
+    wrap.style.display = "";
+    if (!wrap._init) {
+      wrap._init = true;
+      wrap.addEventListener("click", () => openNotebookTab("budget"));
+    }
+  } catch (e) { /* нет данных бюджета — виджет просто скрыт */ }
 }
 
 function renderYesterday(tasks) {
@@ -7515,6 +7576,17 @@ function initGamesMode() {
   if (!uid) return;
   // Полный сброс состояния при каждом заходе на вкладку
   chessDisconnect();
+  if (typeof _durakDisconnect === "function") _durakDisconnect();
+  if (typeof _cgDisconnect === "function") {
+    if (typeof _uno  !== "undefined") _cgDisconnect(_uno);
+    if (typeof _g101 !== "undefined") _cgDisconnect(_g101);
+  }
+  // Спрятать все под-экраны игр, если остались открытыми
+  ["durak-setup","durak-lobby","durak-game",
+   "uno-setup","uno-lobby","uno-game",
+   "g101-setup","g101-lobby","g101-game"].forEach(id => {
+    const el = $(id); if (el) el.style.display = "none";
+  });
   _chess.myUserId = uid;
   _showChessScreen("games-lobby");
   const card = $("chess-open-card");
@@ -8162,6 +8234,7 @@ function _showDurakScreen(id) {
 function initDurakMode() {
   _durakDisconnect();
   _durak.myUserId = state.user && state.user.id;
+  _showChessScreen(null);          // скрыть лобби игр
   _showDurakScreen('durak-setup');
   _initDurakSetup();
 }
@@ -8174,16 +8247,8 @@ function _durakDisconnect() {
   }
   _durak.game = null; _durak.state = null; _durak.myHand = [];
   _durak.selectedCards = []; _durak.selectedCard = null; _durak.selectedDefense = null; _durak.code = null;
-  // Reset _init flags
-  ['durak-create-btn','durak-join-btn','durak-copy-btn','durak-start-btn',
-   'durak-back-lobby','durak-back-setup','durak-done-btn','durak-take-btn',
-   'durak-go-new','durak-go-lobby'].forEach(function(id) {
-    var el = $(id); if (el) el._init = false;
-  });
-  // Reset radio group listeners
-  ['durak-deck-group','durak-players-group','durak-variant-group','durak-neighbors-group'].forEach(function(id) {
-    var el = $(id); if (el) el._init = false;
-  });
+  // ВАЖНО: _init флаги не сбрасываем — обработчики читают _durak.game
+  // динамически, а сброс приводил к дублирующимся слушателям.
 }
 
 // ── Setup screen ─────────────────────────────────────────────────
@@ -8316,7 +8381,8 @@ function _initDurakLobbyBtns(game) {
   if (copyBtn && !copyBtn._init) {
     copyBtn._init = true;
     copyBtn.addEventListener('click', function() {
-      navigator.clipboard.writeText(game.code).then(function() {
+      var code = (_durak.game && _durak.game.code) || _durak.code || '';
+      navigator.clipboard.writeText(code).then(function() {
         copyBtn.textContent = '✓ Скопировано!';
         setTimeout(function() { copyBtn.textContent = '📋 Скопировать код'; }, 2000);
       });
@@ -8327,8 +8393,9 @@ function _initDurakLobbyBtns(game) {
   if (startBtn && !startBtn._init) {
     startBtn._init = true;
     startBtn.addEventListener('click', async function() {
+      var code = (_durak.game && _durak.game.code) || _durak.code;
       try {
-        await apiFetch('/durak/games/' + game.code + '/start?user_id=' + _durak.myUserId, { method: 'POST' });
+        await apiFetch('/durak/games/' + code + '/start?user_id=' + _durak.myUserId, { method: 'POST' });
       } catch(e) { toast(e && e.detail || 'Ошибка', 'error'); }
     });
   }

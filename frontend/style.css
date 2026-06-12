@@ -3706,11 +3706,12 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
    ТЕТРАДЬ — Бумажная записная книжка
 ══════════════════════════════════════════════════════════════ */
 :root {
-  --paper: #f7f3ea; --paper-shade: #efe9da; --paper-deep: #e8dfc8;
-  --ink: #1f1a14; --ink-2: #6b5f4d; --ink-3: #a59682; --rule: #d9ceb6;
-  --terracotta: #c96442; --terracotta-2: #a04b2e;
-  --sage: #7a8a5b; --sage-2: #5e6f3f;
-  --honey: #c89826; --nb-red: #b8442a; --hl: #fff3b0;
+  /* Тетрадь 2.0 — тёмная палитра в стиле остального сайта */
+  --paper: #0e0e15; --paper-shade: #15151e; --paper-deep: #1d1d28;
+  --ink: #e8e4dc; --ink-2: #a59e92; --ink-3: #6f6a61; --rule: #232331;
+  --terracotta: #c96442; --terracotta-2: #e0795a;
+  --sage: #8aa46b; --sage-2: #a5bd87;
+  --honey: #c89826; --nb-red: #d05c44; --hl: rgba(200,152,38,.16);
 }
 
 /* — Layout — */
@@ -6305,4 +6306,122 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .durak-hand .uno-card:hover { transform: translateY(-10px); z-index: 5; margin-right: 2px; }
 .durak-hand .uno-card.selected {
   transform: translateY(-16px); z-index: 6; margin-right: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ТЕТРАДЬ 2.0 — современный минимализм (тёмный, карточки, пилюли)
+   Слой переопределений: лежит после базовых стилей и выигрывает каскад
+══════════════════════════════════════════════════════════════ */
+
+/* — Раскладка: навигация сверху, контент колонкой — */
+.notebook-wrap { flex-direction: column; min-height: calc(100vh - 108px); }
+.notebook-spine {
+  width: 100%; min-width: 0; height: auto;
+  display: flex; flex-direction: row; align-items: center; gap: 14px;
+  padding: 12px 28px; background: var(--paper);
+  border-right: none; border-bottom: 1px solid var(--rule);
+  position: sticky; top: 108px; z-index: 20; overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.spine-header { padding: 0; border-bottom: none; margin: 0; flex-shrink: 0; }
+.spine-brand { font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+.spine-vol { display: none; }
+.spine-nav { flex-direction: row; gap: 6px; padding: 0; }
+.spine-tab {
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-style: normal; font-weight: 500;
+  color: var(--ink-2); background: var(--paper-shade);
+  border: 1px solid var(--rule); border-left: 1px solid var(--rule);
+  border-radius: 999px; padding: 7px 16px; margin-left: 0; width: auto;
+  white-space: nowrap; flex-shrink: 0;
+}
+.spine-tab:hover { background: var(--paper-deep); color: var(--ink); border-color: var(--rule); }
+.spine-tab.active {
+  font-weight: 700; color: #fff;
+  background: var(--spine-color, var(--terracotta));
+  border-color: transparent; border-left: 1px solid transparent;
+}
+.spine-tab.active .spine-dot { background: rgba(255,255,255,.85); }
+.notebook-body { overflow: visible; }
+.ntab-panel { min-height: auto; padding-bottom: 40px; }
+
+/* — Развороты → сетка карточек — */
+.notebook-spread { gap: 20px; padding: 24px 28px; min-height: auto; }
+.notebook-spread::after { display: none; }
+.nb-page {
+  background: var(--paper-shade);
+  border: 1px solid var(--rule) !important; border-radius: 16px;
+  padding: 26px 30px;
+}
+
+/* — Типографика: без рукописных и журнальных шрифтов — */
+.nb-title { font-family: 'DM Sans', sans-serif; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
+.nb-title-sm { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; font-style: normal; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 12px; }
+.nb-subtitle { font-family: 'DM Sans', sans-serif; font-size: 13px; transform: none; color: var(--ink-3); }
+.task-title { font-family: 'DM Sans', sans-serif; font-size: 14px; }
+.task-tag { font-family: 'DM Sans', sans-serif; font-size: 11px; color: var(--terracotta); background: rgba(201,100,66,.12); padding: 1px 7px; border-radius: 8px; }
+.task-add-line { font-family: 'DM Sans', sans-serif; font-size: 13px; border-bottom: none; color: var(--ink-3); }
+.task-add-btn:hover .task-add-line { color: var(--terracotta); }
+.task-add-input { font-family: 'DM Sans', sans-serif; font-size: 14px; }
+.cancel-input, .cancel-reason-text { font-family: 'DM Sans', sans-serif; font-size: 12px; transform: none; }
+.task-sm-tag, .task-sm-reason { font-family: 'DM Sans', sans-serif; }
+.cal-day-num { font-family: 'DM Sans', sans-serif; }
+.cal-day-detail-sub { font-family: 'DM Sans', sans-serif; font-size: 13px; transform: none; }
+.week-col-num, .week-day-num { font-family: 'DM Sans', sans-serif; }
+.week-task-dot { font-family: 'DM Sans', sans-serif; font-size: 11px; }
+.list-nav-item, .list-item-title, .list-detail-name { font-family: 'DM Sans', sans-serif; }
+.trip-card-name { font-family: 'DM Sans', sans-serif; font-weight: 700; }
+.trip-exp-cat, .budget-exp-cat { font-family: 'DM Sans', sans-serif; }
+.note-title-input { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 700; }
+.note-body-input { font-family: 'DM Sans', sans-serif; font-size: 13px; }
+.notes-add-btn { font-family: 'DM Sans', sans-serif; font-size: 13px; border: 1px solid var(--rule); border-radius: 10px; }
+.notes-add-btn:hover { border-color: var(--terracotta); color: var(--terracotta); }
+.budget-month-title { font-family: 'DM Sans', sans-serif; font-style: normal; font-size: 24px; }
+
+/* — Долой «бумагу»: линовка, поля, тени-страницы — */
+.nb-ruled-area { background: none; padding-left: 0; min-height: 0; }
+.nb-ruled-area::before { display: none; }
+.nb-ruled-sm { background: none !important; padding-left: 0 !important; }
+.task-item { border-bottom: 1px solid var(--rule); padding: 8px 4px; }
+.task-item:last-child { border-bottom: none; }
+.note-card { background: var(--paper-deep); border: 1px solid var(--rule); border-radius: 12px; box-shadow: none; }
+
+/* — Дневная шапка — */
+.nb-daybar { padding: 10px 28px; background: transparent; }
+.nb-daybar-center { font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700; color: var(--ink); }
+
+/* — Мини-виджет бюджета на «Сегодня» (обзорный дашборд) — */
+.nb-mini-budget {
+  background: var(--paper-deep); border: 1px solid var(--rule);
+  border-radius: 12px; padding: 14px 16px; margin-bottom: 22px;
+  cursor: pointer; transition: border-color .15s;
+}
+.nb-mini-budget:hover { border-color: var(--honey); }
+.nb-mini-budget-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.nb-mini-budget-month { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .07em; }
+.nb-mini-budget-nums { font-size: 13px; color: var(--ink-3); margin-bottom: 9px; }
+.nb-mini-budget-nums b { font-size: 17px; color: var(--ink); font-weight: 700; margin-right: 6px; }
+.nb-mini-budget-bar { height: 6px; background: var(--paper-shade); border-radius: 3px; overflow: hidden; }
+.nb-mini-budget-fill { height: 100%; width: 0; background: var(--honey); border-radius: 3px; transition: width .4s ease; }
+
+/* — Адаптив — */
+@media (max-width: 900px) {
+  .notebook-spread { grid-template-columns: 1fr; padding: 16px; gap: 14px; }
+  .notebook-spine { padding: 10px 14px; }
+  .spine-brand { display: none; }
+  .nb-page { padding: 18px 16px; border-right: none; }
+  .nb-daybar { padding: 8px 16px; }
+}
+
+/* ── Карточные игры: подсветка играбельности и UNO-бейдж ───── */
+.cg-unplayable { opacity: .45; filter: saturate(.5); }
+.cg-unplayable:hover { transform: none !important; }
+.cg-uno-badge {
+  display: inline-block; background: #e63b2e; color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: .05em;
+  padding: 2px 7px; border-radius: 8px; margin-left: 6px;
+  animation: cg-uno-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cg-uno-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.12); opacity: .8; }
 }

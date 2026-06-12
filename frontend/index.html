@@ -6,7 +6,7 @@
   <title>FilmByMihaylov</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;500;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
   <div class="grain"></div>
@@ -391,8 +391,17 @@
                   <button class="task-add-btn" id="task-add-btn"><span class="task-add-line">+ новая задача…</span></button>
                 </div>
               </div>
-              <!-- Правая страница: цели + вчера + неделя -->
+              <!-- Правая страница: бюджет + цели + вчера + неделя -->
               <div class="nb-page nb-page-right">
+                <!-- Мини-бюджет (клик → вкладка Бюджет) -->
+                <div class="nb-mini-budget" id="nb-mini-budget" style="display:none" title="Открыть бюджет">
+                  <div class="nb-mini-budget-head">
+                    <h2 class="nb-title-sm" style="margin:0">Бюджет</h2>
+                    <span class="nb-mini-budget-month" id="nb-mini-budget-month"></span>
+                  </div>
+                  <div class="nb-mini-budget-nums" id="nb-mini-budget-nums"></div>
+                  <div class="nb-mini-budget-bar"><div class="nb-mini-budget-fill" id="nb-mini-budget-fill"></div></div>
+                </div>
                 <!-- Цели на месяц / год -->
                 <div class="nb-section-goals">
                   <div class="nb-goals-head">
@@ -1049,8 +1058,8 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
-  <script src="config.js?v=10"></script>
-  <script src="app.js?v=10"></script>
-  <script src="cardgames_module.js?v=10"></script>
+  <script src="config.js?v=11"></script>
+  <script src="app.js?v=11"></script>
+  <script src="cardgames_module.js?v=11"></script>
 </body>
 </html>

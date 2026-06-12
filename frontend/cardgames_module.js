@@ -18,9 +18,9 @@ function _cgShowScreen(screens, id) {
   });
 }
 
-function _cgMakeGame(prefix, screens, mgr) {
+function _cgMakeGame(prefix, screens, mgr, apiPrefix) {
   var g = {
-    prefix: prefix, screens: screens, mgr: mgr,
+    prefix: prefix, apiPrefix: apiPrefix || prefix, screens: screens, mgr: mgr,
     ws: null, code: null, state: null, myHand: [],
     myUserId: null, selectedCard: null, game: null,
   };
@@ -30,7 +30,7 @@ function _cgMakeGame(prefix, screens, mgr) {
 function _cgConnect(g, code) {
   if (g.ws) { clearInterval(g.ws._ping); try { g.ws.close(); } catch(e) {} }
   var uid = g.myUserId;
-  var ws = new WebSocket(_cgWsBase() + '/' + g.prefix + '/ws/' + code + '?user_id=' + uid);
+  var ws = new WebSocket(_cgWsBase() + '/' + g.apiPrefix + '/ws/' + code + '?user_id=' + uid);
   g.ws = ws;
   g._lastWsMsg = Date.now();
   ws.onmessage = function(e) {
@@ -51,7 +51,7 @@ function _cgConnect(g, code) {
   g._poller = setInterval(function() {
     if (!g.code) { clearInterval(g._poller); return; }
     if (Date.now() - g._lastWsMsg < 3000) return;
-    apiFetch('/' + g.prefix + '/games/' + g.code).then(function(resp) {
+    apiFetch('/' + g.apiPrefix + '/games/' + g.code).then(function(resp) {
       var game = resp.game; var st = game && game.state;
       if (!st || game.status !== 'active') return;
       var view = st; view.game_status = 'active'; view.code = g.code;
@@ -70,18 +70,13 @@ function _cgDisconnect(g) {
   if (g._poller) { clearInterval(g._poller); g._poller = null; }
   if (g.ws) { clearInterval(g.ws._ping); try { g.ws.close(); } catch(e) {} g.ws = null; }
   g.code = null; g.state = null; g.myHand = []; g.selectedCard = null; g.game = null;
-  ['create-btn','join-btn','copy-btn','start-btn','back-lobby','back-setup',
-   'play-btn','draw-btn','uno-btn','draw-one-btn','next-round-btn','go-new','go-lobby'].forEach(function(sfx) {
-    var el = $(g.prefix + '-' + sfx); if (el) el._init = false;
-  });
-  ['players-group'].forEach(function(sfx) {
-    var el = $(g.prefix + '-' + sfx); if (el) el._init = false;
-  });
+  // ВАЖНО: _init флаги НЕ сбрасываем — иначе на кнопки навешиваются
+  // дублирующиеся обработчики и каждый клик срабатывает несколько раз.
 }
 
 async function _cgCreateGame(g, body) {
   try {
-    var resp = await apiFetch('/' + g.prefix + '/games?user_id=' + g.myUserId, {
+    var resp = await apiFetch('/' + g.apiPrefix + '/games?user_id=' + g.myUserId, {
       method: 'POST', body: JSON.stringify(body),
     });
     g.code = resp.game.code; g.game = resp.game;
@@ -95,7 +90,7 @@ async function _cgJoinGame(g, inputId) {
   var code = inp ? inp.value.trim().toUpperCase() : '';
   if (code.length < 4) { toast('Введи код', 'error'); return; }
   try {
-    var resp = await apiFetch('/' + g.prefix + '/games/' + code + '/join?user_id=' + g.myUserId, { method: 'POST' });
+    var resp = await apiFetch('/' + g.apiPrefix + '/games/' + code + '/join?user_id=' + g.myUserId, { method: 'POST' });
     g.code = code; g.game = resp.game;
     if (resp.game.status === 'active') { _cgConnect(g, code); }
     else { _cgShowLobby(g, resp.game, resp.players); _cgConnect(g, code); }
@@ -133,7 +128,8 @@ function _cgInitLobbyBtns(g, game) {
   if (copyBtn && !copyBtn._init) {
     copyBtn._init = true;
     copyBtn.addEventListener('click', function() {
-      navigator.clipboard.writeText(game.code).then(function() {
+      var code = (g.game && g.game.code) || g.code || '';
+      navigator.clipboard.writeText(code).then(function() {
         copyBtn.textContent = '✓ Скопировано!';
         setTimeout(function() { copyBtn.textContent = '📋 Скопировать код'; }, 2000);
       });
@@ -143,7 +139,8 @@ function _cgInitLobbyBtns(g, game) {
   if (startBtn && !startBtn._init) {
     startBtn._init = true;
     startBtn.addEventListener('click', async function() {
-      try { await apiFetch('/' + g.prefix + '/games/' + game.code + '/start?user_id=' + g.myUserId, { method: 'POST' }); }
+      var code = (g.game && g.game.code) || g.code;
+      try { await apiFetch('/' + g.apiPrefix + '/games/' + code + '/start?user_id=' + g.myUserId, { method: 'POST' }); }
       catch(e) { toast(e && e.detail || 'Ошибка', 'error'); }
     });
   }
@@ -155,10 +152,12 @@ function _cgRenderOpponents(g, state, containerId) {
   var players = (state.players || []).filter(function(p) { return p.user_id !== uid; });
   el.innerHTML = players.map(function(p) {
     var isCurrent = p.user_id === state.current;
-    var count = state.hands ? (state.hands[String(p.user_id)] || 0) : (p.hand_count || 0);
+    var raw = state.hands ? state.hands[String(p.user_id)] : p.hand_count;
+    var count = Array.isArray(raw) ? raw.length : (raw || 0);
     var score = p.score !== undefined ? (' · ' + p.score + 'оч') : '';
+    var unoBadge = count === 1 ? ' <span class="cg-uno-badge">UNO!</span>' : '';
     return '<div class="cg-opponent' + (isCurrent ? ' cg-current' : '') + '">'
-      + '<div class="durak-opp-name">' + (isCurrent ? '→ ' : '') + p.display_name + score + '</div>'
+      + '<div class="durak-opp-name">' + (isCurrent ? '→ ' : '') + p.display_name + score + unoBadge + '</div>'
       + '<div class="cg-opp-cards">'
       + Array.from({length: Math.min(count, 12)}, function() {
           return '<div class="cg-card-back-mini"></div>';
@@ -198,6 +197,7 @@ function initUnoMode() {
   _cgDisconnect(_uno); _uno.myUserId = state.user && state.user.id;
   _uno.initSetup = initUnoMode;
   _uno.onMsg = _unoOnMsg;
+  _showChessScreen(null);          // скрыть лобби игр
   _cgShowScreen(UNO_SCREENS, 'uno-setup');
   _unoInitSetup();
 }
@@ -253,7 +253,7 @@ function _unoOnMsg(msg) {
   if (msg.type === 'error') { toast(msg.message, 'error'); return; }
   if (msg.type === 'state') {
     _uno.state = msg.state; _uno.myHand = msg.state.my_hand || [];
-    _uno.selectedCard = null;
+    if (_uno.selectedCard && _uno.myHand.indexOf(_uno.selectedCard) === -1) _uno.selectedCard = null;
     if (msg.state.game_status === 'active') {
       _cgShowScreen(UNO_SCREENS, 'uno-game');
       _unoRender(msg.state);
@@ -285,6 +285,20 @@ function _unoRenderTopCard(state) {
   var dir = $('uno-direction'); if (dir) dir.textContent = state.direction === 1 ? '↻' : '↺';
 }
 
+function _unoCanPlay(card, state) {
+  if (card === 'wild' || card === 'wild4') {
+    if (state.draw_pending > 0) return card === 'wild4' && (state.top_card === 'wild4');
+    return true;
+  }
+  var parts = card.split('-'); var color = parts[0]; var val = parts.slice(1).join('-');
+  var tparts = (state.top_card || '').split('-');
+  var tval = (state.top_card === 'wild' || state.top_card === 'wild4') ? state.top_card : tparts.slice(1).join('-');
+  if (state.draw_pending > 0) return val === 'draw2' && tval === 'draw2';
+  if (color === state.current_color) return true;
+  if (val && val === tval) return true;
+  return false;
+}
+
 function _unoRenderHand(state) {
   var hand = $('uno-hand'); if (!hand) return;
   hand.innerHTML = '';
@@ -296,6 +310,7 @@ function _unoRenderHand(state) {
     el.innerHTML = _unoCardHtml(card, isSel);
     var cardEl = el.firstChild;
     if (isMyTurn) {
+      if (!_unoCanPlay(card, state)) cardEl.classList.add('cg-unplayable');
       cardEl.draggable = true;
       cardEl.addEventListener('dragstart', function(e) { e.dataTransfer.setData('text/plain', card); });
       cardEl.addEventListener('click', function() {
@@ -406,7 +421,7 @@ function _unoGameOver(msg) {
 var G101_SUIT_COLOR = { '♠': '#111', '♣': '#111', '♥': '#c00', '♦': '#c00' };
 var G101_SCREENS = ['g101-setup','g101-lobby','g101-game'];
 
-var _g101 = _cgMakeGame('game101', G101_SCREENS, null);
+var _g101 = _cgMakeGame('g101', G101_SCREENS, null, 'game101');
 
 function _g101CardHtml(card, selected, highlight) {
   var rank = card.startsWith('10') ? '10' : card.slice(0, -1);
@@ -423,6 +438,7 @@ function initG101Mode() {
   _cgDisconnect(_g101); _g101.myUserId = state.user && state.user.id;
   _g101.initSetup = initG101Mode;
   _g101.onMsg = _g101OnMsg;
+  _showChessScreen(null);          // скрыть лобби игр
   _cgShowScreen(G101_SCREENS, 'g101-setup');
   _g101InitSetup();
 }
@@ -478,7 +494,7 @@ function _g101OnMsg(msg) {
   }
   if (msg.type === 'state') {
     _g101.state = msg.state; _g101.myHand = msg.state.my_hand || [];
-    _g101.selectedCard = null;
+    if (_g101.selectedCard && _g101.myHand.indexOf(_g101.selectedCard) === -1) _g101.selectedCard = null;
     if (msg.state.game_status === 'active') {
       _cgShowScreen(G101_SCREENS, 'g101-game');
       _g101Render(msg.state);
@@ -510,6 +526,18 @@ function _g101RenderTop(state) {
   var dk = $('g101-deck-count'); if (dk) dk.textContent = state.deck_count || 0;
 }
 
+function _g101CanPlay(card, state) {
+  var rank = card.startsWith('10') ? '10' : card.slice(0, -1);
+  var suit = card.slice(-1);
+  if (state.draw6_pending) return suit === state.current_suit || rank === '6';
+  if (state.draw5_pending) return false;
+  if (rank === 'Q' || rank === 'A') return true;
+  if (suit === state.current_suit) return true;
+  var top = state.top_card || '';
+  var trank = top.startsWith('10') ? '10' : top.slice(0, -1);
+  return rank === trank;
+}
+
 function _g101RenderHand(state) {
   var hand = $('g101-hand'); if (!hand) return;
   hand.innerHTML = '';
@@ -520,6 +548,7 @@ function _g101RenderHand(state) {
     el.innerHTML = _g101CardHtml(card, isSel, false);
     var cardEl = el.firstChild;
     if (isMyTurn) {
+      if (!_g101CanPlay(card, state)) cardEl.classList.add('cg-unplayable');
       cardEl.draggable = true;
       cardEl.addEventListener('dragstart', function(e) { e.dataTransfer.setData('text/plain', card); });
       cardEl.addEventListener('click', function() {
@@ -644,10 +673,12 @@ function _g101GameOver(msg) {
   var title = $('g101-go-title'); if (title) title.textContent = isLoser ? 'Ты набрал 101! Проигрыш!' : (isWinner ? 'Победа в раунде!' : 'Игра окончена');
   var sub = $('g101-go-sub');
   if (sub) {
+    var players = (_g101.state && _g101.state.players) || [];
     var scLines = Object.entries(msg.scores || {}).map(function(kv) {
-      return 'Игрок ' + kv[0] + ': ' + kv[1] + ' очков';
-    }).join('\n');
-    sub.textContent = 'Дурак: ' + msg.loser_name + '\n' + scLines;
+      var p = players.find(function(pl) { return String(pl.user_id) === kv[0]; });
+      return (p ? p.display_name : 'Игрок ' + kv[0]) + ': ' + kv[1];
+    }).join(' · ');
+    sub.textContent = 'Проиграл: ' + msg.loser_name + ' — ' + scLines;
   }
   goEl.style.display = '';
 }

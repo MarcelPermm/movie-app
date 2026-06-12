@@ -2518,14 +2518,16 @@ async def uno_create(req: CardGameCreateReq, user_id: int = Query(...)):
     return {'game': game, 'players': players}
 
 @app.get('/uno/games/{code}')
-async def uno_get(code: str):
+async def uno_get(code: str, user_id: int = Query(default=0)):
     game = database.get_uno_game(code)
     if not game: raise HTTPException(404, 'Игра не найдена')
     import json as _j
     state = game.get('state') or {}
     if isinstance(state, str): state = _j.loads(state)
-    game['state'] = state
-    return {'game': game, 'players': database.get_uno_players(game['id'])}
+    players = database.get_uno_players(game['id'])
+    # Не отдаём колоду и чужие руки — только публичное представление
+    game['state'] = uno_logic.public_state(state, user_id, players) if state else {}
+    return {'game': game, 'players': players}
 
 @app.post('/uno/games/{code}/join')
 async def uno_join(code: str, user_id: int = Query(...)):
@@ -2620,14 +2622,16 @@ async def g101_create(req: CardGameCreateReq, user_id: int = Query(...)):
     return {'game': game, 'players': database.get_game101_players(game['id'])}
 
 @app.get('/game101/games/{code}')
-async def g101_get(code: str):
+async def g101_get(code: str, user_id: int = Query(default=0)):
     game = database.get_game101(code)
     if not game: raise HTTPException(404)
     import json as _j
     state = game.get('state') or {}
     if isinstance(state, str): state = _j.loads(state)
-    game['state'] = state
-    return {'game': game, 'players': database.get_game101_players(game['id'])}
+    players = database.get_game101_players(game['id'])
+    # Не отдаём колоду и чужие руки — только публичное представление
+    game['state'] = game101_logic.public_state(state, user_id, players) if state else {}
+    return {'game': game, 'players': players}
 
 @app.post('/game101/games/{code}/join')
 async def g101_join(code: str, user_id: int = Query(...)):
