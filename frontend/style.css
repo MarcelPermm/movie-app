@@ -4330,6 +4330,21 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .bacc-cat-head:hover .bacc-cat-delete { opacity: .7; }
 .bacc-cat-delete:hover { color: var(--terracotta) !important; opacity: 1 !important; }
 
+/* Быстрое добавление траты прямо в категорию */
+.bacc-cat-add {
+  background: none; border: 1px solid var(--terracotta);
+  color: var(--terracotta); font-size: 11px; font-weight: 600;
+  border-radius: 999px; padding: 2px 9px; cursor: pointer;
+  white-space: nowrap; opacity: 0; transform: translateX(4px);
+  transition: opacity .15s, transform .15s, background .15s, color .15s;
+}
+.bacc-cat-head:hover .bacc-cat-add { opacity: 1; transform: none; }
+.bacc-cat-add:hover { background: var(--terracotta); color: #fff; }
+/* На тач-устройствах (нет наведения) кнопка всегда видна */
+@media (hover: none) {
+  .bacc-cat-add { opacity: 1; transform: none; }
+}
+
 /* Тело категории */
 .bacc-cat-body { padding-left: 24px; }
 
@@ -5768,6 +5783,11 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   border: 1px solid var(--rule);
 }
 .chess-player-bar-me { background: var(--paper-2, rgba(255,255,255,.05)); }
+/* Чей ход в игре на одном экране */
+.chess-player-bar.chess-turn-active {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 1px var(--terracotta), 0 0 14px -4px var(--terracotta);
+}
 .chess-player-avatar { font-size: 22px; }
 .chess-player-name { font-family: 'Fraunces', Georgia, serif; font-size: 15px; color: var(--ink); font-weight: 600; flex: 1; }
 .chess-player-color { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }

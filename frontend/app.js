@@ -2573,7 +2573,21 @@ async function apiFetch(path, options = {}) {
     } catch {}
   }
 
-  const response = await fetch(`${API}${fullPath}`, { ...finalOptions, headers });
+  // Холодный старт Render: если ответ долго не приходит — один раз подсказываем,
+  // что сервер просыпается, чтобы экран не выглядел «зависшим».
+  let wakeTimer = null;
+  if (!apiFetch._coldHintShown) {
+    wakeTimer = setTimeout(() => {
+      apiFetch._coldHintShown = true;
+      try { toast("Сервер просыпается, это займёт ~30 сек…", ""); } catch {}
+    }, 6000);
+  }
+  let response;
+  try {
+    response = await fetch(`${API}${fullPath}`, { ...finalOptions, headers });
+  } finally {
+    if (wakeTimer) clearTimeout(wakeTimer);
+  }
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw err;
@@ -5310,6 +5324,7 @@ function renderBudgetAccordion(cats, expenses) {
       <div class="bacc-cat-head">
         <span class="bacc-cat-emoji">${emoji}</span>
         <span class="bacc-cat-name">${catName}</span>
+        ${cat ? `<button class="bacc-cat-add" data-cat-id="${catId}" title="Добавить трату в «${catName}»">+ трата</button>` : ""}
         <button class="bacc-plan-val ${over ? "over" : ""}" data-cat-id="${catId}" title="Нажми чтобы изменить план">${spentFmt}${planFmt} ₽${overSign}</button>
         <button class="bacc-toggle" title="Развернуть">›</button>
         ${cat ? `<button class="bacc-cat-delete" data-id="${catId}">×</button>` : ""}
@@ -5326,6 +5341,10 @@ function renderBudgetAccordion(cats, expenses) {
       if (cat) openPlanEdit(catDiv, cat);
     });
     if (cat) {
+      catDiv.querySelector(".bacc-cat-add").addEventListener("click", e => {
+        e.stopPropagation();
+        openExpenseModal(catId);
+      });
       catDiv.querySelector(".bacc-cat-delete").addEventListener("click", async e => {
         e.stopPropagation();
         try { await apiFetch(`/budget/categories/${catId}`, { method: "DELETE" }); loadBudget(); } catch {}
@@ -5333,6 +5352,7 @@ function renderBudgetAccordion(cats, expenses) {
     }
     head.addEventListener("click", e => {
       if (e.target.classList.contains("bacc-plan-val")) return;
+      if (e.target.classList.contains("bacc-cat-add")) return;
       if (e.target.classList.contains("bacc-cat-delete")) return;
       const open = body.style.display !== "none";
       body.style.display = open ? "none" : "";
@@ -5401,11 +5421,15 @@ function renderBudgetAccordion(cats, expenses) {
       <div class="bacc-cat-head bacc-cat-head-empty">
         <span class="bacc-cat-emoji">${cat.emoji}</span>
         <span class="bacc-cat-name" style="opacity:.5">${cat.name}</span>
+        <button class="bacc-cat-add" data-cat-id="${cat.id}" title="Добавить трату в «${cat.name}»">+ трата</button>
         <button class="bacc-plan-val no-plan" title="Задать план">0${plan ? ` / ${plan.toLocaleString("ru")}` : ""} ₽</button>
         <button class="bacc-toggle" disabled style="opacity:.2">›</button>
         <button class="bacc-cat-delete" data-id="${cat.id}">×</button>
       </div>
       <div class="bacc-cat-bar"><div class="bacc-cat-bar-fill" style="width:0%"></div></div>`;
+    emptyDiv.querySelector(".bacc-cat-add").addEventListener("click", e => {
+      e.stopPropagation(); openExpenseModal(cat.id);
+    });
     emptyDiv.querySelector(".bacc-plan-val").addEventListener("click", e => {
       e.stopPropagation(); openPlanEdit(emptyDiv, cat);
     });
@@ -6138,10 +6162,16 @@ function openExpenseModal(prefillCatId = null) {
   $("bm-merchant").value = "";
   $("bm-note").value = "";
   // Заполняем категории
+  const titleEl = document.querySelector("#bud-expense-modal .bud-modal-title");
+  if (titleEl) titleEl.textContent = "Добавить трату";
   apiFetch("/budget/categories").then(cats => {
     const sel = $("bm-category");
     sel.innerHTML = `<option value="">— незапланированная —</option>` +
       cats.map(c => `<option value="${c.id}"${prefillCatId == c.id ? " selected" : ""}>${c.emoji} ${c.name}</option>`).join("");
+    if (prefillCatId && titleEl) {
+      const c = cats.find(x => x.id == prefillCatId);
+      if (c) titleEl.textContent = `Трата · ${c.emoji} ${c.name}`;
+    }
   }).catch(() => {});
   // Заполняем события / поездки текущего месяца
   const evSel = $("bm-event");
@@ -7572,8 +7602,9 @@ function _showChessScreen(id) {
 }
 
 function initGamesMode() {
-  const uid = state.user && state.user.id;
-  if (!uid) return;
+  // Локальные игры (шахматы на одном экране) доступны без входа.
+  // Онлайн-режимы проверяют логин в момент создания/входа в партию.
+  const uid = (state.user && state.user.id) || null;
   // Полный сброс состояния при каждом заходе на вкладку
   chessDisconnect();
   if (typeof _durakDisconnect === "function") _durakDisconnect();
@@ -7690,7 +7721,18 @@ function chessStartLocal() {
   renderChessBoard();
   renderChessMoves("");
   updateChessStatus();
+  _chessUpdateLocalTurnBars();
   _initLocalGameOverBtns();
+}
+
+// Подсветка активного игрока в локальной игре (доска не переворачивается).
+function _chessUpdateLocalTurnBars() {
+  if (!_chess.engine) return;
+  var whiteToMove = _chess.engine.turn() === "w";
+  var top = $("chess-top-player");      // чёрные
+  var bot = $("chess-bottom-player");   // белые
+  if (top) top.classList.toggle("chess-turn-active", !whiteToMove);
+  if (bot) bot.classList.toggle("chess-turn-active", whiteToMove);
 }
 
 function _initLocalGameOverBtns() {
@@ -7731,7 +7773,8 @@ async function loadChessStats() {
 async function chessCreateGame() {
   const colorBtn = document.querySelector(".chess-color-btn.active");
   const colorChoice = colorBtn ? colorBtn.dataset.color : "random";
-  const uid = _chess.myUserId; if (!uid) return;
+  const uid = _chess.myUserId;
+  if (!uid) { toast("Войдите в аккаунт, чтобы играть онлайн. Для игры вдвоём на одном экране вход не нужен.", "err"); return; }
   try {
     const game = await apiFetch("/chess/games?user_id=" + uid, {
       method: "POST", body: JSON.stringify({ color_choice: colorChoice }),
@@ -7789,6 +7832,7 @@ async function chessJoinGame() {
   const code = (inp ? inp.value.trim().toUpperCase() : "");
   if (!code || code.length < 4) { toast("Введи код игры", "error"); return; }
   const uid = _chess.myUserId;
+  if (!uid) { toast("Войдите в аккаунт, чтобы играть онлайн. Для игры вдвоём на одном экране вход не нужен.", "err"); return; }
   try {
     const game = await apiFetch("/chess/games/" + code + "/join?user_id=" + uid, { method: "POST" });
     _chess.game = game;
@@ -8055,22 +8099,10 @@ function chessDoMove(from, to) {
   var move = engine.move({ from: from, to: to, promotion: "q" }); if (!move) return;
   _chess.selected = null; _chess.legalSquares = [];
 
-  // В локальном режиме: переворачиваем доску после хода
+  // В локальном режиме доску НЕ переворачиваем: оба игрока видят её
+  // с одной стороны (белые снизу). Подсвечиваем, чей сейчас ход.
   if (_chess.isLocal) {
-    _chess.myColor = engine.turn() === "w" ? "white" : "black";
-    var topColor = $("chess-top-color");
-    var botColor = $("chess-bottom-color");
-    var topAv    = $("chess-top-avatar");
-    var botAv    = $("chess-bottom-avatar");
-    if (_chess.myColor === "white") {
-      if (topColor) topColor.textContent = "♚ чёрные";
-      if (botColor) botColor.textContent = "♙ белые";
-      if (topAv) topAv.textContent = "♚"; if (botAv) botAv.textContent = "♔";
-    } else {
-      if (topColor) topColor.textContent = "♙ белые";
-      if (botColor) botColor.textContent = "♚ чёрные";
-      if (topAv) topAv.textContent = "♔"; if (botAv) botAv.textContent = "♚";
-    }
+    _chessUpdateLocalTurnBars();
   }
 
   renderChessBoard(); renderChessMoves(engine.pgn()); updateChessStatus();
@@ -8104,9 +8136,10 @@ function showPromotionDialog(from, to) {
       var f = _chess.pendingPromotion.from; var t = _chess.pendingPromotion.to; _chess.pendingPromotion = null;
       var move = _chess.engine.move({ from: f, to: t, promotion: prom }); if (!move) return;
       _chess.selected = null; _chess.legalSquares = [];
+      if (_chess.isLocal) _chessUpdateLocalTurnBars();
       renderChessBoard(); renderChessMoves(_chess.engine.pgn()); updateChessStatus();
       var go = checkChessGameOver();
-      if (_chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
+      if (!_chess.isLocal && _chess.ws && _chess.ws.readyState === WebSocket.OPEN) {
         _chess.ws.send(JSON.stringify({
           type: go ? "game_over" : "move", from: f, to: t, promotion: prom,
           fen: _chess.engine.fen(), pgn: _chess.engine.pgn(), san: move.san,
