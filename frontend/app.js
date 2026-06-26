@@ -2112,7 +2112,8 @@ function renderMovieContent(movie) {
     <div class="watch-player" id="watch-player" style="display:none">
       <div class="watch-controls">
         <div class="watch-sources" id="watch-sources">
-          <button class="watch-source-btn active" data-src="vidsrc">VidSrc</button>
+          <button class="watch-source-btn active" data-src="kodik">Kodik 🇷🇺</button>
+          <button class="watch-source-btn" data-src="vidsrc">VidSrc</button>
           <button class="watch-source-btn" data-src="videasy">Videasy</button>
           <button class="watch-source-btn" data-src="2embed">2Embed</button>
         </div>
@@ -2176,10 +2177,20 @@ function renderMovieContent(movie) {
   });
 
   // Смотреть (плеер)
-  let watchSource = "vidsrc";
-  const loadWatchIframe = () => {
+  let watchSource = "kodik";
+  const loadWatchIframe = async () => {
     const season  = $("watch-season")?.value || 1;
     const episode = $("watch-episode")?.value || 1;
+    if (watchSource === "kodik") {
+      $("watch-iframe").src = "";
+      try {
+        const data = await apiFetch(`/watch/kodik?tmdb_id=${movieId}&media_type=${mediaType}&season=${season}&episode=${episode}`);
+        $("watch-iframe").src = data.link;
+      } catch {
+        toast("Не найдено на Kodik (RU) — попробуй другой источник", "error");
+      }
+      return;
+    }
     $("watch-iframe").src = buildEmbedUrl(watchSource, mediaType, movieId, season, episode);
   };
   $("watch-play-btn").addEventListener("click", () => {

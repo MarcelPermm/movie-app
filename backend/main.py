@@ -545,6 +545,40 @@ async def get_trailer(movie_id: int, media_type: str = "movie"):
     return {"key": key}
 
 
+# ─── Плеер с русской озвучкой (Kodik) ─────────────────────────────────────────
+
+KODIK_TOKEN = os.getenv("KODIK_TOKEN")
+
+@app.get("/watch/kodik")
+async def get_kodik_link(tmdb_id: int, media_type: str = "movie", season: int = 1, episode: int = 1):
+    if not KODIK_TOKEN:
+        raise HTTPException(503, "Kodik не настроен (нет KODIK_TOKEN)")
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            "https://kodikapi.com/search",
+            params={
+                "token": KODIK_TOKEN,
+                "tmdb_id": tmdb_id,
+                "with_episodes": "true" if media_type == "tv" else "false",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
+    results = data.get("results", [])
+    if not results:
+        raise HTTPException(404, "Не найдено на Kodik")
+    link = results[0].get("link")
+    if not link:
+        raise HTTPException(404, "Не найдено на Kodik")
+    if not link.startswith("http"):
+        link = "https:" + link
+    if media_type == "tv":
+        sep = "&" if "?" in link else "?"
+        link = f"{link}{sep}season={season}&episode={episode}"
+    return {"link": link}
+
+
 # ─── Серии сезона ─────────────────────────────────────────────────────────────
 
 @app.get("/tv/{show_id}/season/{season_number}")
