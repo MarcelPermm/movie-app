@@ -245,7 +245,13 @@ function openWishlistItemModal(item = null) {
         <img id="wf-preview-img" src="${item?.image || ""}" alt="" />
       </div>
       <input type="text" id="wf-title" class="filter-input" placeholder="Название" value="${item ? escapeHtml(item.title) : ""}" />
-      <input type="hidden" id="wf-image" value="${item?.image || ""}" />
+      <div class="wishlist-form-row">
+        <input type="text" id="wf-image" class="filter-input" placeholder="Адрес картинки (если «Найти» не сработал)" value="${item?.image || ""}" />
+        <label class="wishlist-upload-btn">
+          Загрузить фото
+          <input type="file" id="wf-image-file" accept="image/*" hidden />
+        </label>
+      </div>
       <div class="wishlist-form-row">
         <input type="number" id="wf-price" class="filter-input" placeholder="Цена" min="0" step="1" value="${item?.price ?? ""}" />
         <select id="wf-currency" class="filter-input">
@@ -273,8 +279,7 @@ function openWishlistItemModal(item = null) {
       if (preview.title && !$("wf-title").value) $("wf-title").value = preview.title;
       if (preview.image) {
         $("wf-image").value = preview.image;
-        $("wf-preview-img").src = preview.image;
-        $("wf-preview").style.display = "";
+        setWishlistImagePreview(preview.image);
       }
       if (preview.price && !$("wf-price").value) $("wf-price").value = preview.price;
       toast("Данные подгружены — проверь и поправь при необходимости", "success");
@@ -283,6 +288,31 @@ function openWishlistItemModal(item = null) {
     } finally {
       $("wf-fetch-btn").textContent = "Найти";
     }
+  });
+
+  function setWishlistImagePreview(url) {
+    $("wf-preview-img").src = url || "";
+    $("wf-preview").style.display = url ? "" : "none";
+  }
+
+  $("wf-image").addEventListener("input", () => {
+    setWishlistImagePreview($("wf-image").value.trim());
+  });
+
+  $("wf-image-file").addEventListener("change", () => {
+    const file = $("wf-image-file").files[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      toast("Файл слишком большой — максимум 3 МБ", "error");
+      $("wf-image-file").value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      $("wf-image").value = reader.result;
+      setWishlistImagePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
   });
 
   $("wf-save-btn").addEventListener("click", async () => {

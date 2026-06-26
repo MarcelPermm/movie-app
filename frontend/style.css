@@ -6506,6 +6506,13 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 .wishlist-form-preview img { width: 100%; max-height: 220px; object-fit: contain; display: block; margin: 0 auto; }
 .wishlist-form textarea.filter-input { resize: vertical; font-family: 'DM Sans', sans-serif; }
 .wishlist-form-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.wishlist-upload-btn {
+  display: inline-flex; align-items: center; white-space: nowrap; padding: 0 16px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition);
+}
+.wishlist-upload-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
 
 /* — Друзья — */
 .wishlist-add-friend-row { display: flex; gap: 10px; margin-bottom: 24px; max-width: 420px; }
