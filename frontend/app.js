@@ -21,6 +21,7 @@ const state = {
   booksMode:     "discover",
   appMode:       "cinema",   // "cinema" | "books" | "notebook"
   activeBooksTab: "discover",
+  activeWishlistTab: "mine",
   activeNotebookTab: "today",
   notebookDate: new Date().toISOString().slice(0, 10),
   booksRead:     new Set(),
@@ -63,6 +64,7 @@ function switchAppMode(mode) {
 
   $("cinema-nav").style.display   = mode === "cinema"   ? "" : "none";
   $("books-nav").style.display    = mode === "books"    ? "" : "none";
+  $("wishlist-nav").style.display = mode === "wishlist" ? "" : "none";
   document.querySelectorAll(".mode-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
 
   // Hide all tabs
@@ -91,6 +93,9 @@ function switchAppMode(mode) {
     gTab.classList.add("active");
     gTab.style.display = "";
     initGamesMode();
+  } else if (mode === "wishlist") {
+    $("search-input").placeholder = "Поиск отключён в виш-листе";
+    openWishlistTab(state.activeWishlistTab || "mine");
   }
 }
 
@@ -121,6 +126,389 @@ function openBooksTab(tabName) {
   else if (tabName === "wishlist") loadBooksWishlistView();
   else if (tabName === "suggest")  initBooksSuggest();
   else if (tabName === "profile")  loadBooksProfile();
+}
+
+// ─── Виш-лист (5-й режим) ───────────────────────────────────────────────────
+
+const WISHLIST_PRIORITIES = [
+  { value: 1, label: "🔥 Очень хочу" },
+  { value: 2, label: "⭐ Хочу" },
+  { value: 3, label: "🙂 Было бы неплохо" },
+  { value: 4, label: "💭 Когда-нибудь" },
+];
+
+function wishlistPriorityLabel(value) {
+  return WISHLIST_PRIORITIES.find(p => p.value === value)?.label || "⭐ Хочу";
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+function formatWishlistCurrencySym(currency) {
+  return { RUB: "₽", USD: "$", EUR: "€" }[currency] || currency || "₽";
+}
+
+function formatWishlistPrice(price, currency) {
+  return `${Math.round(price).toLocaleString("ru-RU")} ${formatWishlistCurrencySym(currency)}`;
+}
+
+function openWishlistTab(tabName) {
+  state.activeWishlistTab = tabName;
+
+  document.querySelectorAll(".wishlist-tab").forEach(t => {
+    t.classList.remove("active");
+    t.style.display = "none";
+  });
+  document.querySelectorAll(".wishlist-nav-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.wishlistTab === tabName);
+  });
+
+  const section = $(`tab-wishlist-${tabName}`);
+  if (section) {
+    section.classList.add("active");
+    section.style.display = "";
+  }
+
+  if (tabName === "mine")    loadWishlistMine();
+  else if (tabName === "friends") loadWishlistFriends();
+}
+
+async function loadWishlistMine() {
+  const grid = $("wishlist-mine-grid");
+  grid.innerHTML = `<div class="loader">Загружаем виш-лист…</div>`;
+  try {
+    const items = await apiFetch(`/wishlist/${getUID()}`);
+    renderWishlistMine(items);
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>Не удалось загрузить</p></div>`;
+  }
+}
+
+function renderWishlistMine(items) {
+  const grid = $("wishlist-mine-grid");
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty-state"><span class="empty-icon">🎁</span><p>Список пуст — добавь первую вещь по ссылке</p></div>`;
+    return;
+  }
+  grid.innerHTML = items.map(it => `
+    <div class="wishlist-card" data-id="${it.id}">
+      <div class="wishlist-card-prio" title="${wishlistPriorityLabel(it.priority)}">${wishlistPriorityLabel(it.priority).split(" ")[0]}</div>
+      <div class="wishlist-card-img">
+        ${it.image ? `<img src="${it.image}" alt="" loading="lazy" />` : `<div class="wishlist-card-noimg">🎁</div>`}
+      </div>
+      <div class="wishlist-card-body">
+        <div class="wishlist-card-title">${escapeHtml(it.title)}</div>
+        ${it.price ? `<div class="wishlist-card-price">${formatWishlistPrice(it.price, it.currency)}</div>` : ""}
+        ${it.note ? `<div class="wishlist-card-note">${escapeHtml(it.note)}</div>` : ""}
+        <div class="wishlist-card-actions">
+          ${it.url ? `<a class="wishlist-card-link" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">Открыть ↗</a>` : ""}
+          <button class="wishlist-card-edit" data-id="${it.id}">✎</button>
+          <button class="wishlist-card-del" data-id="${it.id}">✕</button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  grid.querySelectorAll(".wishlist-card-edit").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const item = items.find(i => i.id === Number(btn.dataset.id));
+      openWishlistItemModal(item);
+    });
+  });
+  grid.querySelectorAll(".wishlist-card-del").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Удалить эту вещь из виш-листа?")) return;
+      try {
+        await apiFetch(`/wishlist/items/${btn.dataset.id}`, { method: "DELETE" });
+        toast("Удалено", "success");
+        loadWishlistMine();
+      } catch (e) { toast(e.detail || "Ошибка", "error"); }
+    });
+  });
+}
+
+function openWishlistItemModal(item = null) {
+  const isEdit = !!item;
+  document.body.style.overflow = "hidden";
+  $("modal-overlay").classList.add("open");
+  $("modal-content").innerHTML = `
+    <div class="wishlist-form">
+      <h2 class="wishlist-form-title">${isEdit ? "Изменить вещь" : "Добавить вещь"}</h2>
+      <div class="wishlist-form-row">
+        <input type="url" id="wf-url" class="filter-input" placeholder="Ссылка на товар (необязательно)" value="${item?.url ? escapeHtml(item.url) : ""}" />
+        <button class="btn-primary" id="wf-fetch-btn" type="button">Найти</button>
+      </div>
+      <div class="wishlist-form-preview" id="wf-preview" style="${item?.image ? "" : "display:none"}">
+        <img id="wf-preview-img" src="${item?.image || ""}" alt="" />
+      </div>
+      <input type="text" id="wf-title" class="filter-input" placeholder="Название" value="${item ? escapeHtml(item.title) : ""}" />
+      <input type="hidden" id="wf-image" value="${item?.image || ""}" />
+      <div class="wishlist-form-row">
+        <input type="number" id="wf-price" class="filter-input" placeholder="Цена" min="0" step="1" value="${item?.price ?? ""}" />
+        <select id="wf-currency" class="filter-input">
+          <option value="RUB" ${!item || item?.currency === "RUB" ? "selected" : ""}>₽ RUB</option>
+          <option value="USD" ${item?.currency === "USD" ? "selected" : ""}>$ USD</option>
+          <option value="EUR" ${item?.currency === "EUR" ? "selected" : ""}>€ EUR</option>
+        </select>
+      </div>
+      <select id="wf-priority" class="filter-input">
+        ${WISHLIST_PRIORITIES.map(p => `<option value="${p.value}" ${(item ? item.priority === p.value : p.value === 2) ? "selected" : ""}>${p.label}</option>`).join("")}
+      </select>
+      <textarea id="wf-note" class="filter-input" placeholder="Комментарий (необязательно)" rows="2">${item?.note ? escapeHtml(item.note) : ""}</textarea>
+      <div class="wishlist-form-actions">
+        <button class="btn-primary" id="wf-save-btn">${isEdit ? "Сохранить" : "Добавить"}</button>
+      </div>
+    </div>
+  `;
+
+  $("wf-fetch-btn").addEventListener("click", async () => {
+    const url = $("wf-url").value.trim();
+    if (!url) return;
+    $("wf-fetch-btn").textContent = "…";
+    try {
+      const preview = await apiFetch(`/wishlist/preview?url=${encodeURIComponent(url)}`);
+      if (preview.title && !$("wf-title").value) $("wf-title").value = preview.title;
+      if (preview.image) {
+        $("wf-image").value = preview.image;
+        $("wf-preview-img").src = preview.image;
+        $("wf-preview").style.display = "";
+      }
+      if (preview.price && !$("wf-price").value) $("wf-price").value = preview.price;
+      toast("Данные подгружены — проверь и поправь при необходимости", "success");
+    } catch (e) {
+      toast("Не удалось получить данные по ссылке — заполни вручную", "error");
+    } finally {
+      $("wf-fetch-btn").textContent = "Найти";
+    }
+  });
+
+  $("wf-save-btn").addEventListener("click", async () => {
+    const title = $("wf-title").value.trim();
+    if (!title) { toast("Введи название", "error"); return; }
+    const payload = {
+      title,
+      url:      $("wf-url").value.trim() || null,
+      image:    $("wf-image").value.trim() || null,
+      price:    $("wf-price").value ? Number($("wf-price").value) : null,
+      currency: $("wf-currency").value,
+      note:     $("wf-note").value.trim() || null,
+      priority: Number($("wf-priority").value),
+    };
+    try {
+      if (isEdit) {
+        await apiFetch(`/wishlist/items/${item.id}`, { method: "PUT", body: JSON.stringify(payload) });
+        toast("Сохранено", "success");
+      } else {
+        await apiFetch(`/wishlist/items`, { method: "POST", body: JSON.stringify(payload) });
+        toast("Добавлено в виш-лист 🎁", "success");
+      }
+      closeModal();
+      loadWishlistMine();
+    } catch (e) {
+      toast(e.detail || "Ошибка сохранения", "error");
+    }
+  });
+}
+
+async function loadWishlistFriends() {
+  const friendsList = $("wishlist-friends-list");
+  friendsList.innerHTML = `<div class="loader">Загружаем…</div>`;
+  try {
+    const [friends, requests] = await Promise.all([
+      apiFetch(`/friends`),
+      apiFetch(`/friends/requests`),
+    ]);
+    renderWishlistFriends(friends, requests.incoming, requests.outgoing);
+  } catch (e) {
+    friendsList.innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>Не удалось загрузить</p></div>`;
+  }
+}
+
+function renderWishlistFriends(friends, incoming, outgoing) {
+  const reqWrap     = $("wishlist-requests-wrap");
+  const reqList      = $("wishlist-requests-list");
+  const outWrap      = $("wishlist-outgoing-wrap");
+  const outList       = $("wishlist-outgoing-list");
+  const friendsList   = $("wishlist-friends-list");
+  const badge         = $("wishlist-requests-count");
+
+  if (incoming.length) {
+    reqWrap.style.display = "";
+    badge.style.display = "";
+    badge.textContent = incoming.length;
+    reqList.innerHTML = incoming.map(r => `
+      <div class="wishlist-friend-row" data-id="${r.id}">
+        <span class="wishlist-friend-name">${escapeHtml(r.display_name)} <span class="wishlist-friend-username">@${escapeHtml(r.username)}</span></span>
+        <div class="wishlist-friend-actions">
+          <button class="wishlist-accept-btn" data-id="${r.id}">✓ Принять</button>
+          <button class="wishlist-decline-btn" data-id="${r.id}">✕</button>
+        </div>
+      </div>
+    `).join("");
+    reqList.querySelectorAll(".wishlist-accept-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        try {
+          await apiFetch(`/friends/accept/${btn.dataset.id}`, { method: "POST" });
+          toast("Теперь вы друзья 🎉", "success");
+          loadWishlistFriends();
+        } catch (e) { toast(e.detail || "Ошибка", "error"); }
+      });
+    });
+    reqList.querySelectorAll(".wishlist-decline-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        try {
+          await apiFetch(`/friends/decline/${btn.dataset.id}`, { method: "POST" });
+          loadWishlistFriends();
+        } catch (e) { toast(e.detail || "Ошибка", "error"); }
+      });
+    });
+  } else {
+    reqWrap.style.display = "none";
+    badge.style.display = "none";
+  }
+
+  if (outgoing.length) {
+    outWrap.style.display = "";
+    outList.innerHTML = outgoing.map(r => `
+      <div class="wishlist-friend-row" data-id="${r.id}">
+        <span class="wishlist-friend-name">${escapeHtml(r.display_name)} <span class="wishlist-friend-username">@${escapeHtml(r.username)}</span></span>
+        <span class="wishlist-pending-label">Ожидает…</span>
+      </div>
+    `).join("");
+  } else {
+    outWrap.style.display = "none";
+  }
+
+  if (friends.length) {
+    friendsList.innerHTML = friends.map(f => `
+      <div class="wishlist-friend-row wishlist-friend-clickable" data-id="${f.id}">
+        <span class="wishlist-friend-name">🎁 ${escapeHtml(f.display_name)} <span class="wishlist-friend-username">@${escapeHtml(f.username)}</span></span>
+        <button class="wishlist-unfriend-btn" data-id="${f.id}" title="Удалить из друзей">✕</button>
+      </div>
+    `).join("");
+    friendsList.querySelectorAll(".wishlist-friend-clickable").forEach(row => {
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".wishlist-unfriend-btn")) return;
+        const f = friends.find(x => x.id === Number(row.dataset.id));
+        openFriendWishlistModal(f);
+      });
+    });
+    friendsList.querySelectorAll(".wishlist-unfriend-btn").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm("Удалить из друзей?")) return;
+        try {
+          await apiFetch(`/friends/${btn.dataset.id}`, { method: "DELETE" });
+          loadWishlistFriends();
+        } catch (e2) { toast(e2.detail || "Ошибка", "error"); }
+      });
+    });
+  } else {
+    friendsList.innerHTML = `<div class="empty-state"><span class="empty-icon">👥</span><p>Пока нет друзей — добавь по логину выше</p></div>`;
+  }
+}
+
+async function openFriendWishlistModal(friend) {
+  document.body.style.overflow = "hidden";
+  $("modal-overlay").classList.add("open");
+  $("modal-content").innerHTML = `<div class="loader">Загружаем виш-лист ${escapeHtml(friend.display_name)}…</div>`;
+  try {
+    const items = await apiFetch(`/wishlist/${friend.id}`);
+    renderFriendWishlistModal(friend, items);
+  } catch (e) {
+    $("modal-content").innerHTML = `<div class="empty-state"><span class="empty-icon">⚠️</span><p>${escapeHtml(e.detail || "Не удалось загрузить")}</p></div>`;
+  }
+}
+
+function renderFriendWishlistModal(friend, items) {
+  $("modal-content").innerHTML = `
+    <div class="wishlist-friend-modal">
+      <h2 class="wishlist-form-title">🎁 Виш-лист: ${escapeHtml(friend.display_name)}</h2>
+      ${!items.length ? `<div class="empty-state"><span class="empty-icon">🎁</span><p>Пока пусто</p></div>` : `
+        <div class="wishlist-friend-items">
+          ${items.map(it => {
+            const progress = it.price ? Math.min(100, Math.round((it.contributed_total / it.price) * 100)) : 0;
+            return `
+            <div class="wishlist-friend-item" data-id="${it.id}">
+              <div class="wishlist-card-img wishlist-friend-item-img">
+                ${it.image ? `<img src="${it.image}" alt="" loading="lazy" />` : `<div class="wishlist-card-noimg">🎁</div>`}
+              </div>
+              <div class="wishlist-friend-item-body">
+                <div class="wishlist-card-title">${escapeHtml(it.title)} <span class="wishlist-card-prio-tag">${wishlistPriorityLabel(it.priority)}</span></div>
+                ${it.price ? `<div class="wishlist-card-price">${formatWishlistPrice(it.price, it.currency)}</div>` : ""}
+                ${it.note ? `<div class="wishlist-card-note">${escapeHtml(it.note)}</div>` : ""}
+                ${it.url ? `<a class="wishlist-card-link" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">Открыть ↗</a>` : ""}
+
+                ${it.is_reserved ? `
+                  <div class="wishlist-reserved-badge ${it.reserved_by_me ? "is-mine" : ""}">
+                    ${it.reserved_by_me ? "🎁 Ты резервируешь этот подарок" : `🎁 Уже зарезервировано: ${escapeHtml(it.reserver_name)}`}
+                  </div>
+                  ${it.reserved_by_me ? `<button class="wishlist-unreserve-btn" data-id="${it.id}">Отменить резерв</button>` : ""}
+                ` : `
+                  <button class="wishlist-reserve-btn" data-id="${it.id}">🎁 Я подарю!</button>
+                `}
+
+                ${it.price ? `
+                  <div class="wishlist-contrib-block">
+                    <div class="wishlist-contrib-label">Складчина: ${Math.round(it.contributed_total)} / ${Math.round(it.price)} ${formatWishlistCurrencySym(it.currency)}</div>
+                    <div class="wishlist-contrib-bar"><div class="wishlist-contrib-fill" style="width:${progress}%"></div></div>
+                    <div class="wishlist-contrib-row">
+                      <input type="number" class="filter-input wishlist-contrib-input" data-id="${it.id}" placeholder="Сумма" min="0" value="${it.my_contribution ?? ""}" />
+                      <button class="wishlist-contrib-btn" data-id="${it.id}">${it.my_contribution ? "Обновить" : "Скинуться"}</button>
+                      ${it.my_contribution ? `<button class="wishlist-contrib-remove-btn" data-id="${it.id}">✕</button>` : ""}
+                    </div>
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          `;}).join("")}
+        </div>
+      `}
+    </div>
+  `;
+
+  $("modal-content").querySelectorAll(".wishlist-reserve-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiFetch(`/wishlist/items/${btn.dataset.id}/reserve`, { method: "POST" });
+        toast("Зарезервировано — владелец не узнает 🤫", "success");
+        openFriendWishlistModal(friend);
+      } catch (e) { toast(e.detail || "Ошибка", "error"); }
+    });
+  });
+  $("modal-content").querySelectorAll(".wishlist-unreserve-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiFetch(`/wishlist/items/${btn.dataset.id}/unreserve`, { method: "POST" });
+        toast("Резерв снят", "success");
+        openFriendWishlistModal(friend);
+      } catch (e) { toast(e.detail || "Ошибка", "error"); }
+    });
+  });
+  $("modal-content").querySelectorAll(".wishlist-contrib-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const input = $("modal-content").querySelector(`.wishlist-contrib-input[data-id="${btn.dataset.id}"]`);
+      const amount = Number(input.value);
+      if (!amount || amount <= 0) { toast("Укажи сумму больше нуля", "error"); return; }
+      try {
+        await apiFetch(`/wishlist/items/${btn.dataset.id}/contribute`, { method: "POST", body: JSON.stringify({ amount }) });
+        toast("Спасибо за вклад в складчину! 💸", "success");
+        openFriendWishlistModal(friend);
+      } catch (e) { toast(e.detail || "Ошибка", "error"); }
+    });
+  });
+  $("modal-content").querySelectorAll(".wishlist-contrib-remove-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await apiFetch(`/wishlist/items/${btn.dataset.id}/contribute`, { method: "DELETE" });
+        toast("Вклад убран", "success");
+        openFriendWishlistModal(friend);
+      } catch (e) { toast(e.detail || "Ошибка", "error"); }
+    });
+  });
 }
 
 // ─── Переключатель оформления ──────────────────────────────────────────────
@@ -158,6 +546,23 @@ document.addEventListener("DOMContentLoaded", () => {
   try { saved = localStorage.getItem("film_theme") || "cinema"; } catch {}
   document.querySelectorAll(".theme-btn").forEach(b => {
     b.classList.toggle("active", b.dataset.theme === saved);
+  });
+
+  $("wishlist-add-btn").addEventListener("click", () => openWishlistItemModal());
+  $("wishlist-friend-add-btn").addEventListener("click", async () => {
+    const username = $("wishlist-friend-input").value.trim();
+    if (!username) return;
+    try {
+      const res = await apiFetch(`/friends/request`, { method: "POST", body: JSON.stringify({ username }) });
+      toast(res.message, "success");
+      $("wishlist-friend-input").value = "";
+      loadWishlistFriends();
+    } catch (e) {
+      toast(e.detail || "Ошибка", "error");
+    }
+  });
+  $("wishlist-friend-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("wishlist-friend-add-btn").click();
   });
 });
 
@@ -2909,6 +3314,10 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => openBooksTab(btn.dataset.booksTab));
   });
 
+  document.querySelectorAll(".wishlist-nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => openWishlistTab(btn.dataset.wishlistTab));
+  });
+
   const booksSearchInput = $("books-search-input");
   if (booksSearchInput) {
     booksSearchInput.addEventListener("input", debounce(e => {
@@ -2923,7 +3332,7 @@ document.addEventListener("DOMContentLoaded", () => {
 (function startup() {
   // Восстанавливаем сохранённый режим (кино/книги/тетрадь/игры)
   const savedMode = localStorage.getItem("appMode") || "cinema";
-  if (["books", "notebook", "games"].includes(savedMode)) {
+  if (["books", "notebook", "games", "wishlist"].includes(savedMode)) {
     state.appMode = savedMode;
   }
 
@@ -2933,7 +3342,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const user = JSON.parse(saved);
       setUser(user);
       init().then(() => {
-        if (["books", "notebook", "games"].includes(state.appMode)) {
+        if (["books", "notebook", "games", "wishlist"].includes(state.appMode)) {
           setTimeout(() => switchAppMode(state.appMode), 100);
         }
       });

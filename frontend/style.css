@@ -6456,3 +6456,120 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   0%, 100% { transform: scale(1); opacity: 1; }
   50%      { transform: scale(1.12); opacity: .8; }
 }
+
+/* ─── Виш-лист (5-й режим) ──────────────────────────────────────────────── */
+
+.wishlist-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+.wishlist-card {
+  position: relative; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; animation: cardIn .4s ease both;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+.wishlist-card:hover { transform: translateY(-4px); box-shadow: 0 16px 32px rgba(0,0,0,0.4); border-color: var(--gold-dim); }
+.wishlist-card-prio {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,15,0.7); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%; font-size: 14px;
+}
+.wishlist-card-img { width: 100%; aspect-ratio: 4/3; background: var(--border); overflow: hidden; }
+.wishlist-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wishlist-card-noimg {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 36px; opacity: .25; background: linear-gradient(135deg,#1a1a28,#0d0d18);
+}
+.wishlist-card-body { padding: 14px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.wishlist-card-title { font-family: 'Playfair Display', serif; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--text); }
+.wishlist-card-prio-tag { font-size: 11px; font-weight: 500; color: var(--text-dim); margin-left: 6px; white-space: nowrap; }
+.wishlist-card-price { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: var(--gold); }
+.wishlist-card-note { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.wishlist-card-actions { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 8px; }
+.wishlist-card-link { font-size: 12px; color: var(--blue); text-decoration: none; }
+.wishlist-card-link:hover { text-decoration: underline; }
+.wishlist-card-edit, .wishlist-card-del {
+  margin-left: auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  background: none; border: 1px solid var(--border); border-radius: 50%; color: var(--text-dim);
+  font-size: 12px; cursor: pointer; transition: all var(--transition);
+}
+.wishlist-card-edit:hover { border-color: var(--gold-dim); color: var(--gold); }
+.wishlist-card-del:hover { border-color: var(--red); color: var(--red); }
+.wishlist-card-edit + .wishlist-card-del { margin-left: 4px; }
+
+/* — Форма добавления/редактирования — */
+.wishlist-form { display: flex; flex-direction: column; gap: 12px; padding: 4px; }
+.wishlist-form-title { font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 800; color: var(--text); margin: 0 0 4px; }
+.wishlist-form-row { display: flex; gap: 10px; }
+.wishlist-form-row .filter-input { flex: 1; }
+.wishlist-form-preview { width: 100%; max-height: 220px; border-radius: var(--radius); overflow: hidden; background: var(--border); }
+.wishlist-form-preview img { width: 100%; max-height: 220px; object-fit: contain; display: block; margin: 0 auto; }
+.wishlist-form textarea.filter-input { resize: vertical; font-family: 'DM Sans', sans-serif; }
+.wishlist-form-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+
+/* — Друзья — */
+.wishlist-add-friend-row { display: flex; gap: 10px; margin-bottom: 24px; max-width: 420px; }
+.wishlist-add-friend-row .filter-input { flex: 1; }
+.wishlist-section-sub-title { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); margin: 24px 0 10px; }
+.wishlist-requests-wrap, .wishlist-outgoing-wrap { margin-bottom: 8px; }
+.wishlist-friends-list { display: flex; flex-direction: column; gap: 8px; }
+.wishlist-friend-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color var(--transition);
+}
+.wishlist-friend-clickable { cursor: pointer; }
+.wishlist-friend-clickable:hover { border-color: var(--gold-dim); }
+.wishlist-friend-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.wishlist-friend-username { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+.wishlist-friend-actions { display: flex; gap: 8px; }
+.wishlist-accept-btn, .wishlist-decline-btn, .wishlist-unfriend-btn {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: none;
+  color: var(--text-dim); font-size: 12px; font-weight: 600; cursor: pointer; transition: all var(--transition);
+}
+.wishlist-accept-btn:hover { border-color: var(--green); color: var(--green); }
+.wishlist-decline-btn:hover, .wishlist-unfriend-btn:hover { border-color: var(--red); color: var(--red); }
+.wishlist-pending-label { font-size: 12px; color: var(--text-dim); font-style: italic; }
+
+/* — Виш-лист друга (модалка): резерв + складчина — */
+.wishlist-friend-modal { padding: 4px; }
+.wishlist-friend-items { display: flex; flex-direction: column; gap: 18px; margin-top: 16px; }
+.wishlist-friend-item { display: flex; gap: 16px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.wishlist-friend-item-img { width: 110px; flex: 0 0 110px; border-radius: 10px; aspect-ratio: 1; }
+.wishlist-friend-item-body { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wishlist-reserved-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 600; background: rgba(76,172,112,0.12); color: var(--green);
+  border: 1px solid rgba(76,172,112,0.3); width: fit-content;
+}
+.wishlist-reserved-badge.is-mine { background: rgba(201,168,76,0.15); color: var(--gold); border-color: var(--gold-dim); }
+.wishlist-reserve-btn, .wishlist-unreserve-btn {
+  align-self: flex-start; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--gold-dim);
+  background: rgba(201,168,76,0.1); color: var(--gold); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all var(--transition);
+}
+.wishlist-reserve-btn:hover { background: var(--gold); color: var(--bg); }
+.wishlist-unreserve-btn { border-color: var(--border); background: none; color: var(--text-dim); }
+.wishlist-unreserve-btn:hover { border-color: var(--red); color: var(--red); }
+.wishlist-contrib-block { margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.wishlist-contrib-label { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+.wishlist-contrib-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+.wishlist-contrib-fill { height: 100%; background: linear-gradient(90deg, var(--gold-dim), var(--gold)); border-radius: 3px; transition: width .4s ease; }
+.wishlist-contrib-row { display: flex; gap: 8px; }
+.wishlist-contrib-input { max-width: 110px; }
+.wishlist-contrib-btn {
+  padding: 8px 14px; border-radius: 8px; border: 1px solid var(--blue); background: rgba(76,122,201,0.1);
+  color: var(--blue); font-size: 13px; font-weight: 600; cursor: pointer; transition: all var(--transition); white-space: nowrap;
+}
+.wishlist-contrib-btn:hover { background: var(--blue); color: white; }
+.wishlist-contrib-remove-btn {
+  width: 36px; border-radius: 8px; border: 1px solid var(--border); background: none;
+  color: var(--text-dim); cursor: pointer; transition: all var(--transition);
+}
+.wishlist-contrib-remove-btn:hover { border-color: var(--red); color: var(--red); }
+
+@media (max-width: 640px) {
+  .wishlist-friend-item { flex-direction: column; }
+  .wishlist-friend-item-img { width: 100%; flex: none; aspect-ratio: 16/9; }
+  .wishlist-add-friend-row { max-width: none; }
+}

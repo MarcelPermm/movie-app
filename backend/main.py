@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 import httpx
 import random
@@ -114,6 +115,7 @@ async def startup():
     database.init_budget_tables()
     database.init_trips_tables()
     database.init_goals_table()
+    database.init_wishlist_tables()
     try:
         database.init_chess_tables()
         print("✅ Шахматные таблицы готовы")
@@ -2450,6 +2452,228 @@ async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default
                 "type":    "opponent_disconnected",
                 "user_id": user_id,
             })
+
+
+# ─── Друзья ───────────────────────────────────────────────────────────────────
+
+class FriendRequestBody(BaseModel):
+    username: str
+
+
+@app.get("/friends")
+async def list_friends(user_id: int = 1):
+    return database.get_friends(user_id)
+
+
+@app.get("/friends/requests")
+async def list_friend_requests(user_id: int = 1):
+    return {
+        "incoming": database.get_incoming_requests(user_id),
+        "outgoing": database.get_outgoing_requests(user_id),
+    }
+
+
+@app.post("/friends/request")
+async def send_friend_request(req: FriendRequestBody, user_id: int = 1):
+    username = req.username.strip().lower()
+    target = database.find_user_public(username)
+    if not target:
+        raise HTTPException(404, "Пользователь с таким логином не найден")
+    if target["id"] == user_id:
+        raise HTTPException(400, "Нельзя добавить себя")
+
+    existing = database.get_friendship(user_id, target["id"])
+    if existing and existing["status"] == "accepted":
+        raise HTTPException(409, "Вы уже друзья")
+    if existing and existing["status"] == "pending":
+        if existing["recipient_id"] == user_id:
+            # Встречная заявка уже есть — сразу принимаем её
+            database.accept_friend_request(existing["id"], user_id)
+            return {"message": f"Вы теперь друзья с {target['display_name']}", "status": "accepted"}
+        raise HTTPException(409, "Заявка уже отправлена")
+
+    created = database.create_friend_request(user_id, target["id"])
+    if not created:
+        raise HTTPException(409, "Заявка уже отправлена")
+    return {"message": f"Заявка отправлена пользователю {target['display_name']}", "status": "pending"}
+
+
+@app.post("/friends/accept/{friendship_id}")
+async def accept_friend_request(friendship_id: int, user_id: int = 1):
+    if not database.accept_friend_request(friendship_id, user_id):
+        raise HTTPException(404, "Заявка не найдена")
+    return {"message": "Заявка принята"}
+
+
+@app.post("/friends/decline/{friendship_id}")
+async def decline_friend_request(friendship_id: int, user_id: int = 1):
+    if not database.decline_friend_request(friendship_id, user_id):
+        raise HTTPException(404, "Заявка не найдена")
+    return {"message": "Заявка отклонена"}
+
+
+@app.delete("/friends/{friend_id}")
+async def remove_friend(friend_id: int, user_id: int = 1):
+    if not database.remove_friend(user_id, friend_id):
+        raise HTTPException(404, "Друг не найден")
+    return {"message": "Удалено из друзей"}
+
+
+# ─── Виш-лист ─────────────────────────────────────────────────────────────────
+
+class WishlistItemCreate(BaseModel):
+    title:    str
+    url:      Optional[str] = None
+    image:    Optional[str] = None
+    price:    Optional[float] = None
+    currency: str = "RUB"
+    note:     Optional[str] = None
+    priority: int = 2
+
+
+class WishlistItemUpdate(BaseModel):
+    title:    Optional[str] = None
+    url:      Optional[str] = None
+    image:    Optional[str] = None
+    price:    Optional[float] = None
+    currency: Optional[str] = None
+    note:     Optional[str] = None
+    priority: Optional[int] = None
+
+
+class ContributeBody(BaseModel):
+    amount: float
+
+
+def _meta_tag(html: str, *names: str) -> str | None:
+    for name in names:
+        m = re.search(
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(name)}["\'][^>]+content=["\']([^"\']*)["\']',
+            html, re.I,
+        )
+        if not m:
+            m = re.search(
+                rf'<meta[^>]+content=["\']([^"\']*)["\'][^>]+(?:property|name)=["\']{re.escape(name)}["\']',
+                html, re.I,
+            )
+        if m:
+            return m.group(1)
+    return None
+
+
+@app.get("/wishlist/preview")
+async def wishlist_preview(url: str, user_id: int = 1):
+    """Достаёт фото/название/цену со страницы товара по Open Graph мета-тегам."""
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "Некорректная ссылка")
+    try:
+        resp = await http_client.get(
+            url, headers={"User-Agent": "Mozilla/5.0 (compatible; WishlistBot/1.0)"},
+            follow_redirects=True, timeout=10,
+        )
+        html = resp.text
+    except httpx.HTTPError:
+        raise HTTPException(502, "Не удалось загрузить страницу")
+
+    title = _meta_tag(html, "og:title", "twitter:title")
+    if not title:
+        m = re.search(r"<title[^>]*>([^<]*)</title>", html, re.I)
+        title = m.group(1).strip() if m else None
+
+    image = _meta_tag(html, "og:image", "twitter:image")
+    price_raw = _meta_tag(html, "og:price:amount", "product:price:amount", "twitter:data1")
+    currency = _meta_tag(html, "og:price:currency", "product:price:currency")
+
+    price = None
+    if price_raw:
+        digits = re.sub(r"[^\d.,]", "", price_raw).replace(",", ".")
+        try:
+            price = float(digits)
+        except ValueError:
+            price = None
+
+    return {"title": title, "image": image, "price": price, "currency": currency}
+
+
+@app.post("/wishlist/items")
+async def create_wishlist_item(req: WishlistItemCreate, user_id: int = 1):
+    title = req.title.strip()
+    if not title:
+        raise HTTPException(400, "Название не может быть пустым")
+    if req.priority not in (1, 2, 3, 4):
+        raise HTTPException(400, "Приоритет должен быть от 1 до 4")
+    return database.add_wishlist_item(
+        user_id, title, req.url, req.image, req.price, req.currency, req.note, req.priority
+    )
+
+
+@app.put("/wishlist/items/{item_id}")
+async def edit_wishlist_item(item_id: int, req: WishlistItemUpdate, user_id: int = 1):
+    item = database.get_wishlist_item(item_id)
+    if not item or item["user_id"] != user_id:
+        raise HTTPException(404, "Вещь не найдена")
+    fields = {k: v for k, v in req.dict().items() if v is not None}
+    if "priority" in fields and fields["priority"] not in (1, 2, 3, 4):
+        raise HTTPException(400, "Приоритет должен быть от 1 до 4")
+    if fields:
+        database.update_wishlist_item(item_id, user_id, **fields)
+    return database.get_wishlist_item(item_id)
+
+
+@app.delete("/wishlist/items/{item_id}")
+async def remove_wishlist_item(item_id: int, user_id: int = 1):
+    if not database.delete_wishlist_item(item_id, user_id):
+        raise HTTPException(404, "Вещь не найдена")
+    return {"message": "Удалено"}
+
+
+@app.post("/wishlist/items/{item_id}/reserve")
+async def reserve_wishlist_item(item_id: int, user_id: int = 1):
+    item = database.get_wishlist_item(item_id)
+    if not item:
+        raise HTTPException(404, "Вещь не найдена")
+    if item["user_id"] == user_id:
+        raise HTTPException(400, "Нельзя зарезервировать свой же подарок")
+    if not database.are_friends(item["user_id"], user_id):
+        raise HTTPException(403, "Нет доступа к этому виш-листу")
+    if not database.reserve_wishlist_item(item_id, user_id):
+        raise HTTPException(409, "Уже зарезервировано другим другом")
+    return {"message": "Вы зарезервировали подарок — владелец не узнает"}
+
+
+@app.post("/wishlist/items/{item_id}/unreserve")
+async def unreserve_wishlist_item(item_id: int, user_id: int = 1):
+    if not database.unreserve_wishlist_item(item_id, user_id):
+        raise HTTPException(404, "Резерв не найден")
+    return {"message": "Резерв снят"}
+
+
+@app.post("/wishlist/items/{item_id}/contribute")
+async def contribute_wishlist_item(item_id: int, req: ContributeBody, user_id: int = 1):
+    item = database.get_wishlist_item(item_id)
+    if not item:
+        raise HTTPException(404, "Вещь не найдена")
+    if item["user_id"] == user_id:
+        raise HTTPException(400, "Нельзя скидываться на свой же подарок")
+    if not database.are_friends(item["user_id"], user_id):
+        raise HTTPException(403, "Нет доступа к этому виш-листу")
+    if req.amount <= 0:
+        raise HTTPException(400, "Сумма должна быть больше нуля")
+    return database.upsert_contribution(item_id, user_id, req.amount)
+
+
+@app.delete("/wishlist/items/{item_id}/contribute")
+async def remove_wishlist_contribution(item_id: int, user_id: int = 1):
+    if not database.remove_contribution(item_id, user_id):
+        raise HTTPException(404, "Вклад не найден")
+    return {"message": "Вклад убран"}
+
+
+@app.get("/wishlist/{owner_id}")
+async def get_wishlist(owner_id: int, user_id: int = 1):
+    if owner_id != user_id and not database.are_friends(owner_id, user_id):
+        raise HTTPException(403, "Нет доступа к этому виш-листу")
+    return database.get_wishlist_items(owner_id, user_id)
 
 
 # ─── Раздача фронтенда ───────────────────────────────────────────────────────

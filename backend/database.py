@@ -290,6 +290,388 @@ def get_user_by_id(user_id: int) -> dict | None:
         conn.close()
 
 
+# ─── Друзья и виш-лист ────────────────────────────────────────────────────────
+
+def init_wishlist_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS friendships (
+                id           SERIAL PRIMARY KEY,
+                requester_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'pending',
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(requester_id, recipient_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wishlist_items (
+                id         SERIAL PRIMARY KEY,
+                user_id    INTEGER NOT NULL DEFAULT 1,
+                url        TEXT,
+                title      TEXT NOT NULL,
+                image      TEXT,
+                price      NUMERIC,
+                currency   TEXT DEFAULT 'RUB',
+                note       TEXT,
+                priority   INTEGER NOT NULL DEFAULT 2,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wishlist_reservations (
+                item_id     INTEGER PRIMARY KEY,
+                reserved_by INTEGER NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS wishlist_contributions (
+                id             SERIAL PRIMARY KEY,
+                item_id        INTEGER NOT NULL,
+                contributor_id INTEGER NOT NULL,
+                amount         NUMERIC NOT NULL,
+                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(item_id, contributor_id)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_friendships_recipient        ON friendships (recipient_id, status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_friendships_requester        ON friendships (requester_id, status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wishlist_items_user          ON wishlist_items (user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wishlist_contributions_item  ON wishlist_contributions (item_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def find_user_public(username: str) -> dict | None:
+    """Поиск пользователя по логину — без password_hash, для добавления в друзья."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id, username, display_name FROM users WHERE LOWER(username) = LOWER(%s)", (username,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_friendship(user_a: int, user_b: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT * FROM friendships
+            WHERE (requester_id = %s AND recipient_id = %s)
+               OR (requester_id = %s AND recipient_id = %s)
+        """, (user_a, user_b, user_b, user_a))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def are_friends(user_a: int, user_b: int) -> bool:
+    f = get_friendship(user_a, user_b)
+    return bool(f and f["status"] == "accepted")
+
+
+def create_friend_request(requester_id: int, recipient_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO friendships (requester_id, recipient_id, status)
+            VALUES (%s, %s, 'pending')
+            ON CONFLICT (requester_id, recipient_id) DO NOTHING
+            RETURNING id, requester_id, recipient_id, status, created_at
+        """, (requester_id, recipient_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def accept_friend_request(friendship_id: int, recipient_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE friendships SET status = 'accepted'
+            WHERE id = %s AND recipient_id = %s AND status = 'pending'
+        """, (friendship_id, recipient_id))
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
+def decline_friend_request(friendship_id: int, user_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM friendships
+            WHERE id = %s AND (requester_id = %s OR recipient_id = %s)
+        """, (friendship_id, user_id, user_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def remove_friend(user_a: int, user_b: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            DELETE FROM friendships
+            WHERE status = 'accepted'
+              AND ((requester_id = %s AND recipient_id = %s)
+                OR (requester_id = %s AND recipient_id = %s))
+        """, (user_a, user_b, user_b, user_a))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_friends(user_id: int) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.id, u.username, u.display_name
+            FROM friendships f
+            JOIN users u ON u.id = CASE WHEN f.requester_id = %s THEN f.recipient_id ELSE f.requester_id END
+            WHERE f.status = 'accepted' AND (f.requester_id = %s OR f.recipient_id = %s)
+            ORDER BY u.display_name
+        """, (user_id, user_id, user_id))
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_incoming_requests(user_id: int) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT f.id, u.id AS user_id, u.username, u.display_name, f.created_at
+            FROM friendships f
+            JOIN users u ON u.id = f.requester_id
+            WHERE f.recipient_id = %s AND f.status = 'pending'
+            ORDER BY f.created_at DESC
+        """, (user_id,))
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_outgoing_requests(user_id: int) -> list[dict]:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT f.id, u.id AS user_id, u.username, u.display_name, f.created_at
+            FROM friendships f
+            JOIN users u ON u.id = f.recipient_id
+            WHERE f.requester_id = %s AND f.status = 'pending'
+            ORDER BY f.created_at DESC
+        """, (user_id,))
+        return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def add_wishlist_item(user_id: int, title: str, url: str = None, image: str = None,
+                       price: float = None, currency: str = "RUB", note: str = None,
+                       priority: int = 2) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO wishlist_items (user_id, url, title, image, price, currency, note, priority)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (user_id, url, title, image, price, currency, note, priority))
+        row = cur.fetchone()
+        conn.commit()
+        item = dict(row)
+        item["price"] = float(item["price"]) if item["price"] is not None else None
+        return item
+    finally:
+        conn.close()
+
+
+def get_wishlist_item(item_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM wishlist_items WHERE id = %s", (item_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_wishlist_item(item_id: int, user_id: int, **fields) -> bool:
+    if not fields:
+        return False
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        cur.execute(
+            f"UPDATE wishlist_items SET {set_clause} WHERE id = %s AND user_id = %s",
+            (*fields.values(), item_id, user_id)
+        )
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
+def delete_wishlist_item(item_id: int, user_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM wishlist_reservations WHERE item_id = %s", (item_id,))
+        cur.execute("DELETE FROM wishlist_contributions WHERE item_id = %s", (item_id,))
+        cur.execute("DELETE FROM wishlist_items WHERE id = %s AND user_id = %s", (item_id, user_id))
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def get_wishlist_items(owner_id: int, viewer_id: int) -> list[dict]:
+    """Список вещей из вишлиста. Если смотрит сам владелец — статус резерва и
+    складчины скрывается полностью, чтобы не испортить сюрприз подарка."""
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM wishlist_items WHERE user_id = %s ORDER BY priority ASC, created_at DESC",
+            (owner_id,)
+        )
+        items = [dict(row) for row in cur.fetchall()]
+        for it in items:
+            it["price"] = float(it["price"]) if it["price"] is not None else None
+
+        if not items or viewer_id == owner_id:
+            return items
+
+        item_ids = [it["id"] for it in items]
+
+        cur.execute("""
+            SELECT wr.item_id, wr.reserved_by, u.display_name AS reserver_name
+            FROM wishlist_reservations wr
+            JOIN users u ON u.id = wr.reserved_by
+            WHERE wr.item_id = ANY(%s)
+        """, (item_ids,))
+        reservations = {row["item_id"]: dict(row) for row in cur.fetchall()}
+
+        cur.execute("""
+            SELECT wc.item_id, wc.contributor_id, wc.amount, u.display_name AS contributor_name
+            FROM wishlist_contributions wc
+            JOIN users u ON u.id = wc.contributor_id
+            WHERE wc.item_id = ANY(%s)
+        """, (item_ids,))
+        contributions: dict[int, list] = {}
+        for row in cur.fetchall():
+            d = dict(row)
+            d["amount"] = float(d["amount"])
+            contributions.setdefault(d["item_id"], []).append(d)
+
+        for it in items:
+            res = reservations.get(it["id"])
+            contribs = contributions.get(it["id"], [])
+            it["is_reserved"] = res is not None
+            it["reserved_by_me"] = bool(res and res["reserved_by"] == viewer_id)
+            it["reserver_name"] = res["reserver_name"] if res else None
+            it["contributions"] = contribs
+            it["contributed_total"] = sum(c["amount"] for c in contribs)
+            mine = next((c for c in contribs if c["contributor_id"] == viewer_id), None)
+            it["my_contribution"] = mine["amount"] if mine else None
+        return items
+    finally:
+        conn.close()
+
+
+def reserve_wishlist_item(item_id: int, user_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO wishlist_reservations (item_id, reserved_by)
+            VALUES (%s, %s)
+            ON CONFLICT (item_id) DO NOTHING
+        """, (item_id, user_id))
+        inserted = cur.rowcount > 0
+        conn.commit()
+        return inserted
+    finally:
+        conn.close()
+
+
+def unreserve_wishlist_item(item_id: int, user_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM wishlist_reservations WHERE item_id = %s AND reserved_by = %s",
+            (item_id, user_id)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
+def upsert_contribution(item_id: int, contributor_id: int, amount: float) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO wishlist_contributions (item_id, contributor_id, amount)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (item_id, contributor_id) DO UPDATE SET amount = EXCLUDED.amount
+            RETURNING *
+        """, (item_id, contributor_id, amount))
+        row = cur.fetchone()
+        conn.commit()
+        item = dict(row)
+        item["amount"] = float(item["amount"])
+        return item
+    finally:
+        conn.close()
+
+
+def remove_contribution(item_id: int, contributor_id: int) -> bool:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM wishlist_contributions WHERE item_id = %s AND contributor_id = %s",
+            (item_id, contributor_id)
+        )
+        deleted = cur.rowcount > 0
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
 # ─── Шахматы ──────────────────────────────────────────────────────────────────
 
 CHESS_INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"

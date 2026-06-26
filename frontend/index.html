@@ -6,7 +6,7 @@
   <title>FilmByMihaylov</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;500;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=12" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
   <div class="grain"></div>
@@ -23,6 +23,7 @@
         <button class="mode-btn" data-mode="books" title="Книги">📚</button>
         <button class="mode-btn" data-mode="notebook" title="Тетрадь">📓</button>
         <button class="mode-btn" data-mode="games" title="Игры">🎮</button>
+        <button class="mode-btn" data-mode="wishlist" title="Виш-лист">🎁</button>
       </div>
       <div class="user-badge" id="user-badge">
         <span class="user-name" id="user-name"></span>
@@ -49,6 +50,10 @@
       <button class="nav-btn books-nav-btn" data-books-tab="wishlist">Хочу прочитать <span class="fav-count" id="books-wishlist-count">0</span></button>
       <button class="nav-btn books-nav-btn" data-books-tab="suggest">✦ Посоветуй</button>
       <button class="nav-btn books-nav-btn" data-books-tab="profile">Профиль</button>
+    </nav>
+    <nav class="nav" id="wishlist-nav" style="display:none">
+      <button class="nav-btn wishlist-nav-btn active" data-wishlist-tab="mine">Мой список</button>
+      <button class="nav-btn wishlist-nav-btn" data-wishlist-tab="friends">Друзья <span class="fav-count" id="wishlist-requests-count" style="display:none">0</span></button>
     </nav>
   </header>
 
@@ -582,6 +587,44 @@
       </div>
     </section>
 
+    <!-- ═══ WISHLIST MODE ═══ -->
+
+    <section class="tab wishlist-tab" id="tab-wishlist-mine" style="display:none">
+      <div class="section-header">
+        <div class="section-title-row">
+          <h2 class="section-title">🎁 Мой виш-лист</h2>
+          <button class="btn-primary" id="wishlist-add-btn">+ Добавить вещь</button>
+        </div>
+        <p class="section-sub">Друзья видят резерв и складчину — ты не увидишь, кто что готовит</p>
+      </div>
+      <div class="movies-grid wishlist-grid" id="wishlist-mine-grid">
+        <div class="empty-state"><span class="empty-icon">🎁</span><p>Список пуст — добавь первую вещь по ссылке</p></div>
+      </div>
+    </section>
+
+    <section class="tab wishlist-tab" id="tab-wishlist-friends" style="display:none">
+      <div class="section-header">
+        <h2 class="section-title">👥 Друзья</h2>
+        <p class="section-sub">Добавь друга по логину, чтобы видеть его виш-лист</p>
+      </div>
+      <div class="wishlist-add-friend-row">
+        <input type="text" id="wishlist-friend-input" class="filter-input" placeholder="Логин друга…" />
+        <button class="btn-primary" id="wishlist-friend-add-btn">Добавить</button>
+      </div>
+      <div class="wishlist-requests-wrap" id="wishlist-requests-wrap" style="display:none">
+        <h3 class="wishlist-section-sub-title">Входящие заявки</h3>
+        <div id="wishlist-requests-list" class="wishlist-friends-list"></div>
+      </div>
+      <div class="wishlist-outgoing-wrap" id="wishlist-outgoing-wrap" style="display:none">
+        <h3 class="wishlist-section-sub-title">Отправленные заявки</h3>
+        <div id="wishlist-outgoing-list" class="wishlist-friends-list"></div>
+      </div>
+      <h3 class="wishlist-section-sub-title">Мои друзья</h3>
+      <div id="wishlist-friends-list" class="wishlist-friends-list">
+        <div class="empty-state"><span class="empty-icon">👥</span><p>Пока нет друзей — добавь по логину выше</p></div>
+      </div>
+    </section>
+
   </main>
 
   <div class="modal-overlay" id="modal-overlay">
@@ -1058,8 +1101,8 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
-  <script src="config.js?v=12"></script>
-  <script src="app.js?v=12"></script>
-  <script src="cardgames_module.js?v=12"></script>
+  <script src="config.js?v=13"></script>
+  <script src="app.js?v=13"></script>
+  <script src="cardgames_module.js?v=13"></script>
 </body>
 </html>
