@@ -25,6 +25,10 @@ GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1"
 app = FastAPI(title="Movie Recommender API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+# Общий HTTP-клиент с переиспользуемым пулом соединений (избегаем нового
+# TCP/TLS-хендшейка на каждый запрос к TMDB/Kodik/Google Books).
+http_client: httpx.AsyncClient | None = None
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ─── WebSocket-менеджер шахмат ────────────────────────────────────────────────
@@ -99,6 +103,8 @@ TV_NETWORKS = [
 
 @app.on_event("startup")
 async def startup():
+    global http_client
+    http_client = httpx.AsyncClient(timeout=15, limits=httpx.Limits(max_keepalive_connections=20, max_connections=100))
     database.init_db()
     database.init_imdb_map_table()
     database.init_books_tables()
@@ -140,6 +146,12 @@ async def startup():
         print(f"⚠️  IMDb недоступен: {e} — продолжаем без IMDb рейтингов")
 
 
+@app.on_event("shutdown")
+async def shutdown():
+    if http_client:
+        await http_client.aclose()
+
+
 @app.get("/health")
 async def health_check():
     """Пинг для поддержания Render + Neon живыми. Делает SELECT 1 к БД.
@@ -163,26 +175,23 @@ async def health_check():
 
 
 async def tmdb_get(path: str, **params) -> dict:
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            f"{TMDB_BASE}{path}",
-            params={"api_key": TMDB_API_KEY, "language": "ru-RU", **params},
-            timeout=15,
-        )
-        r.raise_for_status()
-        return r.json()
+    r = await http_client.get(
+        f"{TMDB_BASE}{path}",
+        params={"api_key": TMDB_API_KEY, "language": "ru-RU", **params},
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 # ─── Google Books helpers ─────────────────────────────────────────────────────
 
 async def books_get(path: str, **params) -> dict:
-    async with httpx.AsyncClient() as client:
-        p = {**params}
-        if GOOGLE_BOOKS_API_KEY:
-            p["key"] = GOOGLE_BOOKS_API_KEY
-        r = await client.get(f"{GOOGLE_BOOKS_BASE}{path}", params=p, timeout=15)
-        r.raise_for_status()
-        return r.json()
+    p = {**params}
+    if GOOGLE_BOOKS_API_KEY:
+        p["key"] = GOOGLE_BOOKS_API_KEY
+    r = await http_client.get(f"{GOOGLE_BOOKS_BASE}{path}", params=p)
+    r.raise_for_status()
+    return r.json()
 
 
 def normalize_book(item: dict) -> dict:
@@ -553,18 +562,24 @@ KODIK_TOKEN = os.getenv("KODIK_TOKEN")
 async def get_kodik_link(tmdb_id: int, media_type: str = "movie", season: int = 1, episode: int = 1):
     if not KODIK_TOKEN:
         raise HTTPException(503, "Kodik не настроен (нет KODIK_TOKEN)")
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            "https://kodikapi.com/search",
-            params={
-                "token": KODIK_TOKEN,
-                "tmdb_id": tmdb_id,
-                "with_episodes": "true" if media_type == "tv" else "false",
-            },
-            timeout=15,
-        )
-        r.raise_for_status()
-        data = r.json()
+    # У Kodik домены периодически отваливаются/переезжают — пробуем по очереди.
+    params = {
+        "token": KODIK_TOKEN,
+        "tmdb_id": tmdb_id,
+        "with_episodes": "true" if media_type == "tv" else "false",
+    }
+    data = None
+    last_error = None
+    for base in ("https://kodik-api.com", "https://kodikapi.com"):
+        try:
+            r = await http_client.get(f"{base}/search", params=params)
+            r.raise_for_status()
+            data = r.json()
+            break
+        except Exception as e:
+            last_error = e
+    if data is None:
+        raise HTTPException(503, f"Kodik недоступен: {last_error}")
     results = data.get("results", [])
     if not results:
         raise HTTPException(404, "Не найдено на Kodik")
