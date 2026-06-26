@@ -10,6 +10,4 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: KODIK_TOKEN
-        sync: false
     autoDeploy: true

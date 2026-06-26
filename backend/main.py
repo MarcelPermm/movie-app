@@ -554,46 +554,6 @@ async def get_trailer(movie_id: int, media_type: str = "movie"):
     return {"key": key}
 
 
-# ─── Плеер с русской озвучкой (Kodik) ─────────────────────────────────────────
-
-KODIK_TOKEN = os.getenv("KODIK_TOKEN")
-
-@app.get("/watch/kodik")
-async def get_kodik_link(tmdb_id: int, media_type: str = "movie", season: int = 1, episode: int = 1):
-    if not KODIK_TOKEN:
-        raise HTTPException(503, "Kodik не настроен (нет KODIK_TOKEN)")
-    # У Kodik домены периодически отваливаются/переезжают — пробуем по очереди.
-    params = {
-        "token": KODIK_TOKEN,
-        "tmdb_id": tmdb_id,
-        "with_episodes": "true" if media_type == "tv" else "false",
-    }
-    data = None
-    last_error = None
-    for base in ("https://kodik-api.com", "https://kodikapi.com"):
-        try:
-            r = await http_client.get(f"{base}/search", params=params)
-            r.raise_for_status()
-            data = r.json()
-            break
-        except Exception as e:
-            last_error = e
-    if data is None:
-        raise HTTPException(503, f"Kodik недоступен: {last_error}")
-    results = data.get("results", [])
-    if not results:
-        raise HTTPException(404, "Не найдено на Kodik")
-    link = results[0].get("link")
-    if not link:
-        raise HTTPException(404, "Не найдено на Kodik")
-    if not link.startswith("http"):
-        link = "https:" + link
-    if media_type == "tv":
-        sep = "&" if "?" in link else "?"
-        link = f"{link}{sep}season={season}&episode={episode}"
-    return {"link": link}
-
-
 # ─── Серии сезона ─────────────────────────────────────────────────────────────
 
 @app.get("/tv/{show_id}/season/{season_number}")
