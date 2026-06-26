@@ -2005,6 +2005,20 @@ function bindSeasonsEvents(movieId) {
   });
 }
 
+function buildEmbedUrl(source, mediaType, tmdbId, season, episode) {
+  const isTv = mediaType === "tv";
+  if (source === "vidsrc") {
+    return isTv ? `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}` : `https://vidsrc.to/embed/movie/${tmdbId}`;
+  }
+  if (source === "videasy") {
+    return isTv ? `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}` : `https://player.videasy.net/movie/${tmdbId}`;
+  }
+  if (source === "2embed") {
+    return isTv ? `https://www.2embed.cc/embedtv/${tmdbId}&s=${season}&e=${episode}` : `https://www.2embed.cc/embed/${tmdbId}`;
+  }
+  return "";
+}
+
 function formatDate(iso) {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");
@@ -2085,12 +2099,32 @@ function renderMovieContent(movie) {
       ${backdropUrl ? `<img class="modal-backdrop" src="${backdropUrl}" alt="" />` : `<div style="height:280px;background:var(--border)"></div>`}
       <div class="modal-backdrop-overlay"></div>
       ${posterUrl ? `<div class="modal-poster-wrap"><img class="modal-poster" src="${posterUrl}" /></div>` : ""}
-      <button class="trailer-play-btn" id="trailer-play-btn"><span class="trailer-play-icon">▶</span><span>Трейлер</span></button>
+      <div class="modal-play-btns">
+        <button class="watch-play-btn" id="watch-play-btn"><span class="trailer-play-icon">▶</span><span>Смотреть</span></button>
+        <button class="trailer-play-btn" id="trailer-play-btn"><span class="trailer-play-icon">▶</span><span>Трейлер</span></button>
+      </div>
     </div>
     <div class="trailer-player" id="trailer-player" style="display:none">
       <iframe id="trailer-iframe" width="100%" height="380" frameborder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
       <button class="trailer-close-btn" id="trailer-close-btn">✕ Закрыть трейлер</button>
+    </div>
+    <div class="watch-player" id="watch-player" style="display:none">
+      <div class="watch-controls">
+        <div class="watch-sources" id="watch-sources">
+          <button class="watch-source-btn active" data-src="vidsrc">VidSrc</button>
+          <button class="watch-source-btn" data-src="videasy">Videasy</button>
+          <button class="watch-source-btn" data-src="2embed">2Embed</button>
+        </div>
+        ${mediaType === "tv" ? `
+        <div class="watch-ep-picker">
+          <label>Сезон <input type="number" id="watch-season" min="1" value="1" class="watch-ep-input" /></label>
+          <label>Серия <input type="number" id="watch-episode" min="1" value="1" class="watch-ep-input" /></label>
+        </div>` : ""}
+      </div>
+      <iframe id="watch-iframe" width="100%" height="480" frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      <button class="trailer-close-btn" id="watch-close-btn">✕ Закрыть плеер</button>
     </div>
     <div class="modal-body">
       <h2 class="modal-title">${movie.title}</h2>
@@ -2140,6 +2174,37 @@ function renderMovieContent(movie) {
     $("trailer-play-btn").innerHTML = `<span class="trailer-play-icon">▶</span><span>Трейлер</span>`;
     $("trailer-play-btn").disabled = false;
   });
+
+  // Смотреть (плеер)
+  let watchSource = "vidsrc";
+  const loadWatchIframe = () => {
+    const season  = $("watch-season")?.value || 1;
+    const episode = $("watch-episode")?.value || 1;
+    $("watch-iframe").src = buildEmbedUrl(watchSource, mediaType, movieId, season, episode);
+  };
+  $("watch-play-btn").addEventListener("click", () => {
+    $("modal-hero").style.display = "none";
+    $("trailer-player").style.display = "none";
+    $("watch-player").style.display = "block";
+    loadWatchIframe();
+  });
+  $("watch-close-btn").addEventListener("click", () => {
+    $("watch-iframe").src = "";
+    $("watch-player").style.display = "none";
+    $("modal-hero").style.display = "block";
+  });
+  document.querySelectorAll("#watch-sources .watch-source-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#watch-sources .watch-source-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      watchSource = btn.dataset.src;
+      loadWatchIframe();
+    });
+  });
+  if (mediaType === "tv") {
+    $("watch-season")?.addEventListener("change", loadWatchIframe);
+    $("watch-episode")?.addEventListener("change", loadWatchIframe);
+  }
 
   // Просмотрено
   $("modal-watched-btn").addEventListener("click", async () => {

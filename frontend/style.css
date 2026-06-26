@@ -158,13 +158,24 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .modal-poster-wrap { position: absolute; bottom: -40px; left: 28px; width: 100px; border-radius: 8px; overflow: hidden; border: 2px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 .modal-poster { width: 100%; display: block; }
 
-.trailer-play-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 12px 24px; background: rgba(0,0,0,0.65); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.25); border-radius: 40px; color: #fff; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.2s; z-index: 5; }
-.trailer-play-btn:hover { background: rgba(201,76,76,0.7); border-color: rgba(255,100,100,0.5); transform: translateX(-50%) scale(1.05); }
-.trailer-play-btn:disabled { opacity: 0.6; cursor: default; transform: translateX(-50%); }
+.modal-play-btns { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; z-index: 5; }
+.trailer-play-btn, .watch-play-btn { display: flex; align-items: center; gap: 10px; padding: 12px 24px; background: rgba(0,0,0,0.65); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.25); border-radius: 40px; color: #fff; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.2s; }
+.trailer-play-btn:hover { background: rgba(201,76,76,0.7); border-color: rgba(255,100,100,0.5); transform: scale(1.05); }
+.watch-play-btn:hover { background: rgba(201,168,76,0.75); border-color: rgba(255,210,100,0.5); transform: scale(1.05); }
+.trailer-play-btn:disabled, .watch-play-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
 .trailer-play-icon { font-size: 18px; }
-.trailer-player { background: #000; }
+.trailer-player, .watch-player { background: #000; }
 .trailer-close-btn { display: block; width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: none; border-top: 1px solid rgba(255,255,255,0.1); color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: background 0.2s; }
 .trailer-close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+.watch-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); }
+.watch-sources { display: flex; gap: 8px; }
+.watch-source-btn { padding: 6px 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; color: var(--text-dim); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s; }
+.watch-source-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+.watch-source-btn.active { background: var(--gold); border-color: var(--gold); color: #1a1a1a; }
+.watch-ep-picker { display: flex; gap: 12px; }
+.watch-ep-picker label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.watch-ep-input { width: 56px; padding: 5px 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; }
 
 .modal-body { padding: 56px 28px 28px; }
 .modal-title { font-family: 'Playfair Display', serif; font-size: 26px; font-weight: 900; line-height: 1.2; margin-bottom: 4px; }
