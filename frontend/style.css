@@ -6580,3 +6580,44 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   .wishlist-friend-item-img { width: 100%; flex: none; aspect-ratio: 16/9; }
   .wishlist-add-friend-row { max-width: none; }
 }
+
+/* ─── Бильярд ──────────────────────────────────────────────────────────────── */
+
+.billiards-layout { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+
+.billiards-status-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; width: 100%; max-width: 760px;
+}
+.billiards-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 18px; background: var(--card); border-radius: 10px;
+  border: 1px solid var(--rule); min-width: 110px;
+}
+.billiards-chip.billiards-turn-active {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 1px var(--terracotta), 0 0 14px -4px var(--terracotta);
+}
+.billiards-chip-name  { font-family: 'Fraunces', Georgia, serif; font-size: 14px; color: var(--ink); font-weight: 600; }
+.billiards-chip-color { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+.billiards-chip-score { font-family: 'JetBrains Mono', monospace; font-size: 20px; color: var(--terracotta); font-weight: 700; }
+.billiards-turn-label { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+
+.billiards-table-wrap { width: 100%; max-width: 760px; }
+#billiards-canvas {
+  width: 100%; height: auto; aspect-ratio: 1500 / 825; display: block;
+  border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  touch-action: none; cursor: crosshair;
+}
+
+.billiards-hint {
+  min-height: 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  color: var(--terracotta); text-align: center;
+}
+.billiards-actions { display: flex; justify-content: flex-end; width: 100%; max-width: 760px; }
+
+@media (max-width: 640px) {
+  .billiards-status-row { max-width: none; }
+  .billiards-table-wrap, .billiards-actions { max-width: none; }
+  .billiards-chip { min-width: 84px; padding: 6px 10px; }
+}

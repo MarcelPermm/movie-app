@@ -63,6 +63,37 @@ class ChessConnectionManager:
 
 chess_manager = ChessConnectionManager()
 
+# ─── WebSocket-менеджер бильярда ───────────────────────────────────────────────
+class BilliardsConnectionManager:
+    def __init__(self):
+        self.rooms: dict[str, list] = {}
+
+    async def connect(self, ws: WebSocket, code: str):
+        await ws.accept()
+        self.rooms.setdefault(code, []).append(ws)
+
+    def disconnect(self, ws: WebSocket, code: str):
+        room = self.rooms.get(code, [])
+        try:
+            room.remove(ws)
+        except ValueError:
+            pass
+
+    async def broadcast(self, code: str, data: dict):
+        for ws in list(self.rooms.get(code, [])):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                self.disconnect(ws, code)
+
+    async def send_to(self, ws: WebSocket, data: dict):
+        try:
+            await ws.send_json(data)
+        except Exception:
+            pass
+
+billiards_manager = BilliardsConnectionManager()
+
 STUDIOS = [
     {"id": 2,    "name": "Walt Disney Pictures"},
     {"id": 3,    "name": "Pixar"},
@@ -132,6 +163,11 @@ async def startup():
         print("✅ Таблицы UNO/101 готовы")
     except Exception as e:
         print(f"⚠️  init_chess_tables error: {e}")
+    try:
+        database.init_billiards_table()
+        print("✅ Таблица Бильярда готова")
+    except Exception as e:
+        print(f"⚠️  init_billiards_table: {e}")
     print("✅ База данных готова")
     if not TMDB_API_KEY:
         print("⚠️  TMDB_API_KEY не найден!")
@@ -2449,6 +2485,104 @@ async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default
         game = database.get_chess_game(code)
         if game and game.get("status") == "active":
             await chess_manager.broadcast(code, {
+                "type":    "opponent_disconnected",
+                "user_id": user_id,
+            })
+
+
+# ════════════════════════════════════════════════════════════════
+#  БИЛЬЯРД
+# ════════════════════════════════════════════════════════════════
+
+@app.post("/billiards/games")
+async def billiards_create(user_id: int = Query(...)):
+    code = _gen_code()
+    for _ in range(10):
+        if not database.get_billiards_game(code):
+            break
+        code = _gen_code()
+    game = database.create_billiards_game(code, user_id)
+    return game
+
+
+@app.get("/billiards/games/{code}")
+async def billiards_get(code: str):
+    game = database.get_billiards_game(code)
+    if not game:
+        raise HTTPException(404, "Игра не найдена")
+    return game
+
+
+@app.post("/billiards/games/{code}/join")
+async def billiards_join(code: str, user_id: int = Query(...)):
+    game = database.get_billiards_game(code)
+    if not game:
+        raise HTTPException(404, "Игра не найдена")
+    if game["status"] not in ("waiting",):
+        raise HTTPException(400, "Игра уже началась или завершена")
+    if game["player1_id"] == user_id:
+        raise HTTPException(400, "Вы уже в этой игре")
+    updated = database.join_billiards_game(code, user_id)
+    if not updated:
+        raise HTTPException(400, "Не удалось подключиться")
+    full_game = database.get_billiards_game(code)
+    await billiards_manager.broadcast(code, {"type": "game_ready", "game": full_game})
+    return full_game
+
+
+@app.websocket("/billiards/ws/{code}")
+async def billiards_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0)):
+    await billiards_manager.connect(websocket, code)
+    try:
+        game = database.get_billiards_game(code)
+        if game:
+            await billiards_manager.send_to(websocket, {"type": "state_sync", "game": game})
+            if game["player1_id"] and game["player2_id"] and game["status"] == "active":
+                await billiards_manager.send_to(websocket, {"type": "game_ready", "game": game})
+
+        while True:
+            data = await websocket.receive_json()
+            msg_type = data.get("type")
+
+            if msg_type == "shot":
+                await billiards_manager.broadcast(code, {
+                    "type":     "shot",
+                    "power":    data.get("power"),
+                    "rotation": data.get("rotation"),
+                    "user_id":  user_id,
+                })
+
+            elif msg_type == "state":
+                game = database.update_billiards_game(
+                    code, state=data.get("state"),
+                    status=data.get("status"), winner=data.get("winner"),
+                )
+                await billiards_manager.broadcast(code, {
+                    "type":   "state_sync",
+                    "game":   game,
+                    "from_user_id": user_id,
+                })
+
+            elif msg_type == "resign":
+                game = database.get_billiards_game(code)
+                if game:
+                    winner = game["player2_id"] if game.get("player1_id") == user_id else game["player1_id"]
+                    database.update_billiards_game(code, status="finished", winner=winner)
+                    await billiards_manager.broadcast(code, {
+                        "type":    "game_over",
+                        "winner":  winner,
+                        "reason":  "resign",
+                        "user_id": user_id,
+                    })
+
+            elif msg_type == "ping":
+                await billiards_manager.send_to(websocket, {"type": "pong"})
+
+    except WebSocketDisconnect:
+        billiards_manager.disconnect(websocket, code)
+        game = database.get_billiards_game(code)
+        if game and game.get("status") == "active":
+            await billiards_manager.broadcast(code, {
                 "type":    "opponent_disconnected",
                 "user_id": user_id,
             })

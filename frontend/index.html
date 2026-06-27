@@ -7,7 +7,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%90%92</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&family=Inter:wght@400;500;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
   <div class="grain"></div>
@@ -697,6 +697,11 @@
             <div class="game-card-name">Сто одно</div>
             <div class="game-card-desc">2–6 игроков · онлайн</div>
           </div>
+          <div class="game-card" id="billiards-open-card">
+            <div class="game-card-icon">🎱</div>
+            <div class="game-card-name">Бильярд</div>
+            <div class="game-card-desc">2 игрока · онлайн</div>
+          </div>
         </div>
         <!-- История последних партий -->
         <div class="games-history-wrap" id="games-history-wrap" style="display:none">
@@ -804,6 +809,80 @@
             <div class="chess-gameover-sub" id="chess-gameover-sub"></div>
             <button class="chess-action-btn" id="chess-gameover-new">Новая игра</button>
             <button class="chess-action-btn chess-action-btn-sec" id="chess-gameover-lobby">В лобби</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Бильярд: экран выбора (создать / войти по коду / локально) -->
+      <div id="billiards-entry" style="display:none">
+        <button class="games-back-btn" id="billiards-back-to-lobby">← Игры</button>
+        <div class="chess-entry-wrap">
+          <div class="chess-entry-card" id="billiards-create-card">
+            <div class="chess-entry-icon">✚</div>
+            <div class="chess-entry-title">Создать игру</div>
+            <div class="chess-entry-desc">Получи код и поделись с другом</div>
+            <button class="chess-action-btn" id="billiards-create-btn">Создать</button>
+          </div>
+          <div class="chess-entry-divider">или</div>
+          <div class="chess-entry-card" id="billiards-join-card">
+            <div class="chess-entry-icon">🔑</div>
+            <div class="chess-entry-title">Войти по коду</div>
+            <div class="chess-entry-desc">Введи код от друга</div>
+            <input class="chess-code-input" id="billiards-join-input" placeholder="ABC123" maxlength="6" autocomplete="off" />
+            <button class="chess-action-btn" id="billiards-join-btn">Войти</button>
+          </div>
+        </div>
+        <div class="chess-local-row">
+          <div class="chess-entry-divider">или</div>
+          <button class="chess-local-btn" id="billiards-local-btn">🖥 Играть вдвоём на одном экране</button>
+        </div>
+      </div>
+
+      <!-- Бильярд: ожидание второго игрока -->
+      <div id="billiards-waiting" style="display:none">
+        <button class="games-back-btn" id="billiards-back-from-waiting">← Отмена</button>
+        <div class="chess-waiting-wrap">
+          <div class="chess-waiting-icon">🎱</div>
+          <div class="chess-waiting-title">Игра создана!</div>
+          <div class="chess-waiting-sub">Поделись кодом с другом</div>
+          <div class="chess-code-display" id="billiards-game-code-display">------</div>
+          <button class="chess-copy-btn" id="billiards-copy-code-btn">📋 Скопировать код</button>
+          <div class="chess-waiting-dots"><span></span><span></span><span></span></div>
+          <div class="chess-waiting-hint">Ожидаем второго игрока…</div>
+        </div>
+      </div>
+
+      <!-- Бильярд: игровой экран -->
+      <div id="billiards-game" style="display:none">
+        <div class="billiards-layout">
+          <div class="billiards-status-row">
+            <div class="billiards-chip" id="billiards-p1-chip">
+              <span class="billiards-chip-name" id="billiards-p1-name">Игрок 1</span>
+              <span class="billiards-chip-color" id="billiards-p1-color"></span>
+              <span class="billiards-chip-score" id="billiards-p1-score">0</span>
+            </div>
+            <div class="billiards-turn-label" id="billiards-turn-label">Твой удар</div>
+            <div class="billiards-chip" id="billiards-p2-chip">
+              <span class="billiards-chip-name" id="billiards-p2-name">Игрок 2</span>
+              <span class="billiards-chip-color" id="billiards-p2-color"></span>
+              <span class="billiards-chip-score" id="billiards-p2-score">0</span>
+            </div>
+          </div>
+          <div class="billiards-table-wrap">
+            <canvas id="billiards-canvas" width="1500" height="825"></canvas>
+          </div>
+          <div class="billiards-hint" id="billiards-hint"></div>
+          <div class="billiards-actions">
+            <button class="chess-sidebar-btn chess-resign-btn" id="billiards-resign-btn" style="display:none">🏳 Сдаться</button>
+          </div>
+        </div>
+        <!-- Game over overlay -->
+        <div class="chess-gameover" id="billiards-gameover" style="display:none">
+          <div class="chess-gameover-inner">
+            <div class="chess-gameover-icon">🎱</div>
+            <div class="chess-gameover-title" id="billiards-gameover-title">Конец партии</div>
+            <button class="chess-action-btn" id="billiards-gameover-new">Новая игра</button>
+            <button class="chess-action-btn chess-action-btn-sec" id="billiards-gameover-lobby">В лобби</button>
           </div>
         </div>
       </div>
@@ -1102,8 +1181,9 @@
 
   <div class="toast-container" id="toast-container"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
-  <script src="config.js?v=13"></script>
-  <script src="app.js?v=13"></script>
-  <script src="cardgames_module.js?v=13"></script>
+  <script src="config.js?v=14"></script>
+  <script src="app.js?v=14"></script>
+  <script src="cardgames_module.js?v=14"></script>
+  <script src="billiards_module.js?v=14"></script>
 </body>
 </html>

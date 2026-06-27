@@ -846,6 +846,104 @@ def get_chess_history(user_id: int, limit: int = 20) -> list:
         conn.close()
 
 
+# ─── Бильярд ──────────────────────────────────────────────────────────────────
+
+def init_billiards_table():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS billiards_games (
+                id          SERIAL PRIMARY KEY,
+                code        VARCHAR(8) UNIQUE NOT NULL,
+                player1_id  INTEGER,
+                player2_id  INTEGER,
+                state       JSONB DEFAULT '{}',
+                status      VARCHAR(20) DEFAULT 'waiting',
+                winner      INTEGER,
+                created_at  TIMESTAMP DEFAULT NOW(),
+                updated_at  TIMESTAMP DEFAULT NOW()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_billiards_player1 ON billiards_games (player1_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_billiards_player2 ON billiards_games (player2_id)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_billiards_game(code: str, player1_id: int) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO billiards_games (code, player1_id, status)
+            VALUES (%s, %s, 'waiting')
+            RETURNING *
+        """, (code, player1_id))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_billiards_game(code: str) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT bg.*,
+                   p1.display_name AS player1_name, p1.username AS player1_username,
+                   p2.display_name AS player2_name, p2.username AS player2_username
+            FROM billiards_games bg
+            LEFT JOIN users p1 ON bg.player1_id = p1.id
+            LEFT JOIN users p2 ON bg.player2_id = p2.id
+            WHERE bg.code = %s
+        """, (code,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def join_billiards_game(code: str, user_id: int) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE billiards_games
+            SET player2_id = %s, status = 'active', updated_at = NOW()
+            WHERE code = %s AND player2_id IS NULL
+            RETURNING *
+        """, (user_id, code))
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_billiards_game(code: str, state=None, status=None, winner=None) -> dict | None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        fields, vals = [], []
+        if state  is not None: fields.append("state = %s");  vals.append(json.dumps(state))
+        if status is not None: fields.append("status = %s"); vals.append(status)
+        if winner is not None: fields.append("winner = %s"); vals.append(winner)
+        if not fields:
+            return None
+        fields.append("updated_at = NOW()")
+        vals.append(code)
+        cur.execute(f"UPDATE billiards_games SET {', '.join(fields)} WHERE code = %s RETURNING *", vals)
+        row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 # ─── Просмотренное ────────────────────────────────────────────────────────────
 
 def add_watched(movie: dict, media_type: str = "movie", user_id: int = 1) -> bool:

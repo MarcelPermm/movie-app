@@ -8116,13 +8116,16 @@ function initGamesMode() {
     if (typeof _uno  !== "undefined") _cgDisconnect(_uno);
     if (typeof _g101 !== "undefined") _cgDisconnect(_g101);
   }
+  if (typeof billiardsDisconnect === "function") billiardsDisconnect();
   // Спрятать все под-экраны игр, если остались открытыми
   ["durak-setup","durak-lobby","durak-game",
    "uno-setup","uno-lobby","uno-game",
-   "g101-setup","g101-lobby","g101-game"].forEach(id => {
+   "g101-setup","g101-lobby","g101-game",
+   "billiards-entry","billiards-waiting","billiards-game"].forEach(id => {
     const el = $(id); if (el) el.style.display = "none";
   });
   _chess.myUserId = uid;
+  if (typeof _bil !== "undefined") _bil.myUserId = uid;
   _showChessScreen("games-lobby");
   const card = $("chess-open-card");
   if (card && !card._init) { card._init = true; card.addEventListener("click", openChessEntry); }
@@ -8140,6 +8143,11 @@ function initGamesMode() {
   if (g101Card && !g101Card._init) {
     g101Card._init = true;
     g101Card.addEventListener("click", function() { initG101Mode(); });
+  }
+  const billiardsCard = $("billiards-open-card");
+  if (billiardsCard && !billiardsCard._init) {
+    billiardsCard._init = true;
+    billiardsCard.addEventListener("click", function() { initBilliardsMode(); });
   }
   loadGamesHistory(uid);
 }
