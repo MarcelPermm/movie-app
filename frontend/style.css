@@ -6610,6 +6610,22 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
   touch-action: none; cursor: crosshair;
 }
 
+.billiards-power-wrap {
+  display: flex; align-items: center; gap: 10px; width: 100%; max-width: 760px;
+}
+.billiards-power-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.billiards-power-track {
+  flex: 1; height: 10px; border-radius: 6px; background: var(--card);
+  border: 1px solid var(--rule); overflow: hidden;
+}
+.billiards-power-fill {
+  height: 100%; width: 0%; border-radius: 6px;
+  background: var(--sage); transition: width .05s linear, background-color .1s linear;
+}
+.billiards-power-fill.tier-mid  { background: var(--honey); }
+.billiards-power-fill.tier-high { background: var(--terracotta); }
+.billiards-power-pct { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); min-width: 34px; text-align: right; }
+
 .billiards-hint {
   min-height: 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
   color: var(--terracotta); text-align: center;

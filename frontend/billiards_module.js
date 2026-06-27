@@ -329,6 +329,7 @@ function BilGame(canvas) {
   this.running = false;
   this.onTurnSettled = null;   // (winnerIdx|null) => void
   this.onChange = null;        // вызывается при любом визуальном изменении (для обновления чипов)
+  this.onPowerChange = null;   // (power|null) => void — null значит "спрятать индикатор силы"
   this._bindInput();
 }
 
@@ -376,11 +377,13 @@ BilGame.prototype._bindInput = function () {
         self.placingWhiteBall = false;
         if (self.onChange) self.onChange();
       }
+      self.draw();
       return;
     }
 
     self.dragPos = pos;
     self.stick.aiming = true;
+    self.draw();
   }
 
   function onMove(e) {
@@ -389,6 +392,7 @@ BilGame.prototype._bindInput = function () {
       if (!bilIsOutsideBorder(p) && !self.table.whiteBallOverlapsOthers(p)) {
         self.table.whiteBall.position = p;
       }
+      self.draw();
       return;
     }
     if (!self.stick.aiming) return;
@@ -399,13 +403,18 @@ BilGame.prototype._bindInput = function () {
     var dist = Math.hypot(dx, dy);
     self.stick.rotation = Math.atan2(dy, dx);
     self.stick.power = Math.min(BIL_MAX_POWER, dist * BIL_POWER_SCALE);
+    if (self.onPowerChange) self.onPowerChange(self.stick.power);
+    self.draw();
   }
 
   function onUp(e) {
     if (!self.stick.aiming) return;
     self.stick.aiming = false;
+    if (self.onPowerChange) self.onPowerChange(null);
     if (self.stick.power > 3) {
       self.shoot(self.stick.power, self.stick.rotation);
+    } else {
+      self.draw();
     }
     self.stick.power = 0;
   }
@@ -496,20 +505,30 @@ BilGame.prototype.draw = function () {
   if (this.canIInteract() && !this.policy.foul && this.stick.aiming) {
     var white = this.table.whiteBall.position;
     var dx = Math.cos(this.stick.rotation), dy = Math.sin(this.stick.rotation);
+    var frac = this.stick.power / BIL_MAX_POWER; // 0..1
+    var tint = frac > 0.75 ? "#c96442" : frac > 0.4 ? "#c89826" : "#8aa46b";
 
-    // пунктирная линия прицеливания (в сторону удара — противоположно отведению кия)
+    // Линия прицеливания — куда полетит шар. Длина и яркость растут с силой удара.
+    var aimLen = 130 + frac * 380;
     ctx.save();
-    ctx.setLineDash([10, 10]);
-    ctx.strokeStyle = "rgba(232,228,220,0.5)";
-    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 10]);
+    ctx.strokeStyle = tint;
+    ctx.globalAlpha = 0.45 + frac * 0.4;
+    ctx.lineWidth = 2 + frac * 2;
     ctx.beginPath();
     ctx.moveTo(white.x, white.y);
-    ctx.lineTo(white.x - dx * 320, white.y - dy * 320);
+    ctx.lineTo(white.x - dx * aimLen, white.y - dy * aimLen);
     ctx.stroke();
     ctx.restore();
 
-    // сам кий, оттянутый назад пропорционально силе удара
-    var pullBack = BIL_BALL_R + 6 + this.stick.power * 2.2;
+    // Точка прогноза — где окажется шар при ударе текущей силы
+    ctx.beginPath();
+    ctx.arc(white.x - dx * aimLen, white.y - dy * aimLen, 6, 0, Math.PI * 2);
+    ctx.fillStyle = tint;
+    ctx.fill();
+
+    // Сам кий, оттянутый назад пропорционально силе удара
+    var pullBack = BIL_BALL_R + 6 + frac * 170;
     ctx.strokeStyle = "#c9a84c";
     ctx.lineWidth = 6;
     ctx.lineCap = "round";
@@ -565,6 +584,7 @@ function _bilSetupGame() {
   if (_bil.game) return _bil.game;
   var g = new BilGame(canvas);
   g.onChange = _bilRenderChips;
+  g.onPowerChange = _bilRenderPower;
   g.onShot = function (power, rotation) {
     _bilLastShooterIdx = g.policy.turn;
     if (!_bil.isLocal && _bil.ws && _bil.ws.readyState === WebSocket.OPEN) {
@@ -599,6 +619,20 @@ function _bilSendStateSync(winnerIdx) {
     payload.winner = winnerIdx === 0 ? _bil.game._player1Id : _bil.game._player2Id;
   }
   _bil.ws.send(JSON.stringify(payload));
+}
+
+function _bilRenderPower(power) {
+  var wrap = $("billiards-power-wrap");
+  var fill = $("billiards-power-fill");
+  var pct = $("billiards-power-pct");
+  if (!wrap || !fill || !pct) return;
+  if (power == null) { wrap.style.visibility = "hidden"; fill.style.width = "0%"; return; }
+  wrap.style.visibility = "visible";
+  var frac = Math.min(1, power / BIL_MAX_POWER);
+  fill.style.width = Math.round(frac * 100) + "%";
+  fill.classList.toggle("tier-mid", frac > 0.4 && frac <= 0.75);
+  fill.classList.toggle("tier-high", frac > 0.75);
+  pct.textContent = Math.round(frac * 100) + "%";
 }
 
 function _bilRenderChips() {
