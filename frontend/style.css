@@ -247,14 +247,46 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .season-name { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
 .season-meta { font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
 .season-arrow { font-size: 13px; color: var(--text-dim); flex-shrink: 0; transition: transform var(--transition); }
-.season-episodes { border-top: 1px solid var(--border); background: var(--bg); }
+.season-episodes { border-top: 1px solid var(--border); background: var(--bg); padding: 14px; }
 .ep-loading { padding: 12px 14px; font-size: 13px; color: var(--text-dim); }
-.episode-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-.episode-item:last-child { border-bottom: none; }
-.ep-num { font-size: 12px; font-weight: 700; color: var(--gold); min-width: 32px; padding-top: 2px; flex-shrink: 0; font-family: 'DM Sans', sans-serif; letter-spacing: 0.03em; }
-.ep-info { flex: 1; min-width: 0; }
-.ep-name { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
-.ep-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+.episodes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.episode-item {
+  display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; cursor: pointer;
+  transition: border-color var(--transition), transform var(--transition);
+}
+.episode-item:hover { border-color: var(--gold-dim); transform: translateY(-2px); }
+.episode-item.is-playing { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+
+.ep-thumb { position: relative; width: 100%; aspect-ratio: 16/9; background: var(--border); overflow: hidden; }
+.ep-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ep-thumb-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 28px; opacity: .3; }
+.ep-num-badge {
+  position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 5px;
+  background: rgba(10,10,15,0.75); backdrop-filter: blur(4px); color: var(--gold);
+  font-size: 11px; font-weight: 700; font-family: 'DM Sans', sans-serif; letter-spacing: 0.03em;
+}
+.ep-playing-overlay {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  gap: 6px; background: rgba(180,40,32,0.55); color: #fff; font-size: 13px; font-weight: 700;
+  font-family: 'DM Sans', sans-serif; letter-spacing: 0.04em;
+}
+.episode-item.is-playing .ep-playing-overlay { display: flex; }
+.ep-play-hover {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.35); color: #fff; font-size: 22px; opacity: 0; transition: opacity var(--transition);
+}
+.episode-item:not(.is-playing):hover .ep-play-hover { opacity: 1; }
+
+.ep-info { flex: 1; min-width: 0; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; }
+.ep-name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.ep-meta { font-size: 11px; color: var(--gold-dim); }
+.ep-overview { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+.ep-more-btn {
+  background: none; border: none; padding: 0; margin-left: 4px; color: var(--gold);
+  font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: underline;
+}
 
 /* ─── Вкладка актёров ────────────────────────────────────── */
 .actors-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }

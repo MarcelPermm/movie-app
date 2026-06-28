@@ -2402,7 +2402,14 @@ function renderSeasonsHTML(movie) {
   return `<div class="seasons-section"><h3 class="cast-title">Сезоны и серии</h3><div class="seasons-list">${rows}</div></div>`;
 }
 
-function bindSeasonsEvents(movieId) {
+function highlightActiveEpisode(season, episode) {
+  document.querySelectorAll(".episode-item").forEach(item => {
+    const match = Number(item.dataset.season) === Number(season) && Number(item.dataset.episode) === Number(episode);
+    item.classList.toggle("is-playing", match);
+  });
+}
+
+function bindSeasonsEvents(movieId, onPlayEpisode) {
   document.querySelectorAll(".season-row").forEach(row => {
     const btn = row.querySelector(".season-toggle");
     const ep  = row.querySelector(".season-episodes");
@@ -2421,18 +2428,55 @@ function bindSeasonsEvents(movieId) {
         const season = row.dataset.season;
         const episodes = await apiFetch(`/tv/${showId}/season/${season}`);
         if (!episodes?.length) { ep.innerHTML = `<div class="ep-loading">Серии не найдены</div>`; return; }
-        ep.innerHTML = episodes.map(e => {
+        ep.innerHTML = `<div class="episodes-grid">${episodes.map(e => {
           const airDate = e.air_date ? formatDate(e.air_date) : "—";
-          const runtime = e.runtime ? ` · ${e.runtime} мин` : "";
-          const rating  = e.vote_average && e.vote_average > 0 ? ` · ★ ${Number(e.vote_average).toFixed(1)}` : "";
-          return `<div class="episode-item">
-            <span class="ep-num">E${String(e.episode_number).padStart(2, "0")}</span>
+          const runtime = e.runtime ? `${e.runtime} мин` : "";
+          const rating  = e.vote_average && e.vote_average > 0 ? `★ ${Number(e.vote_average).toFixed(1)}` : "";
+          const meta = [airDate, runtime, rating].filter(Boolean).join(" · ");
+          const stillUrl = e.still_path ? `${TMDB_CARD}${e.still_path}` : "";
+          const overview = e.overview || "";
+          const isLong = overview.length > 100;
+          const shortOverview = isLong ? overview.slice(0, 100).trim() + "…" : overview;
+          return `<div class="episode-item" data-season="${season}" data-episode="${e.episode_number}">
+            <div class="ep-thumb">
+              ${stillUrl ? `<img src="${stillUrl}" alt="" loading="lazy" />` : `<div class="ep-thumb-empty">🎬</div>`}
+              <span class="ep-num-badge">E${String(e.episode_number).padStart(2, "0")}</span>
+              <div class="ep-playing-overlay">▶ Идёт</div>
+              <div class="ep-play-hover">▶</div>
+            </div>
             <div class="ep-info">
-              <div class="ep-name">${e.name || `Серия ${e.episode_number}`}</div>
-              <div class="ep-meta">${airDate}${runtime}${rating}</div>
+              <div class="ep-name">${escapeHtml(e.name || `Серия ${e.episode_number}`)}</div>
+              <div class="ep-meta">${meta}</div>
+              ${overview ? `<div class="ep-overview">
+                <span class="ep-overview-short">${escapeHtml(shortOverview)}</span>
+                <span class="ep-overview-full" hidden>${escapeHtml(overview)}</span>
+                ${isLong ? `<button class="ep-more-btn" type="button">ещё</button>` : ""}
+              </div>` : ""}
             </div>
           </div>`;
-        }).join("");
+        }).join("")}</div>`;
+
+        ep.querySelectorAll(".episode-item").forEach(card => {
+          card.addEventListener("click", evt => {
+            if (evt.target.closest(".ep-more-btn")) return;
+            if (onPlayEpisode) onPlayEpisode(Number(card.dataset.season), Number(card.dataset.episode));
+          });
+        });
+        ep.querySelectorAll(".ep-more-btn").forEach(moreBtn => {
+          moreBtn.addEventListener("click", evt => {
+            evt.stopPropagation();
+            const wrap = moreBtn.closest(".ep-overview");
+            const shortEl = wrap.querySelector(".ep-overview-short");
+            const fullEl  = wrap.querySelector(".ep-overview-full");
+            const expanding = fullEl.hidden;
+            fullEl.hidden = !expanding;
+            shortEl.hidden = expanding;
+            moreBtn.textContent = expanding ? "свернуть" : "ещё";
+          });
+        });
+
+        const curSeason = $("watch-season")?.value, curEpisode = $("watch-episode")?.value;
+        if (curSeason && curEpisode) highlightActiveEpisode(curSeason, curEpisode);
       } catch {
         ep.innerHTML = `<div class="ep-loading">Ошибка загрузки</div>`;
       }
@@ -2585,9 +2629,6 @@ function renderMovieContent(movie) {
     </div>
   `;
 
-  // Сезоны
-  if (mediaType === "tv") bindSeasonsEvents(movieId);
-
   // Трейлер
   $("trailer-play-btn").addEventListener("click", async () => {
     const btn = $("trailer-play-btn");
@@ -2616,6 +2657,7 @@ function renderMovieContent(movie) {
     const season  = $("watch-season")?.value || 1;
     const episode = $("watch-episode")?.value || 1;
     $("watch-iframe").src = buildEmbedUrl(watchSource, mediaType, movieId, season, episode);
+    if (mediaType === "tv") highlightActiveEpisode(season, episode);
   };
   $("watch-play-btn").addEventListener("click", () => {
     $("modal-hero").style.display = "none";
@@ -2639,6 +2681,14 @@ function renderMovieContent(movie) {
   if (mediaType === "tv") {
     $("watch-season")?.addEventListener("change", loadWatchIframe);
     $("watch-episode")?.addEventListener("change", loadWatchIframe);
+    bindSeasonsEvents(movieId, (season, episode) => {
+      $("watch-season").value = season;
+      $("watch-episode").value = episode;
+      $("modal-hero").style.display = "none";
+      $("trailer-player").style.display = "none";
+      $("watch-player").style.display = "block";
+      loadWatchIframe();
+    });
   }
 
   // Просмотрено
