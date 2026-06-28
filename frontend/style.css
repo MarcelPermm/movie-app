@@ -6632,6 +6632,23 @@ body.theme-mono .mode-btn.active { background: var(--mono-red); }
 }
 .billiards-actions { display: flex; justify-content: flex-end; width: 100%; max-width: 760px; }
 
+.billiards-photo-row {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  flex-wrap: wrap; margin-top: 18px;
+}
+.billiards-upload-btn {
+  display: inline-flex; align-items: center; padding: 10px 20px; border-radius: 10px;
+  border: 1px dashed var(--rule); background: none; color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.billiards-upload-btn:hover { border-color: var(--terracotta); color: var(--ink); background: rgba(180,72,64,.06); }
+.billiards-photo-clear {
+  padding: 10px 16px; border-radius: 10px; border: 1px solid var(--rule); background: none;
+  color: var(--ink-3); font-family: 'JetBrains Mono', monospace; font-size: 12px; cursor: pointer;
+}
+.billiards-photo-clear:hover { border-color: var(--terracotta); color: var(--ink); }
+.billiards-photo-hint { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+
 @media (max-width: 640px) {
   .billiards-status-row { max-width: none; }
   .billiards-table-wrap, .billiards-actions { max-width: none; }

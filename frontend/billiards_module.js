@@ -314,6 +314,61 @@ BilTable.prototype.load = function (arr) {
 // ─── Кий (прицеливание + удар) ──────────────────────────────────
 function BilStick() { this.rotation = 0; this.power = 0; this.aiming = false; }
 
+// ─── Своя фотка на столе (личная настройка, хранится в localStorage) ─────
+var _bilTablePhotoImg = null;
+(function _bilLoadTablePhotoFromStorage() {
+  try {
+    var saved = localStorage.getItem("billiards_table_photo");
+    if (!saved) return;
+    var img = new Image();
+    img.onload = function () { if (_bil.game) _bil.game.draw(); };
+    img.src = saved;
+    _bilTablePhotoImg = img;
+  } catch (e) {}
+})();
+
+function _bilRoundedRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function _bilDrawTablePhoto(ctx) {
+  var img = _bilTablePhotoImg;
+  if (!img || !img.complete || !img.naturalWidth) return;
+  var pw = (BIL_RIGHT - BIL_LEFT) * 0.36;
+  var ph = (BIL_BOTTOM - BIL_TOP) * 0.46;
+  var px = BIL_W / 2 - pw / 2;
+  var py = BIL_H / 2 - ph / 2;
+
+  var imgRatio = img.naturalWidth / img.naturalHeight;
+  var boxRatio = pw / ph;
+  var sw, sh, sx, sy;
+  if (imgRatio > boxRatio) {
+    sh = img.naturalHeight; sw = sh * boxRatio;
+    sx = (img.naturalWidth - sw) / 2; sy = 0;
+  } else {
+    sw = img.naturalWidth; sh = sw / boxRatio;
+    sx = 0; sy = (img.naturalHeight - sh) / 2;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  _bilRoundedRectPath(ctx, px, py, pw, ph, 14);
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, px, py, pw, ph);
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 2;
+  _bilRoundedRectPath(ctx, px, py, pw, ph, 14);
+  ctx.stroke();
+}
+
 // ─── Контроллер игры: рендер, ввод (мышь+тач), сеть ─────────────
 function BilGame(canvas) {
   this.canvas = canvas;
@@ -388,6 +443,7 @@ BilGame.prototype._bindInput = function () {
 
   function onMove(e) {
     if (self.policy.foul && self.canIInteract()) {
+      e.preventDefault();
       var p = posFromEvent(e);
       if (!bilIsOutsideBorder(p) && !self.table.whiteBallOverlapsOthers(p)) {
         self.table.whiteBall.position = p;
@@ -419,11 +475,14 @@ BilGame.prototype._bindInput = function () {
     self.stick.power = 0;
   }
 
+  // mousemove висит на window, а не на канвасе — иначе при увода курсора
+  // за пределы канваса событие перестаёт приходить и кий "замирает" на месте,
+  // не давая утянуть его дальше для большей силы удара.
   this.canvas.addEventListener("mousedown", onDown);
-  this.canvas.addEventListener("mousemove", onMove);
+  window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
   this.canvas.addEventListener("touchstart", onDown, { passive: false });
-  this.canvas.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
   window.addEventListener("touchend", onUp);
 };
 
@@ -477,6 +536,9 @@ BilGame.prototype.draw = function () {
   // Сукно
   ctx.fillStyle = "#0f3d2b";
   ctx.fillRect(BIL_BORDER, BIL_BORDER, BIL_W - 2 * BIL_BORDER, BIL_H - 2 * BIL_BORDER);
+
+  // Своя фотка в центре стола (если загружена) — рисуется под лунками и шарами
+  _bilDrawTablePhoto(ctx);
 
   // Лунки
   ctx.fillStyle = "#0a0a0f";
@@ -577,6 +639,38 @@ function initBilliardsMode() {
   }
   var localBtn = $("billiards-local-btn");
   if (localBtn && !localBtn._init) { localBtn._init = true; localBtn.addEventListener("click", billiardsStartLocal); }
+
+  var clearBtn = $("billiards-photo-clear");
+  if (clearBtn) clearBtn.style.display = _bilTablePhotoImg ? "" : "none";
+  if (clearBtn && !clearBtn._init) {
+    clearBtn._init = true;
+    clearBtn.addEventListener("click", function () {
+      try { localStorage.removeItem("billiards_table_photo"); } catch (e) {}
+      _bilTablePhotoImg = null;
+      clearBtn.style.display = "none";
+      if (_bil.game) _bil.game.draw();
+    });
+  }
+  var photoInput = $("billiards-photo-input");
+  if (photoInput && !photoInput._init) {
+    photoInput._init = true;
+    photoInput.addEventListener("change", function () {
+      var file = photoInput.files[0];
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) { toast("Файл слишком большой — максимум 3 МБ", "error"); photoInput.value = ""; return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        try { localStorage.setItem("billiards_table_photo", reader.result); } catch (e) {}
+        var img = new Image();
+        img.onload = function () { if (_bil.game) _bil.game.draw(); };
+        img.src = reader.result;
+        _bilTablePhotoImg = img;
+        if (clearBtn) clearBtn.style.display = "";
+        toast("Фото добавлено на стол", "success");
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 }
 
 function _bilSetupGame() {
