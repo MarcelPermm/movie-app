@@ -31,8 +31,9 @@ class SearchScreen extends StatefulWidget {
   final String hint;
   final Future<List<SearchResult>> Function(String query) onSearch;
 
-  /// Что делать с выбранным результатом. Возвращает текст для всплывашки.
-  final String Function(SearchResult result) onPick;
+  /// Что делать с выбранным результатом — открыть карточку или добавить
+  /// в список. Решает вызывающий экран.
+  final void Function(BuildContext context, SearchResult result) onPick;
 
   const SearchScreen({
     super.key,
@@ -159,17 +160,9 @@ class _SearchScreenState extends State<SearchScreen> {
           subtitle: result.subtitle,
           imageUrl: result.imageUrl,
           fallbackEmoji: result.fallbackEmoji,
-          onTap: () => _pick(result),
+          onTap: () => widget.onPick(context, result),
         );
       },
-    );
-  }
-
-  /// Добавление мгновенное: список обновляется локально, запрос уходит фоном.
-  void _pick(SearchResult result) {
-    final message = widget.onPick(result);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 }

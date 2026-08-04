@@ -104,10 +104,15 @@ class _BooksScreenState extends State<BooksScreen> {
                   ))
               .toList();
         },
-        onPick: (result) {
+        onPick: (searchContext, result) {
           final book = result.payload as Book;
           repo.addToWishlist(book);
-          return '«${book.title}» добавлена в список';
+          ScaffoldMessenger.of(searchContext).showSnackBar(
+            SnackBar(
+              content: Text('«${book.title}» добавлена в список'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
         },
       ),
     ));

@@ -62,76 +62,98 @@ class MovieRepository extends LocalFirstRepository {
       writeCache(_key('watchlist'), _watchlist.map((m) => m.toJson()).toList());
 
   // ─── Изменения ──────────────────────────────────────────────────────
+  //
+  // Карточку сериала можно открыть, пока списки показывают фильмы. Поэтому
+  // тип берётся от самого фильма, а локальные списки трогаем только когда
+  // он совпадает с открытым — иначе запись легла бы в чужой кэш. Данные при
+  // этом не теряются: сервер их принял, и они появятся при переключении типа.
+
+  bool _affectsCurrentLists(String type) => type == _mediaType;
 
   Future<void> addToWatchlist(Movie movie) async {
-    if (_watchlist.any((m) => m.id == movie.id)) return;
-    _watchlist = [movie, ..._watchlist];
-    notifyListeners();
-    await _saveWatchlist();
+    final type = movie.mediaType;
+    if (_affectsCurrentLists(type)) {
+      if (_watchlist.any((m) => m.id == movie.id)) return;
+      _watchlist = [movie, ..._watchlist];
+      notifyListeners();
+      await _saveWatchlist();
+    }
 
     await push(() => api.post('/watchlist', body: {
           'movie_id': movie.id,
-          'media_type': _mediaType,
+          'media_type': type,
         }));
   }
 
-  Future<void> removeFromWatchlist(int movieId) async {
+  Future<void> removeFromWatchlist(int movieId, {String? mediaType}) async {
+    final type = mediaType ?? _mediaType;
     final backup = _watchlist;
-    _watchlist = _watchlist.where((m) => m.id != movieId).toList();
-    notifyListeners();
-    await _saveWatchlist();
+    if (_affectsCurrentLists(type)) {
+      _watchlist = _watchlist.where((m) => m.id != movieId).toList();
+      notifyListeners();
+      await _saveWatchlist();
+    }
 
     await push(
-      () => api.delete('/watchlist/$movieId', query: {'media_type': _mediaType}),
+      () => api.delete('/watchlist/$movieId', query: {'media_type': type}),
       rollback: () => _watchlist = backup,
     );
   }
 
   Future<void> markWatched(Movie movie) async {
-    _watchlist = _watchlist.where((m) => m.id != movie.id).toList();
-    if (!_watched.any((m) => m.id == movie.id)) {
-      _watched = [movie, ..._watched];
+    final type = movie.mediaType;
+    if (_affectsCurrentLists(type)) {
+      _watchlist = _watchlist.where((m) => m.id != movie.id).toList();
+      if (!_watched.any((m) => m.id == movie.id)) {
+        _watched = [movie, ..._watched];
+      }
+      notifyListeners();
+      await _saveWatchlist();
+      await _saveWatched();
     }
-    notifyListeners();
-    await _saveWatchlist();
-    await _saveWatched();
 
     await push(() => api.post('/watched', body: {
           'movie_id': movie.id,
-          'media_type': _mediaType,
+          'media_type': type,
         }));
   }
 
-  Future<void> removeFromWatched(int movieId) async {
+  Future<void> removeFromWatched(int movieId, {String? mediaType}) async {
+    final type = mediaType ?? _mediaType;
     final backup = _watched;
-    _watched = _watched.where((m) => m.id != movieId).toList();
-    notifyListeners();
-    await _saveWatched();
+    if (_affectsCurrentLists(type)) {
+      _watched = _watched.where((m) => m.id != movieId).toList();
+      notifyListeners();
+      await _saveWatched();
+    }
 
     await push(
-      () => api.delete('/watched/$movieId', query: {'media_type': _mediaType}),
+      () => api.delete('/watched/$movieId', query: {'media_type': type}),
       rollback: () => _watched = backup,
     );
   }
 
   Future<void> rate(Movie movie, int rating, {String? review}) async {
-    if (_watched.any((m) => m.id == movie.id)) {
-      _watched = _watched
-          .map((m) => m.id == movie.id ? m.copyWith(rating: rating, review: review) : m)
-          .toList();
-    } else {
-      // Оценка сама добавляет в просмотренное — так же ведёт себя бэкенд.
-      _watched = [movie.copyWith(rating: rating, review: review), ..._watched];
-      _watchlist = _watchlist.where((m) => m.id != movie.id).toList();
-      await _saveWatchlist();
+    final type = movie.mediaType;
+    if (_affectsCurrentLists(type)) {
+      if (_watched.any((m) => m.id == movie.id)) {
+        _watched = _watched
+            .map((m) => m.id == movie.id ? m.copyWith(rating: rating, review: review) : m)
+            .toList();
+      } else {
+        // Оценка сама добавляет в просмотренное — так же ведёт себя бэкенд.
+        _watched = [movie.copyWith(rating: rating, review: review), ..._watched];
+        _watchlist = _watchlist.where((m) => m.id != movie.id).toList();
+        await _saveWatchlist();
+      }
+      notifyListeners();
+      await _saveWatched();
     }
-    notifyListeners();
-    await _saveWatched();
 
     await push(() => api.post('/watched/rate', body: {
           'movie_id': movie.id,
           'rating': rating,
-          'media_type': _mediaType,
+          'media_type': type,
           'review': ?review,
         }));
   }

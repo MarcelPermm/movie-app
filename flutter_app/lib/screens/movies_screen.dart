@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/poster_card.dart';
 import '../widgets/rating_sheet.dart';
+import 'movie_detail_screen.dart';
 import 'search_screen.dart';
 
 class MoviesScreen extends StatefulWidget {
@@ -80,15 +81,22 @@ class _MoviesScreenState extends State<MoviesScreen> {
                     itemCount: movies.length,
                     itemBuilder: (context, i) => PosterCard(
                       title: movies[i].title,
-                      subtitle: movies[i].releaseYear?.toString(),
+                      subtitle: movies[i].shortMeta,
                       imageUrl: movies[i].posterUrl,
                       badge: movies[i].rating,
-                      onTap: () => _showActions(movies[i]),
+                      onTap: () => _openDetails(movies[i]),
+                      onLongPress: () => _showActions(movies[i]),
                     ),
                   ),
           ),
         ),
       ],
+    );
+  }
+
+  void _openDetails(Movie movie) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
     );
   }
 
@@ -102,17 +110,18 @@ class _MoviesScreenState extends State<MoviesScreen> {
           return found
               .map((m) => SearchResult(
                     title: m.title,
-                    subtitle: m.releaseYear?.toString(),
+                    subtitle: m.shortMeta,
                     imageUrl: m.posterUrl,
                     payload: m,
                   ))
               .toList();
         },
-        onPick: (result) {
-          final movie = result.payload as Movie;
-          repo.addToWatchlist(movie);
-          return '«${movie.title}» добавлен к просмотру';
-        },
+        // Из поиска открываем карточку — оттуда и добавляют, и оценивают.
+        onPick: (searchContext, result) => Navigator.of(searchContext).push(
+          MaterialPageRoute(
+            builder: (_) => MovieDetailScreen(movie: result.payload as Movie),
+          ),
+        ),
       ),
     ));
   }

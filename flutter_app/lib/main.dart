@@ -7,6 +7,7 @@ import 'core/session.dart';
 import 'core/sync_queue.dart';
 import 'data/book_repository.dart';
 import 'data/budget_repository.dart';
+import 'data/discover_repository.dart';
 import 'data/goal_repository.dart';
 import 'data/movie_repository.dart';
 import 'data/notebook_repository.dart';
@@ -36,6 +37,7 @@ Future<void> main() async {
       providers: [
         ChangeNotifierProvider<Session>.value(value: session),
         Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider(create: (_) => DiscoverRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => MovieRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => BookRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => TaskRepository(api: api, session: session)),
@@ -77,6 +79,7 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     if (!context.read<Session>().isLoggedIn) return;
 
+    context.read<DiscoverRepository>().load();
     context.read<MovieRepository>().load();
     context.read<BookRepository>().load();
     context.read<TaskRepository>().load();

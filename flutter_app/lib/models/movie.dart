@@ -1,4 +1,5 @@
 import '../core/config.dart';
+import 'json.dart';
 
 /// Фильм или сериал в том виде, в каком его отдаёт бэкенд.
 ///
@@ -10,7 +11,9 @@ class Movie {
   final String title;
   final String overview;
   final String? posterPath;
+  final String? backdropPath;
   final double voteAverage;
+  final int voteCount;
   final List<String> genres;
   final String mediaType;
   final int? releaseYear;
@@ -23,12 +26,18 @@ class Movie {
   /// Только для списка «к просмотру»: must_see / not_sure / last_resort.
   final String? category;
 
+  /// Пометки, которые бэкенд добавляет к спискам обзора.
+  final bool isWatched;
+  final bool isWatchlist;
+
   const Movie({
     required this.id,
     required this.title,
     this.overview = '',
     this.posterPath,
+    this.backdropPath,
     this.voteAverage = 0,
+    this.voteCount = 0,
     this.genres = const [],
     this.mediaType = 'movie',
     this.releaseYear,
@@ -36,54 +45,51 @@ class Movie {
     this.rating,
     this.review,
     this.category,
+    this.isWatched = false,
+    this.isWatchlist = false,
   });
 
   bool get isTv => mediaType == 'tv';
 
-  String? get posterUrl {
-    final p = posterPath;
-    if (p == null || p.isEmpty) return null;
-    return p.startsWith('http') ? p : '${Config.tmdbCard}$p';
+  String? get posterUrl => _image(posterPath, Config.tmdbCard);
+  String? get posterLargeUrl => _image(posterPath, Config.tmdbPoster);
+  String? get backdropUrl => _image(backdropPath, Config.tmdbBackdrop) ?? posterLargeUrl;
+
+  static String? _image(String? path, String base) {
+    if (path == null || path.isEmpty) return null;
+    return path.startsWith('http') ? path : '$base$path';
   }
 
-  static int _asInt(dynamic v, [int fallback = 0]) {
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v) ?? fallback;
-    return fallback;
-  }
-
-  static int? _asIntOrNull(dynamic v) {
-    if (v == null) return null;
-    if (v is int) return v;
-    if (v is num) return v.toInt();
-    if (v is String) return int.tryParse(v);
-    return null;
-  }
-
-  static double _asDouble(dynamic v) {
-    if (v is double) return v;
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v) ?? 0;
-    return 0;
-  }
+  /// «2019 · 8.4» — короткая подпись под названием.
+  String get shortMeta => [
+        if (releaseYear != null) '$releaseYear',
+        if (voteAverage > 0) voteAverage.toStringAsFixed(1),
+      ].join('  ·  ');
 
   factory Movie.fromJson(Map<String, dynamic> j) {
     final rawGenres = j['genres'];
+    // Год приходит по-разному: полем release_year из своей БД либо датой из TMDB.
+    final date = asString(j['release_date'] ?? j['first_air_date']);
     return Movie(
-      // /watched и /watchlist дублируют id в movie_id — берём то, что есть.
-      id: _asInt(j['id'] ?? j['movie_id']),
-      title: (j['title'] ?? j['name'] ?? '') as String,
-      overview: (j['overview'] ?? '') as String,
-      posterPath: j['poster_path'] as String?,
-      voteAverage: _asDouble(j['vote_average']),
-      genres: rawGenres is List ? rawGenres.map((g) => '$g').toList() : const [],
-      mediaType: (j['media_type'] ?? 'movie') as String,
-      releaseYear: _asIntOrNull(j['release_year']),
-      director: j['director'] as String?,
-      rating: _asIntOrNull(j['rating']),
-      review: j['review'] as String?,
-      category: j['category'] as String?,
+      id: asInt(j['id'] ?? j['movie_id']),
+      title: asString(j['title'] ?? j['name']),
+      overview: asString(j['overview']),
+      posterPath: asStringOrNull(j['poster_path']),
+      backdropPath: asStringOrNull(j['backdrop_path']),
+      voteAverage: asDouble(j['vote_average']),
+      voteCount: asInt(j['vote_count']),
+      genres: rawGenres is List
+          ? rawGenres.map((g) => g is Map ? asString(g['name']) : '$g').where((g) => g.isNotEmpty).toList()
+          : asStringList(rawGenres),
+      mediaType: asString(j['media_type'], 'movie'),
+      releaseYear: asIntOrNull(j['release_year']) ??
+          (date.length >= 4 ? int.tryParse(date.substring(0, 4)) : null),
+      director: asStringOrNull(j['director']),
+      rating: asIntOrNull(j['rating'] ?? j['user_rating']),
+      review: asStringOrNull(j['review']),
+      category: asStringOrNull(j['category']),
+      isWatched: asBool(j['is_watched']),
+      isWatchlist: asBool(j['is_watchlist']),
     );
   }
 
@@ -92,7 +98,9 @@ class Movie {
         'title': title,
         'overview': overview,
         'poster_path': posterPath,
+        'backdrop_path': backdropPath,
         'vote_average': voteAverage,
+        'vote_count': voteCount,
         'genres': genres,
         'media_type': mediaType,
         'release_year': releaseYear,
@@ -100,14 +108,25 @@ class Movie {
         'rating': rating,
         'review': review,
         'category': category,
+        'is_watched': isWatched,
+        'is_watchlist': isWatchlist,
       };
 
-  Movie copyWith({int? rating, String? review, String? category}) => Movie(
+  Movie copyWith({
+    int? rating,
+    String? review,
+    String? category,
+    bool? isWatched,
+    bool? isWatchlist,
+  }) =>
+      Movie(
         id: id,
         title: title,
         overview: overview,
         posterPath: posterPath,
+        backdropPath: backdropPath,
         voteAverage: voteAverage,
+        voteCount: voteCount,
         genres: genres,
         mediaType: mediaType,
         releaseYear: releaseYear,
@@ -115,5 +134,7 @@ class Movie {
         rating: rating ?? this.rating,
         review: review ?? this.review,
         category: category ?? this.category,
+        isWatched: isWatched ?? this.isWatched,
+        isWatchlist: isWatchlist ?? this.isWatchlist,
       );
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../core/session.dart';
 import '../data/book_repository.dart';
 import '../data/budget_repository.dart';
+import '../data/discover_repository.dart';
 import '../data/goal_repository.dart';
 import '../data/local_first_repository.dart';
 import '../data/movie_repository.dart';
@@ -17,6 +18,7 @@ import 'budget_screen.dart';
 import 'goals_screen.dart';
 import 'movies_screen.dart';
 import 'notebook_screen.dart';
+import 'overview_screen.dart';
 import 'tasks_screen.dart';
 import 'wishlist_screen.dart';
 
@@ -50,6 +52,12 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
 
   static final _sections = <_Section>[
+    _Section(
+      label: 'Обзор',
+      icon: Icons.auto_awesome_outlined,
+      screen: const OverviewScreen(),
+      repo: (c) => c.watch<DiscoverRepository>(),
+    ),
     _Section(
       label: 'Кино',
       icon: Icons.movie_outlined,

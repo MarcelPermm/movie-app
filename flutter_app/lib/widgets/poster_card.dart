@@ -19,6 +19,7 @@ class PosterCard extends StatelessWidget {
   final String fallbackEmoji;
 
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const PosterCard({
     super.key,
@@ -28,26 +29,47 @@ class PosterCard extends StatelessWidget {
     this.badge,
     this.fallbackEmoji = '🎬',
     this.onTap,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _Image(url: imageUrl, fallbackEmoji: fallbackEmoji),
-                  if (badge != null)
-                    Positioned(top: 6, right: 6, child: _Badge(value: badge!)),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppRadius.medium),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 4)),
                 ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.medium),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _Image(url: imageUrl, fallbackEmoji: fallbackEmoji),
+                    // Лёгкое затемнение по низу: постеры бывают светлыми,
+                    // и на них тонут значки поверх обложки.
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.center,
+                          colors: [Color(0x55000000), Colors.transparent],
+                        ),
+                      ),
+                    ),
+                    if (badge != null)
+                      Positioned(top: 6, right: 6, child: _Badge(value: badge!)),
+                  ],
+                ),
               ),
             ),
           ),
