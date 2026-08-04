@@ -1,16 +1,45 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
-import '../data/movie_repository.dart';
-import '../models/movie.dart';
 import '../theme.dart';
-import '../widgets/movie_card.dart';
+import '../widgets/poster_card.dart';
 
+/// Одна найденная строка. `payload` хранит исходный объект (фильм или книгу),
+/// чтобы обработчик выбора получил его целиком.
+class SearchResult {
+  final String title;
+  final String? subtitle;
+  final String? imageUrl;
+  final String fallbackEmoji;
+  final Object payload;
+
+  const SearchResult({
+    required this.title,
+    required this.payload,
+    this.subtitle,
+    this.imageUrl,
+    this.fallbackEmoji = '🎬',
+  });
+}
+
+/// Экран поиска, общий для кино и книг.
+///
+/// Результаты не кэшируются: запрос всегда живой, кэшировать тут нечего.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final String hint;
+  final Future<List<SearchResult>> Function(String query) onSearch;
+
+  /// Что делать с выбранным результатом. Возвращает текст для всплывашки.
+  final String Function(SearchResult result) onPick;
+
+  const SearchScreen({
+    super.key,
+    required this.hint,
+    required this.onSearch,
+    required this.onPick,
+  });
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -20,7 +49,7 @@ class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
 
-  List<Movie> _results = const [];
+  List<SearchResult> _results = const [];
   bool _loading = false;
   String? _error;
 
@@ -50,7 +79,7 @@ class _SearchScreenState extends State<SearchScreen> {
       _error = null;
     });
     try {
-      final found = await context.read<MovieRepository>().search(query);
+      final found = await widget.onSearch(query);
       if (!mounted) return;
       setState(() => _results = found);
     } on ApiException catch (e) {
@@ -69,8 +98,8 @@ class _SearchScreenState extends State<SearchScreen> {
           controller: _controller,
           autofocus: true,
           onChanged: _onChanged,
-          decoration: const InputDecoration(
-            hintText: 'Название фильма или сериала',
+          decoration: InputDecoration(
+            hintText: widget.hint,
             filled: false,
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
@@ -121,38 +150,26 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = (constraints.maxWidth / 160).floor().clamp(2, 8);
-        return GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            childAspectRatio: 0.52,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 18,
-          ),
-          itemCount: _results.length,
-          itemBuilder: (context, i) {
-            final movie = _results[i];
-            return MovieCard(
-              movie: movie,
-              onTap: () => _add(movie),
-            );
-          },
+    return PosterGrid(
+      itemCount: _results.length,
+      itemBuilder: (context, i) {
+        final result = _results[i];
+        return PosterCard(
+          title: result.title,
+          subtitle: result.subtitle,
+          imageUrl: result.imageUrl,
+          fallbackEmoji: result.fallbackEmoji,
+          onTap: () => _pick(result),
         );
       },
     );
   }
 
   /// Добавление мгновенное: список обновляется локально, запрос уходит фоном.
-  void _add(Movie movie) {
-    context.read<MovieRepository>().addToWatchlist(movie);
+  void _pick(SearchResult result) {
+    final message = widget.onPick(result);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('«${movie.title}» добавлен к просмотру'),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 }
