@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/movie_details.dart';
 import '../theme.dart';
+import 'net_image.dart';
 
 /// Карточка серии с превью — то же, что на сайте: обложка, номер,
 /// название, описание и отметка «Идёт» у той, что открыта в плеере.
@@ -52,9 +52,9 @@ class _EpisodeCardState extends State<EpisodeCard> {
                 fit: StackFit.expand,
                 children: [
                   if (ep.stillUrl != null)
-                    CachedNetworkImage(
+                    NetImage(
                       imageUrl: ep.stillUrl!,
-                      fit: BoxFit.cover,
+                      aspect: 16 / 9,
                       placeholder: (_, _) => Container(color: AppColors.bg),
                       errorWidget: (_, _, _) => const _NoStill(),
                     )

@@ -83,6 +83,24 @@ class LocalStore {
     await _p.remove(_syncKey(key));
   }
 
+  /// Оставить из ключей, содержащих [marker], только [keep] самых свежих.
+  ///
+  /// Для кэшей «по штуке на объект» (карточки фильмов, сезоны): иначе они
+  /// растут с каждым открытым фильмом, а хранилище на Windows и в вебе
+  /// при каждой записи сохраняется целиком.
+  static Future<void> prune(String marker, {required int keep}) async {
+    final keys = _p
+        .getKeys()
+        .where((k) => k.contains(marker) && !k.endsWith('::synced_at'))
+        .toList();
+    if (keys.length <= keep) return;
+    int age(String k) => _p.getInt(_syncKey(k)) ?? 0;
+    keys.sort((a, b) => age(b).compareTo(age(a)));
+    for (final k in keys.skip(keep)) {
+      await remove(k);
+    }
+  }
+
   /// Стереть всё локальное состояние (выход из аккаунта).
   static Future<void> clear() => _p.clear();
 

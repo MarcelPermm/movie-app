@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/movie.dart';
 import '../theme.dart';
 import 'app_scroll.dart';
 import 'poster_card.dart';
+import 'net_image.dart';
 
 /// Блок главной: рубрика, заголовок и лента кадров.
 ///
@@ -404,10 +404,9 @@ class _CarouselCardState extends State<_CarouselCard> {
                 fit: StackFit.expand,
                 children: [
                   if (movie.backdropUrl != null)
-                    CachedNetworkImage(
+                    NetImage(
                       imageUrl: movie.backdropUrl!,
-                      fit: BoxFit.cover,
-                      fadeInDuration: const Duration(milliseconds: 240),
+                      aspect: 16 / 9,
                       placeholder: (_, _) => Container(color: AppColors.surface),
                       errorWidget: (_, _, _) => Container(color: AppColors.surface),
                     )

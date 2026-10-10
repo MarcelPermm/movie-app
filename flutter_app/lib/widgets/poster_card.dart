@@ -1,7 +1,7 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'net_image.dart';
 
 /// Карточка с обложкой — общая для фильмов и книг.
 ///
@@ -198,10 +198,8 @@ class _Image extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url == null || url!.isEmpty) return _Fallback(emoji: fallbackEmoji);
-    return CachedNetworkImage(
+    return NetImage(
       imageUrl: url!,
-      fit: BoxFit.cover,
-      fadeInDuration: const Duration(milliseconds: 240),
       placeholder: (_, _) => const _Skeleton(),
       errorWidget: (_, _, _) => _Fallback(emoji: fallbackEmoji),
     );

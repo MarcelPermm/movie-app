@@ -12,6 +12,7 @@ import '../data/notebook_repository.dart';
 import '../data/task_repository.dart';
 import '../data/trip_repository.dart';
 import '../data/wishlist_repository.dart';
+import '../data/warm_up.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'books_screen.dart';
@@ -56,6 +57,15 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  @override
+  void initState() {
+    super.initState();
+    // Первый кадр рисуется из кэша, а свежие данные подтягиваются следом.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) warmUp(context);
+    });
+  }
+
   /// Выбранный раздел боковой панели (широкий экран).
   int _index = 0;
 

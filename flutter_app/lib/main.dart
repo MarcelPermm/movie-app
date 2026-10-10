@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -19,6 +21,7 @@ import 'data/notebook_repository.dart';
 import 'data/profile_repository.dart';
 import 'data/task_repository.dart';
 import 'data/trip_repository.dart';
+import 'data/warm_up.dart';
 import 'data/wishlist_repository.dart';
 import 'screens/app_shell.dart';
 import 'screens/login_screen.dart';
@@ -42,6 +45,10 @@ Future<void> main() async {
   // синхронные, и первый экран рисуется без единого сетевого запроса.
   await LocalStore.init();
   AppTheme.restore();
+  // Карточки фильмов и серии копятся в кэше бесконечно, а он целиком
+  // переписывается на каждое сохранение. Держим только свежие.
+  unawaited(LocalStore.prune('::details::', keep: 80));
+  unawaited(LocalStore.prune('::episodes::', keep: 40));
 
   final session = Session()..restore();
   final api = ApiClient(session);
@@ -117,17 +124,7 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     if (!context.read<Session>().isLoggedIn) return;
 
-    context.read<DiscoverRepository>().load();
-    context.read<MovieRepository>().load();
-    context.read<BookRepository>().load();
-    context.read<TaskRepository>().load();
-    context.read<NotebookRepository>().load();
-    context.read<GoalRepository>().load();
-    context.read<WeekGoalRepository>().load();
-    context.read<BudgetRepository>().load();
-    context.read<WishlistRepository>().load();
-    context.read<ProfileRepository>().load();
-    context.read<TripRepository>().load();
+    warmUp(context);
     // ActorRepository здесь намеренно нет: топ актёров пересчитывается по
     // всему просмотренному и стоит дорого. Он обновляется при открытии
     // своей вкладки, когда результат действительно кому-то нужен.

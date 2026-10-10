@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,6 +10,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/poster_card.dart';
 import 'movie_detail_screen.dart';
+import '../widgets/net_image.dart';
 
 /// Вкладка «Актёры»: кого ты смотришь чаще всего и кого отметил избранным.
 class ActorsTab extends StatefulWidget {
@@ -490,9 +490,8 @@ class _Avatar extends StatelessWidget {
         height: size,
         child: url == null || url!.isEmpty
             ? _initialBox(initial)
-            : CachedNetworkImage(
+            : NetImage(
                 imageUrl: url!,
-                fit: BoxFit.cover,
                 placeholder: (_, _) => Container(color: AppColors.surfaceHigh),
                 errorWidget: (_, _, _) => _initialBox(initial),
               ),

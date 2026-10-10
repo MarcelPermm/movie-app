@@ -1,6 +1,5 @@
 import 'dart:ui' show FontFeature, ImageFilter;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,6 +24,7 @@ import 'tasks_screen.dart';
 import 'tonight_screen.dart';
 import 'trip_detail_screen.dart';
 import 'wrapped_screen.dart';
+import '../widgets/net_image.dart';
 
 /// Главный экран: всё, что важно сегодня, — по одной карточке на раздел.
 ///
@@ -811,9 +811,11 @@ class _Still extends StatelessWidget {
     final url = movie?.backdropUrl;
     Widget image = url == null
         ? ColoredBox(color: AppColors.surfaceHigh)
-        : CachedNetworkImage(
+        : NetImage(
             imageUrl: url,
-            fit: BoxFit.cover,
+            aspect: 16 / 9,
+            // Под размытием детали не видны — хватает картинки поменьше.
+            maxDecodeWidth: blur > 0 ? 640 : null,
             fadeInDuration: const Duration(milliseconds: 250),
             errorWidget: (_, _, _) => ColoredBox(color: AppColors.surfaceHigh),
           );
@@ -1472,7 +1474,7 @@ class _PosterStrip extends StatelessWidget {
                           color: AppColors.surfaceHigh,
                           child: Center(child: Icon(Icons.movie_outlined, color: AppColors.textDim)),
                         )
-                      : CachedNetworkImage(imageUrl: m.posterUrl!, fit: BoxFit.cover),
+                      : NetImage(imageUrl: m.posterUrl!),
                 ),
               ),
             );
@@ -1779,7 +1781,7 @@ class _PaperToday extends StatelessWidget {
                           aspectRatio: 2 / 3,
                           child: m?.posterLargeUrl == null
                               ? ColoredBox(color: AppColors.surface)
-                              : CachedNetworkImage(imageUrl: m!.posterLargeUrl!, fit: BoxFit.cover),
+                              : NetImage(imageUrl: m!.posterLargeUrl!),
                         ),
                       ),
                       const SizedBox(width: 26),
