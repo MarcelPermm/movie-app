@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- В отладочной сборке это разрешение добавляется автоматически,
+         в релизной — нет. Без него APK ставится, но не видит сеть. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
-        android:label="movie_app"
+        android:label="Monkey App"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -40,6 +44,17 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Начиная с Android 11 приложение должно заранее объявить, какие
+             сторонние намерения оно умеет открывать. Без этого «Трейлер»
+             и «Открыть в браузере» молча ничего не делают. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
         </intent>
     </queries>
 </manifest>

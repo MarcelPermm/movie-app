@@ -43,8 +43,14 @@ dependencies:
   provider: ^6.1.2
   # Кэш постеров
   cached_network_image: ^3.4.1
-  # Открытие плеера и трейлеров во внешнем браузере
+  # Открытие трейлеров и запасной выход во внешний браузер
   url_launcher: ^6.3.1
+  # Встроенный плеер: WebView с блокировкой запросов и всплывающих окон.
+  # Windows требует NuGet CLI в PATH — см. PLAYER.md.
+  flutter_inappwebview: ^6.1.5
+  # Реализацию под Windows приходится регистрировать вручную в main.dart,
+  # поэтому она нужна как прямая зависимость, а не только транзитивная.
+  flutter_inappwebview_windows: ^0.6.0
 
 dev_dependencies:
   flutter_test:

@@ -1732,6 +1732,13 @@ Example output:
         found = await asyncio.gather(*[tmdb_lookup(h, item) for item in candidates[:15]])
     results = [r for r in found if r is not None][:12]
 
+    # debug_ai — то, что предложила модель до сверки с TMDB. Фронтенд
+    # показывает эти названия, когда сверка ничего не нашла.
+    return {
+        "movies":   results,
+        "debug_ai": [{"title": s.get("title", ""), "year": s.get("year")} for s in candidates[:15]],
+    }
+
 
 # ─── Тетрадь: Задачи ──────────────────────────────────────────────────────────
 

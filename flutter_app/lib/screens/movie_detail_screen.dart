@@ -12,6 +12,8 @@ import '../models/movie_details.dart';
 import '../theme.dart';
 import '../widgets/episode_card.dart';
 import '../widgets/poster_card.dart';
+import 'actors_screen.dart';
+import 'player_screen.dart';
 
 /// Карточка фильма или сериала — то же, что модалка на сайте.
 class MovieDetailScreen extends StatefulWidget {
@@ -215,7 +217,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           label: const Text('Трейлер'),
         ),
         // Источники те же, что на сайте: если один не отдаёт видео,
-        // выручает другой.
+        // выручает другой. Во встроенном плеере переключатель свой —
+        // здесь он остаётся только для запасного выхода в браузер.
+        if (!PlayerScreen.isSupported)
         PopupMenuButton<String>(
           initialValue: _source,
           color: AppColors.surface,
@@ -372,38 +376,66 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     final repo = context.watch<MovieRepository>();
     final watched = repo.watched.any((m) => m.id == movie.id) || movie.isWatched;
     final inList = repo.watchlist.any((m) => m.id == movie.id) || movie.isWatchlist;
+    final hidden = repo.isDismissed(movie.id);
 
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: watched ? AppColors.green : AppColors.surface,
-              foregroundColor: watched ? AppColors.bg : AppColors.text,
-              padding: const EdgeInsets.symmetric(vertical: 15),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: watched ? AppColors.green : AppColors.surface,
+                  foregroundColor: watched ? AppColors.bg : AppColors.text,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+                onPressed: () {
+                  final r = context.read<MovieRepository>();
+                  watched
+                      ? r.removeFromWatched(movie.id, mediaType: _mediaType)
+                      : r.markWatched(movie);
+                },
+                child: Text(watched ? '✓ Просмотрено' : 'Отметить просмотренным'),
+              ),
             ),
-            onPressed: () {
-              final r = context.read<MovieRepository>();
-              watched ? r.removeFromWatched(movie.id, mediaType: _mediaType) : r.markWatched(movie);
-            },
-            child: Text(watched ? '✓ Просмотрено' : 'Отметить просмотренным'),
-          ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: inList ? AppColors.goldDim : AppColors.surface,
+                  foregroundColor: inList ? AppColors.bg : AppColors.text,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+                onPressed: () {
+                  final r = context.read<MovieRepository>();
+                  inList
+                      ? r.removeFromWatchlist(movie.id, mediaType: _mediaType)
+                      : r.addToWatchlist(movie);
+                },
+                child: Text(inList ? 'Убрать из списка' : 'К просмотру'),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: inList ? AppColors.goldDim : AppColors.surface,
-              foregroundColor: inList ? AppColors.bg : AppColors.text,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-            ),
+        const SizedBox(height: 10),
+        // Скрытое больше не появляется в рекомендациях. Кнопка-переключатель:
+        // передумать можно здесь же, не заходя во вкладку «Отклонённые».
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
             onPressed: () {
               final r = context.read<MovieRepository>();
-              inList
-                  ? r.removeFromWatchlist(movie.id, mediaType: _mediaType)
-                  : r.addToWatchlist(movie);
+              hidden ? r.undismiss(movie.id, mediaType: _mediaType) : r.dismiss(movie);
             },
-            child: Text(inList ? 'Убрать из списка' : 'К просмотру'),
+            icon: Icon(
+              hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+              size: 17,
+              color: hidden ? AppColors.gold : AppColors.textDim,
+            ),
+            label: Text(
+              hidden ? 'Вернуть в рекомендации' : 'Больше не предлагать',
+              style: TextStyle(color: hidden ? AppColors.gold : AppColors.textDim),
+            ),
           ),
         ),
       ],
@@ -421,48 +453,60 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           final person = details.cast[i];
           return SizedBox(
             width: 84,
-            child: Column(
-              children: [
-                ClipOval(
-                  child: SizedBox(
-                    height: 84,
-                    width: 84,
-                    child: person.photoUrl == null
-                        ? Container(
-                            color: AppColors.surface,
-                            alignment: Alignment.center,
-                            child: const Text('👤', style: TextStyle(fontSize: 26)),
-                          )
-                        : CachedNetworkImage(
-                            imageUrl: person.photoUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, _) => Container(color: AppColors.surface),
-                            errorWidget: (_, _, _) => Container(color: AppColors.surface),
-                          ),
-                  ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadius.small),
+              // Тап по лицу открывает человека: что из просмотренного с ним
+              // связано и что ещё можно посмотреть.
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PersonScreen(
+                  personId: person.id,
+                  name: person.name,
+                  profilePath: person.profilePath,
                 ),
-                const SizedBox(height: 7),
-                Text(
-                  person.name,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.text,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
+              )),
+              child: Column(
+                children: [
+                  ClipOval(
+                    child: SizedBox(
+                      height: 84,
+                      width: 84,
+                      child: person.photoUrl == null
+                          ? Container(
+                              color: AppColors.surface,
+                              alignment: Alignment.center,
+                              child: const Text('👤', style: TextStyle(fontSize: 26)),
+                            )
+                          : CachedNetworkImage(
+                              imageUrl: person.photoUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (_, _) => Container(color: AppColors.surface),
+                              errorWidget: (_, _, _) => Container(color: AppColors.surface),
+                            ),
+                    ),
                   ),
-                ),
-                if (person.character.isNotEmpty)
+                  const SizedBox(height: 7),
                   Text(
-                    person.character,
-                    maxLines: 1,
+                    person.name,
+                    maxLines: 2,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
                   ),
-              ],
+                  if (person.character.isNotEmpty)
+                    Text(
+                      person.character,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+                    ),
+                ],
+              ),
             ),
           );
         },
@@ -568,22 +612,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   // ─── Плеер и трейлер ────────────────────────────────────────────────
 
-  /// Плеер открывается во внешнем браузере: источники отдают страницу
-  /// с рекламой и своим интерфейсом, встраивать её внутрь приложения
-  /// смысла мало, а на части платформ и нельзя.
+  /// Плеер открывается внутри приложения, с блокировкой рекламы.
+  ///
+  /// Там, где встроенного WebView нет (Linux), остаётся прежнее поведение —
+  /// внешний браузер: лучше открыть у соседа, чем не открыть вовсе.
   Future<void> _openPlayer({int? episode}) async {
-    final url = Config.embedUrl(
-      _source,
-      _mediaType,
-      widget.movie.id,
-      season: _season,
-      episode: episode ?? _playingEpisode ?? 1,
-    );
+    final selectedEpisode = episode ?? _playingEpisode ?? 1;
 
     if (_mediaType == 'tv' && episode == null && _playingEpisode == null) {
       setState(() => _playingEpisode = 1);
     }
 
+    if (PlayerScreen.isSupported) {
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          tmdbId: widget.movie.id,
+          mediaType: _mediaType,
+          title: widget.movie.title,
+          season: _season,
+          episode: selectedEpisode,
+        ),
+      ));
+      return;
+    }
+
+    final url = Config.embedUrl(
+      _source,
+      _mediaType,
+      widget.movie.id,
+      season: _season,
+      episode: selectedEpisode,
+    );
     final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -592,6 +651,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
   }
 
+  /// Трейлер играет в том же встроенном плеере, что и фильм.
+  ///
+  /// Ссылка ведёт на youtube.com/embed, а не на обычную страницу ролика:
+  /// у страницы поверх видео висят «похожие», реклама и предложение открыть
+  /// приложение — из-за них раньше и выкидывало наружу.
   Future<void> _openTrailer() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -600,6 +664,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         messenger.showSnackBar(const SnackBar(content: Text('Трейлер не найден')));
         return;
       }
+
+      if (PlayerScreen.isSupported && mounted) {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+            title: 'Трейлер · ${widget.movie.title}',
+            youtubeId: key,
+          ),
+        ));
+        return;
+      }
+
       await launchUrl(Uri.parse(Config.youtubeUrl(key)), mode: LaunchMode.externalApplication);
     } on ApiException {
       messenger.showSnackBar(const SnackBar(content: Text('Трейлер не найден')));

@@ -56,7 +56,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
+      padding: const EdgeInsets.fromLTRB(22, 22, 18, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -67,10 +67,10 @@ class SectionHeader extends StatelessWidget {
                 Text(title, style: Theme.of(context).textTheme.headlineMedium),
                 if (subtitle != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 3),
+                    padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       subtitle!,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                      style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                   ),
               ],
@@ -94,14 +94,29 @@ class EmptyHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.only(top: 100),
+      padding: const EdgeInsets.only(top: 90),
       children: [
-        Text(emoji, textAlign: TextAlign.center, style: const TextStyle(fontSize: 34)),
-        const SizedBox(height: 12),
+        // Эмодзи в круге на подложке: одиночный значок посреди пустого
+        // экрана выглядит как недогруженная страница.
+        Center(
+          child: Container(
+            height: 76,
+            width: 76,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppShadow.card,
+            ),
+            alignment: Alignment.center,
+            child: Text(emoji, style: const TextStyle(fontSize: 32)),
+          ),
+        ),
+        const SizedBox(height: 18),
         Text(
           text,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.textDim, fontSize: 14),
+          style: const TextStyle(color: AppColors.textDim, fontSize: 14, height: 1.55),
         ),
       ],
     );
@@ -124,31 +139,44 @@ class SegmentedToggle<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: options.entries.map((e) {
           final active = e.key == value;
-          return GestureDetector(
-            onTap: () => onChanged(e.key),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: active ? AppColors.gold : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                e.value,
-                style: TextStyle(
-                  color: active ? AppColors.bg : AppColors.textDim,
-                  fontSize: 12,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          return MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => onChanged(e.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOut,
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: active ? AppColors.goldGradient : null,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                  boxShadow: active
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x55000000),
+                            blurRadius: 10,
+                            offset: Offset(0, 3),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  e.value,
+                  style: TextStyle(
+                    color: active ? AppColors.bg : AppColors.textDim,
+                    fontSize: 12.5,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  ),
                 ),
               ),
             ),

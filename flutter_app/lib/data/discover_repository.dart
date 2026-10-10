@@ -1,3 +1,5 @@
+import '../core/api_client.dart';
+import '../models/catalog.dart';
 import '../models/movie.dart';
 import '../models/movie_details.dart';
 import 'local_first_repository.dart';
@@ -117,5 +119,83 @@ class DiscoverRepository extends LocalFirstRepository {
       return '${data['key']}';
     }
     return null;
+  }
+
+  // ─── Справочники для фильтров ───────────────────────────────────────
+  //
+  // Жанры и студии меняются раз в год, поэтому кэш живёт долго и почти
+  // всегда отдаётся без сети. Пустой ответ не кэшируем — иначе фильтры
+  // останутся пустыми до конца срока.
+
+  Future<List<CatalogOption>> genres(String mediaType) =>
+      _catalog('/genres', 'genres::$mediaType', {'media_type': mediaType});
+
+  Future<List<CatalogOption>> studios(String mediaType) =>
+      _catalog('/studios', 'studios::$mediaType', {'media_type': mediaType});
+
+  Future<List<CatalogOption>> _catalog(
+    String path,
+    String cacheName,
+    Map<String, String> query,
+  ) async {
+    final key = cacheKey(cacheName);
+    final cached = readCache(key);
+    if (cached.isNotEmpty && !isStale(key)) {
+      return cached.map(CatalogOption.fromJson).toList();
+    }
+
+    try {
+      final data = await api.get(path, query: query);
+      final list = ((data as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (list.isNotEmpty) await writeCache(key, list, fromServer: true);
+      return list.map(CatalogOption.fromJson).toList();
+    } on ApiException {
+      // Сети нет — лучше показать вчерашний справочник, чем пустой список.
+      return cached.map(CatalogOption.fromJson).toList();
+    }
+  }
+
+  // ─── Рекомендации с фильтрами ───────────────────────────────────────
+
+  /// Подборка под заданные страну и студию.
+  ///
+  /// Кэшируется только подборка без фильтров — она же показывается на обзоре
+  /// через геттер [recommendations]. Фильтрованные выборки разовые, держать
+  /// их между запусками смысла нет.
+  Future<List<Movie>> fetchRecommendations({
+    String mediaType = 'movie',
+    List<String> countries = const [],
+    int studioId = 0,
+  }) async {
+    final query = {
+      'media_type': mediaType,
+      if (countries.isNotEmpty) 'country': countries.join(','),
+      if (studioId != 0) 'studio_id': '$studioId',
+    };
+
+    final data = await api.get('/recommendations', query: query);
+    final list = _tagged(data, mediaType);
+
+    if (countries.isEmpty && studioId == 0 && mediaType == 'movie') {
+      await writeCache(_recsKey, list, fromServer: true);
+      _recommendations = list.map(Movie.fromJson).toList();
+      notifyListeners();
+    }
+    return list.map(Movie.fromJson).toList();
+  }
+
+  /// Фильмы конкретной студии — открывается из карточки фильма.
+  Future<List<Movie>> studioMovies(int studioId, String mediaType) async {
+    final data = await api.get('/studio/$studioId/movies', query: {'media_type': mediaType});
+    return _tagged(data, mediaType).map(Movie.fromJson).toList();
+  }
+
+  /// Фильмография человека — открывается из блока актёров.
+  Future<List<Movie>> personMovies(int personId, String mediaType) async {
+    final data = await api.get('/person/$personId/movies', query: {'media_type': mediaType});
+    return _tagged(data, mediaType).map(Movie.fromJson).toList();
   }
 }

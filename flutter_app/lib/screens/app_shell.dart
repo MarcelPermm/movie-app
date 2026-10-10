@@ -10,6 +10,7 @@ import '../data/local_first_repository.dart';
 import '../data/movie_repository.dart';
 import '../data/notebook_repository.dart';
 import '../data/task_repository.dart';
+import '../data/trip_repository.dart';
 import '../data/wishlist_repository.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -20,6 +21,7 @@ import 'movies_screen.dart';
 import 'notebook_screen.dart';
 import 'overview_screen.dart';
 import 'tasks_screen.dart';
+import 'trips_screen.dart';
 import 'wishlist_screen.dart';
 
 /// Один раздел приложения.
@@ -95,6 +97,12 @@ class _AppShellState extends State<AppShell> {
       repo: (c) => c.watch<BudgetRepository>(),
     ),
     _Section(
+      label: 'Поездки',
+      icon: Icons.luggage_outlined,
+      screen: const TripsScreen(),
+      repo: (c) => c.watch<TripRepository>(),
+    ),
+    _Section(
       label: 'Желания',
       icon: Icons.card_giftcard_outlined,
       screen: const WishlistScreen(),
@@ -120,7 +128,8 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: wide ? 20 : 4,
+        toolbarHeight: 58,
+        titleSpacing: wide ? 24 : 4,
         title: Row(
           children: [
             if (!wide) ...[
@@ -133,15 +142,21 @@ class _AppShellState extends State<AppShell> {
                 color: AppColors.text,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             SyncBadge(_sections[_index].repo(context)),
           ],
         ),
+        // Тонкая линия вместо тени: тень на тёмном фоне читается как грязь.
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1),
+        ),
         actions: [
           _ProfileMenu(),
-          const SizedBox(width: 6),
+          const SizedBox(width: 10),
         ],
       ),
       drawer: wide ? null : _buildDrawer(),
@@ -157,42 +172,58 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  /// Собственная боковая панель вместо NavigationRail: там жёстко заданы
+  /// отступы и форма подсветки, а нам нужна «таблетка» с золотой засечкой
+  /// и плавным переходом. Своя реализация проще, чем бороться с чужой.
   Widget _buildRail(bool extended) {
-    return NavigationRail(
-      selectedIndex: _index,
-      onDestinationSelected: _select,
-      extended: extended,
-      backgroundColor: AppColors.surface,
-      indicatorColor: AppColors.gold.withValues(alpha: 0.16),
-      leading: Padding(
-        padding: EdgeInsets.symmetric(vertical: 16, horizontal: extended ? 16 : 0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('🐒', style: TextStyle(fontSize: 22)),
-            if (extended) ...[
-              const SizedBox(width: 8),
-              const Text(
-                'Monkey App',
-                style: TextStyle(
-                  color: AppColors.gold,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ],
+    return Container(
+      width: extended ? 214 : 76,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF14141D), Color(0xFF0C0C13)],
         ),
       ),
-      destinations: _sections
-          .map((s) => NavigationRailDestination(
-                icon: Icon(s.icon, color: AppColors.textDim),
-                selectedIcon: Icon(s.icon, color: AppColors.gold),
-                label: Text(s.label),
-              ))
-          .toList(),
-      selectedLabelTextStyle: const TextStyle(color: AppColors.gold, fontSize: 12),
-      unselectedLabelTextStyle: const TextStyle(color: AppColors.textDim, fontSize: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(extended ? 20 : 0, 24, 0, 22),
+            child: Row(
+              mainAxisAlignment:
+                  extended ? MainAxisAlignment.start : MainAxisAlignment.center,
+              children: [
+                const Text('🐒', style: TextStyle(fontSize: 24)),
+                if (extended) ...[
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Monkey',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              itemCount: _sections.length,
+              itemBuilder: (context, i) => _RailItem(
+                section: _sections[i],
+                active: i == _index,
+                extended: extended,
+                onTap: () => _select(i),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -250,6 +281,94 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Пункт боковой панели: подсветка-таблетка и золотая засечка слева.
+class _RailItem extends StatefulWidget {
+  final _Section section;
+  final bool active;
+  final bool extended;
+  final VoidCallback onTap;
+
+  const _RailItem({
+    required this.section,
+    required this.active,
+    required this.extended,
+    required this.onTap,
+  });
+
+  @override
+  State<_RailItem> createState() => _RailItemState();
+}
+
+class _RailItemState extends State<_RailItem> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.active;
+    final color = active
+        ? AppColors.gold
+        : _hover
+            ? AppColors.text
+            : AppColors.textDim;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          height: 46,
+          margin: const EdgeInsets.only(bottom: 4),
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.goldWash(0.13)
+                : _hover
+                    ? AppColors.surfaceHigh
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppRadius.small),
+          ),
+          child: Row(
+            children: [
+              // Засечка занимает место всегда, иначе при выборе пункта
+              // текст дёргался бы вбок.
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 3,
+                height: active ? 22 : 0,
+                margin: const EdgeInsets.only(right: 9),
+                decoration: BoxDecoration(
+                  gradient: AppColors.goldGradient,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              SizedBox(
+                width: widget.extended ? 34 : 60,
+                child: Icon(widget.section.icon, color: color, size: 21),
+              ),
+              if (widget.extended)
+                Expanded(
+                  child: Text(
+                    widget.section.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 13.5,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

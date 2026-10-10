@@ -1,33 +1,74 @@
 import 'package:flutter/material.dart';
 
-/// Палитра один в один с frontend/style.css, чтобы приложение и сайт
-/// выглядели одним продуктом.
+/// Палитра. Отталкивается от frontend/style.css, но фон и поверхности
+/// разведены сильнее: плоский тёмный экран без слоёв читается как интерфейс
+/// десятилетней давности. Три ступени глубины дают ощущение объёма даже
+/// без единой картинки.
 class AppColors {
-  static const bg = Color(0xFF0A0A0F);
+  static const bg = Color(0xFF08080C);
   static const surface = Color(0xFF12121A);
-  static const border = Color(0xFF222230);
-  static const gold = Color(0xFFC9A84C);
+  static const border = Color(0xFF24242F);
+  static const gold = Color(0xFFD9B65C);
   static const goldDim = Color(0xFF8A6C2A);
-  static const text = Color(0xFFE8E4DC);
-  static const textDim = Color(0xFF7A7570);
-  static const red = Color(0xFFC94C4C);
-  static const green = Color(0xFF4CAC70);
-  static const blue = Color(0xFF4C7AC9);
+  static const text = Color(0xFFF2EFE8);
+  static const textDim = Color(0xFF8E8880);
+  static const red = Color(0xFFD65C5C);
+  static const green = Color(0xFF5CBC80);
+  static const blue = Color(0xFF5C8AD9);
 
   /// Чуть светлее поверхности — для вложенных блоков внутри карточек.
-  static const surfaceHigh = Color(0xFF181822);
+  static const surfaceHigh = Color(0xFF1B1B26);
+
+  /// Верхний слой: всплывающие панели, карточки при наведении.
+  static const surfaceTop = Color(0xFF232331);
 
   /// Мягкая подсветка золотом: подложка активных элементов.
   static Color goldWash(double alpha) => gold.withValues(alpha: alpha);
+
+  /// Акцентный градиент — на кнопках и активных вкладках. Одна плоская
+  /// заливка выглядит дёшево, лёгкий перелив стоит ноль и меняет всё.
+  static const goldGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFE8C973), Color(0xFFC0983C)],
+  );
+
+  /// Затемнение поверх кадра, чтобы текст читался на любой обложке.
+  static const scrim = LinearGradient(
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+    stops: [0.0, 0.5, 1.0],
+    colors: [Color(0xF208080C), Color(0x9908080C), Color(0x1A08080C)],
+  );
 }
 
 /// Скругления. Держим их в одном месте, иначе по экранам расползаются
 /// восьмёрки, десятки и четырнадцатые радиусы.
+///
+/// Значения заметно крупнее прежних: мелкий радиус — самая заметная примета
+/// старого интерфейса.
 class AppRadius {
-  static const small = 9.0;
-  static const medium = 12.0;
-  static const large = 16.0;
+  static const small = 12.0;
+  static const medium = 18.0;
+  static const large = 24.0;
   static const pill = 999.0;
+}
+
+/// Тени. Чёрная тень на тёмном фоне не видна — поэтому она не столько
+/// затемняет, сколько отделяет слой от фона за счёт размытия.
+class AppShadow {
+  static const card = [
+    BoxShadow(color: Color(0x66000000), blurRadius: 18, offset: Offset(0, 8)),
+  ];
+
+  static const raised = [
+    BoxShadow(color: Color(0x99000000), blurRadius: 28, offset: Offset(0, 14)),
+  ];
+
+  /// Золотое свечение под активной карточкой.
+  static List<BoxShadow> glow(Color color) => [
+        BoxShadow(color: color.withValues(alpha: 0.28), blurRadius: 26, offset: const Offset(0, 10)),
+      ];
 }
 
 ThemeData buildAppTheme() {
@@ -44,23 +85,28 @@ ThemeData buildAppTheme() {
   );
 
   // Единая шкала кегля: заголовки крупные и плотные, текст — воздушный.
+  // Отрицательный трекинг на крупном кегле — то, что отличает современную
+  // типографику от набора по умолчанию.
   const textTheme = TextTheme(
     displaySmall: TextStyle(
       color: AppColors.text,
-      fontSize: 30,
+      fontSize: 34,
       fontWeight: FontWeight.w800,
-      height: 1.12,
+      height: 1.08,
+      letterSpacing: -0.8,
     ),
     headlineMedium: TextStyle(
       color: AppColors.text,
-      fontSize: 24,
+      fontSize: 26,
       fontWeight: FontWeight.w800,
-      height: 1.15,
+      height: 1.12,
+      letterSpacing: -0.5,
     ),
     titleLarge: TextStyle(
       color: AppColors.text,
       fontSize: 20,
       fontWeight: FontWeight.w700,
+      letterSpacing: -0.3,
     ),
     titleMedium: TextStyle(
       color: AppColors.text,
@@ -135,9 +181,20 @@ ThemeData buildAppTheme() {
         foregroundColor: AppColors.bg,
         disabledBackgroundColor: AppColors.surfaceHigh,
         disabledForegroundColor: AppColors.textDim,
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: -0.1),
+        elevation: 0,
+      ),
+    ),
+
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.text,
+        side: const BorderSide(color: AppColors.border),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.small)),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.pill)),
+        textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
       ),
     ),
 
@@ -240,11 +297,21 @@ ThemeData buildAppTheme() {
 }
 
 /// Рамка карточки — одинаковая по всему приложению.
-BoxDecoration cardDecoration({bool highlighted = false}) => BoxDecoration(
-      color: AppColors.surface,
+BoxDecoration cardDecoration({bool highlighted = false, bool raised = false}) => BoxDecoration(
+      color: raised ? AppColors.surfaceHigh : AppColors.surface,
       border: Border.all(
         color: highlighted ? AppColors.goldDim : AppColors.border,
         width: highlighted ? 1.5 : 1,
       ),
       borderRadius: BorderRadius.circular(AppRadius.medium),
+      boxShadow: raised ? AppShadow.card : null,
     );
+
+/// Надпись-рубрика над блоком: мелкая, разрежённая, приглушённая.
+/// Одна из тех мелочей, которые отличают собранный интерфейс от набора.
+const kEyebrowStyle = TextStyle(
+  color: AppColors.textDim,
+  fontSize: 10.5,
+  letterSpacing: 1.4,
+  fontWeight: FontWeight.w700,
+);

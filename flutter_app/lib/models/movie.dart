@@ -30,6 +30,12 @@ class Movie {
   final bool isWatched;
   final bool isWatchlist;
 
+  /// Объяснение от AI, почему фильм предложен (только в ✦ Посоветуй).
+  final String? aiReason;
+
+  /// Коды стран производства — по ним фильтруются рекомендации.
+  final List<String> originCountries;
+
   const Movie({
     required this.id,
     required this.title,
@@ -47,6 +53,8 @@ class Movie {
     this.category,
     this.isWatched = false,
     this.isWatchlist = false,
+    this.aiReason,
+    this.originCountries = const [],
   });
 
   bool get isTv => mediaType == 'tv';
@@ -90,6 +98,11 @@ class Movie {
       category: asStringOrNull(j['category']),
       isWatched: asBool(j['is_watched']),
       isWatchlist: asBool(j['is_watchlist']),
+      aiReason: asStringOrNull(j['ai_reason']),
+      // origin_country приходит то массивом, то одной строкой — приводим к списку.
+      originCountries: j['origin_country'] is String
+          ? [j['origin_country'] as String]
+          : asStringList(j['origin_country'] ?? j['country']),
     );
   }
 
@@ -110,6 +123,8 @@ class Movie {
         'category': category,
         'is_watched': isWatched,
         'is_watchlist': isWatchlist,
+        'ai_reason': aiReason,
+        'origin_country': originCountries,
       };
 
   Movie copyWith({
@@ -136,5 +151,7 @@ class Movie {
         category: category ?? this.category,
         isWatched: isWatched ?? this.isWatched,
         isWatchlist: isWatchlist ?? this.isWatchlist,
+        aiReason: aiReason,
+        originCountries: originCountries,
       );
 }

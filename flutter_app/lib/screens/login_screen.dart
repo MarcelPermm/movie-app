@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
+import '../core/http_factory.dart';
 import '../core/session.dart';
 import '../theme.dart';
 
@@ -65,33 +66,65 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
+      // Тёплое пятно за карточкой: ровный чёрный фон — главная примета
+      // «сделано на скорую руку». Свет даёт сцене глубину.
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0, -0.55),
+            radius: 1.1,
+            colors: [Color(0xFF1B1710), AppColors.bg],
+          ),
+        ),
+        child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(28),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: Column(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(32, 36, 32, 28),
+              decoration: BoxDecoration(
+                color: const Color(0xCC12121A),
+                borderRadius: BorderRadius.circular(AppRadius.large),
+                border: Border.all(color: AppColors.border),
+                boxShadow: AppShadow.raised,
+              ),
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('🐒', style: TextStyle(fontSize: 52), textAlign: TextAlign.center),
-                const SizedBox(height: 14),
+                Center(
+                  child: Container(
+                    height: 84,
+                    width: 84,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.surfaceHigh,
+                      border: Border.all(color: AppColors.goldWash(0.3)),
+                      boxShadow: AppShadow.glow(AppColors.gold),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text('🐒', style: TextStyle(fontSize: 42)),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 const Text(
                   'Monkey App',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
+                    color: AppColors.text,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.7,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 7),
                 Text(
                   _registering ? 'Создать аккаунт' : 'С возвращением',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppColors.textDim, fontSize: 14),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 30),
                 TextField(
                   controller: _username,
                   autofillHints: const [AutofillHints.username],
@@ -142,9 +175,22 @@ class _LoginScreenState extends State<LoginScreen> {
                           }),
                   child: Text(_registering ? 'У меня уже есть аккаунт' : 'Создать аккаунт'),
                 ),
+                // Видно только когда прокси найден. Если сеть вдруг снова
+                // отвалится, сразу понятно, через что шло приложение.
+                if (activeProxy != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'через прокси $activeProxy',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                    ),
+                  ),
               ],
+              ),
             ),
           ),
+        ),
         ),
       ),
     );

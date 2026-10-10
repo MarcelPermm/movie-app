@@ -3,7 +3,7 @@ import 'dart:async';
 import '../models/movie.dart';
 import 'local_first_repository.dart';
 
-/// Фильмы и сериалы: просмотренное и список «к просмотру».
+/// Фильмы и сериалы: просмотренное, «к просмотру» и отклонённое.
 class MovieRepository extends LocalFirstRepository {
   MovieRepository({required super.api, required super.session});
 
@@ -12,11 +12,28 @@ class MovieRepository extends LocalFirstRepository {
 
   List<Movie> _watched = [];
   List<Movie> _watchlist = [];
+  List<Movie> _dismissed = [];
 
   List<Movie> get watched => List.unmodifiable(_watched);
   List<Movie> get watchlist => List.unmodifiable(_watchlist);
+  List<Movie> get dismissed => List.unmodifiable(_dismissed);
 
   DateTime? get lastSyncedAt => syncedAt(_key('watched'));
+
+  /// Быстрые проверки для карточек: показать «уже смотрел» без запроса.
+  bool isWatched(int movieId) => _watched.any((m) => m.id == movieId);
+  bool isInWatchlist(int movieId) => _watchlist.any((m) => m.id == movieId);
+  bool isDismissed(int movieId) => _dismissed.any((m) => m.id == movieId);
+
+  /// Список «к просмотру», сгруппированный по категории.
+  /// Ключ null — карточки, которым категорию ещё не поставили.
+  Map<String?, List<Movie>> get watchlistByCategory {
+    final grouped = <String?, List<Movie>>{};
+    for (final m in _watchlist) {
+      grouped.putIfAbsent(m.category, () => []).add(m);
+    }
+    return grouped;
+  }
 
   String _key(String kind) => cacheKey('$kind::$_mediaType');
 
@@ -36,16 +53,19 @@ class MovieRepository extends LocalFirstRepository {
   void _readFromCache() {
     _watched = readCache(_key('watched')).map(Movie.fromJson).toList();
     _watchlist = readCache(_key('watchlist')).map(Movie.fromJson).toList();
+    _dismissed = readCache(_key('dismissed')).map(Movie.fromJson).toList();
   }
 
   Future<void> refresh() => runSync(() async {
         final results = await Future.wait([
           api.get('/watched', query: {'media_type': _mediaType}),
           api.get('/watchlist', query: {'media_type': _mediaType}),
+          api.get('/dismissed', query: {'media_type': _mediaType}),
         ]);
 
         await writeCache(_key('watched'), (results[0] as List?) ?? const [], fromServer: true);
         await writeCache(_key('watchlist'), (results[1] as List?) ?? const [], fromServer: true);
+        await writeCache(_key('dismissed'), (results[2] as List?) ?? const [], fromServer: true);
         _readFromCache();
       });
 
@@ -60,6 +80,9 @@ class MovieRepository extends LocalFirstRepository {
 
   Future<void> _saveWatchlist() =>
       writeCache(_key('watchlist'), _watchlist.map((m) => m.toJson()).toList());
+
+  Future<void> _saveDismissed() =>
+      writeCache(_key('dismissed'), _dismissed.map((m) => m.toJson()).toList());
 
   // ─── Изменения ──────────────────────────────────────────────────────
   //
@@ -158,12 +181,72 @@ class MovieRepository extends LocalFirstRepository {
         }));
   }
 
+  /// Категория в списке «к просмотру»: must_see / not_sure / last_resort.
+  /// Сбросить категорию нельзя — бэкенд принимает только эти три значения.
+  Future<void> setWatchlistCategory(Movie movie, String category) async {
+    final backup = _watchlist;
+    if (_affectsCurrentLists(movie.mediaType)) {
+      _watchlist = _watchlist
+          .map((m) => m.id == movie.id ? m.copyWith(category: category) : m)
+          .toList();
+      notifyListeners();
+      await _saveWatchlist();
+    }
+
+    await push(
+      () => api.patch('/watchlist/${movie.id}/category', body: {
+        'category': category,
+        'media_type': movie.mediaType,
+      }),
+      rollback: () => _watchlist = backup,
+    );
+  }
+
+  // ─── Отклонённые ────────────────────────────────────────────────────
+  //
+  // «Скрыть» убирает фильм из рекомендаций навсегда. Список отклонённого
+  // видно отдельной вкладкой, оттуда же его можно вернуть.
+
+  Future<void> dismiss(Movie movie) async {
+    final type = movie.mediaType;
+    if (_affectsCurrentLists(type)) {
+      if (!_dismissed.any((m) => m.id == movie.id)) {
+        _dismissed = [movie, ..._dismissed];
+      }
+      _watchlist = _watchlist.where((m) => m.id != movie.id).toList();
+      notifyListeners();
+      await _saveDismissed();
+      await _saveWatchlist();
+    }
+
+    await push(() => api.post('/dismiss', body: {
+          'movie_id': movie.id,
+          'media_type': type,
+        }));
+  }
+
+  Future<void> undismiss(int movieId, {String? mediaType}) async {
+    final type = mediaType ?? _mediaType;
+    final backup = _dismissed;
+    if (_affectsCurrentLists(type)) {
+      _dismissed = _dismissed.where((m) => m.id != movieId).toList();
+      notifyListeners();
+      await _saveDismissed();
+    }
+
+    await push(
+      () => api.delete('/dismissed/$movieId', query: {'media_type': type}),
+      rollback: () => _dismissed = backup,
+    );
+  }
+
   // ─── Поиск ──────────────────────────────────────────────────────────
 
+  /// Параметр называется `q` — так его ждёт эндпоинт /search.
   Future<List<Movie>> search(String query) async {
     if (query.trim().isEmpty) return const [];
     final data = await api.get('/search', query: {
-      'query': query.trim(),
+      'q': query.trim(),
       'media_type': _mediaType,
     });
     final list = data is Map ? (data['results'] as List? ?? const []) : (data as List? ?? const []);

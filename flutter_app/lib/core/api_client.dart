@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show SocketException;
+import 'dart:io' show HandshakeException, SocketException;
 
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
+import 'http_factory.dart';
 import 'session.dart';
 import 'sync_queue.dart';
 
@@ -28,7 +29,10 @@ class ApiException implements Exception {
 /// и в query-строку, и в тело изменяющих запросов.
 class ApiClient {
   final Session session;
-  final http.Client _http = http.Client();
+
+  /// Клиент собирается фабрикой: на десктопе и мобильных ему нужны
+  /// настройки, которых в вебе не существует (см. http_factory_io.dart).
+  final http.Client _http = createHttpClient();
 
   ApiClient(this.session);
 
@@ -95,11 +99,35 @@ class ApiClient {
     } on ApiException {
       rethrow;
     } on TimeoutException {
-      return _handleOffline(method, path, payload, query, queueOnFailure, 'Сервер не ответил вовремя');
-    } on SocketException {
-      return _handleOffline(method, path, payload, query, queueOnFailure, 'Нет соединения');
-    } on http.ClientException {
-      return _handleOffline(method, path, payload, query, queueOnFailure, 'Нет соединения');
+      return _handleOffline(
+        method, path, payload, query, queueOnFailure,
+        'Сервер не ответил за ${Config.requestTimeout.inSeconds} с',
+      );
+    } on SocketException catch (e) {
+      // Текст системной ошибки говорит куда больше, чем «нет соединения»:
+      // отказ в соединении, неизвестный адрес и запрет фаервола выглядят
+      // на экране одинаково, а лечатся совершенно по-разному.
+      return _handleOffline(
+        method, path, payload, query, queueOnFailure,
+        'Нет соединения: ${e.osError?.message ?? e.message}',
+      );
+    } on HandshakeException catch (e) {
+      return _handleOffline(
+        method, path, payload, query, queueOnFailure,
+        'Не удалось установить защищённое соединение: ${e.message}',
+      );
+    } on http.ClientException catch (e) {
+      return _handleOffline(
+        method, path, payload, query, queueOnFailure,
+        'Нет соединения: ${e.message}',
+      );
+    } catch (e) {
+      // Раньше всё неопознанное всплывало наружу необработанным и роняло
+      // экран без единой подсказки о причине.
+      return _handleOffline(
+        method, path, payload, query, queueOnFailure,
+        'Сбой запроса: $e',
+      );
     }
   }
 
