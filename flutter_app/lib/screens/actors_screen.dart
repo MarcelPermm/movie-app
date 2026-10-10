@@ -54,7 +54,7 @@ class _ActorsTabState extends State<ActorsTab> {
               const Spacer(),
               IconButton(
                 tooltip: 'Найти человека',
-                icon: const Icon(Icons.person_search_outlined, color: AppColors.textDim),
+                icon: Icon(Icons.person_search_outlined, color: AppColors.textDim),
                 onPressed: _openPersonSearch,
               ),
             ],
@@ -63,7 +63,7 @@ class _ActorsTabState extends State<ActorsTab> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<ActorRepository>().refresh(),
             child: actors.isEmpty
                 ? EmptyHint(
@@ -132,7 +132,7 @@ class _ActorRow extends StatelessWidget {
                     actor.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
@@ -141,7 +141,7 @@ class _ActorRow extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     actor.countLabel,
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 12),
                   ),
                 ],
               ),
@@ -153,7 +153,7 @@ class _ActorRow extends StatelessWidget {
                   message: 'Твоя средняя оценка фильмам с ним',
                   child: Text(
                     '★ ${avg.toStringAsFixed(1)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.gold,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -265,12 +265,12 @@ class _PersonScreenState extends State<PersonScreen> {
                 child: Text(
                   _error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.red, fontSize: 13.5),
+                  style: TextStyle(color: AppColors.red, fontSize: 13.5),
                 ),
               ),
             )
           : watched == null
-              ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+              ? Center(child: CircularProgressIndicator(color: AppColors.gold))
               : ListView(
                   padding: const EdgeInsets.only(bottom: 24),
                   children: [
@@ -286,7 +286,7 @@ class _PersonScreenState extends State<PersonScreen> {
                         movies: filmography.where((m) => !watchedIds.contains(m.id)).toList(),
                       ),
                     if (watched.isEmpty && (filmography?.isEmpty ?? true))
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(top: 80),
                         child: Text(
                           'По этому человеку ничего не нашлось',
@@ -400,17 +400,17 @@ class _PersonSearchScreenState extends State<_PersonSearchScreen> {
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
           ),
-          style: const TextStyle(color: AppColors.text, fontSize: 16),
+          style: TextStyle(color: AppColors.text, fontSize: 16),
         ),
         actions: [
           IconButton(icon: const Icon(Icons.search), onPressed: _run),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+          ? Center(child: CircularProgressIndicator(color: AppColors.gold))
           : _error != null
               ? Center(
-                  child: Text(_error!, style: const TextStyle(color: AppColors.red)),
+                  child: Text(_error!, style: TextStyle(color: AppColors.red)),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(12),
@@ -440,7 +440,7 @@ class _PersonSearchScreenState extends State<_PersonSearchScreen> {
                                 children: [
                                   Text(
                                     person.name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.text,
                                       fontSize: 14.5,
                                       fontWeight: FontWeight.w600,
@@ -453,7 +453,7 @@ class _PersonSearchScreenState extends State<_PersonSearchScreen> {
                                         person.knownFor.take(3).join(' · '),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.textDim,
                                           fontSize: 12,
                                         ),

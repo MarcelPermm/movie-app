@@ -51,7 +51,7 @@ class _TasksScreenState extends State<TasksScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<TaskRepository>().refresh(),
             child: repo.tasks.isEmpty
                 ? const EmptyHint(emoji: '✅', text: 'На этот день задач нет')
@@ -64,7 +64,7 @@ class _TasksScreenState extends State<TasksScreen> {
                           padding: const EdgeInsets.fromLTRB(4, 18, 4, 6),
                           child: Text(
                             'Сделано · ${done.length}',
-                            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                            style: TextStyle(color: AppColors.textDim, fontSize: 12),
                           ),
                         ),
                         ...done.map(_buildTile),
@@ -89,7 +89,7 @@ class _TasksScreenState extends State<TasksScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) => context.read<TaskRepository>().remove(task),
       child: Container(
@@ -119,7 +119,7 @@ class _TasksScreenState extends State<TasksScreen> {
           ),
           subtitle: _buildMeta(task),
           trailing: task.isRecurring
-              ? const Tooltip(
+              ? Tooltip(
                   message: 'Повторяющаяся задача',
                   child: Icon(Icons.repeat, size: 16, color: AppColors.textDim),
                 )
@@ -137,7 +137,7 @@ class _TasksScreenState extends State<TasksScreen> {
     if (parts.isEmpty) return null;
     return Text(
       parts.join('  ·  '),
-      style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+      style: TextStyle(color: AppColors.textDim, fontSize: 12),
     );
   }
 

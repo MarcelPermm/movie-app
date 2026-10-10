@@ -55,11 +55,11 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
       appBar: AppBar(
         title: Text(
           widget.friend.displayName,
-          style: const TextStyle(color: AppColors.text, fontSize: 17),
+          style: TextStyle(color: AppColors.text, fontSize: 17),
         ),
         actions: [
           if (_loading)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(right: 18),
               child: Center(
                 child: SizedBox(
@@ -73,7 +73,7 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
       ),
       body: RefreshIndicator(
         color: AppColors.gold,
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.sheet,
         onRefresh: _load,
         child: _buildBody(),
       ),
@@ -89,7 +89,7 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
           Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.red, fontSize: 14),
+            style: TextStyle(color: AppColors.red, fontSize: 14),
           ),
         ],
       );
@@ -161,7 +161,7 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
                       children: [
                         Text(
                           item.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.text,
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -173,13 +173,13 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
                             item.priorityLabel,
                             if (item.price != null) formatMoney(item.price!),
                           ].join('  ·  '),
-                          style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                          style: TextStyle(color: AppColors.textDim, fontSize: 12),
                         ),
                         if (item.note != null && item.note!.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Text(
                             item.note!,
-                            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                            style: TextStyle(color: AppColors.textDim, fontSize: 12),
                           ),
                         ],
                       ],
@@ -195,13 +195,13 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
                     value: (item.contributedTotal / item.price!).clamp(0.0, 1.0),
                     minHeight: 4,
                     backgroundColor: AppColors.bg,
-                    valueColor: const AlwaysStoppedAnimation(AppColors.green),
+                    valueColor: AlwaysStoppedAnimation(AppColors.green),
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
                   'Собрано ${formatMoney(item.contributedTotal)} из ${formatMoney(item.price!)}',
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 11),
                 ),
               ],
               const SizedBox(height: 10),
@@ -217,7 +217,7 @@ class _FriendWishlistScreenState extends State<FriendWishlistScreen> {
     if (takenByOther) {
       return Text(
         'Уже дарит ${item.reserverName ?? 'кто-то'}',
-        style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+        style: TextStyle(color: AppColors.textDim, fontSize: 12),
       );
     }
 

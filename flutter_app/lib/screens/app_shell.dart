@@ -199,65 +199,108 @@ class _AppShellState extends State<AppShell> {
             ],
           );
 
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 58,
-        titleSpacing: wide ? 24 : 4,
-        title: Row(
-          children: [
-            if (!wide) ...[
-              const Text('🐒', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
+    if (!wide) {
+      return Scaffold(
+        appBar: _buildAppBar(current, wide: false),
+        bottomNavigationBar: _buildBottomBar(),
+        body: content,
+      );
+    }
+
+    // На широком экране навигация — главная примета темы.
+    switch (AppTheme.spec.navStyle) {
+      case NavStyle.rail:
+        return Scaffold(
+          appBar: _buildAppBar(current, wide: true),
+          body: Row(
+            children: [
+              _buildRail(extended),
+              VerticalDivider(width: 1, color: AppColors.border),
+              Expanded(child: content),
             ],
-            Text(
-              current.label,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+          ),
+        );
+      case NavStyle.floating:
+        return Scaffold(
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Padding(padding: const EdgeInsets.only(left: 104), child: content),
+              Positioned(
+                left: 22,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: _FloatingNav(
+                    sections: _sections,
+                    index: _index,
+                    onSelect: _select,
+                    sync: SyncBadge(current.repo(context)),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            SyncBadge(current.repo(context)),
-          ],
-        ),
-        // Тонкая линия вместо тени: тень на тёмном фоне читается как грязь.
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1),
-        ),
-        actions: [
-          _ProfileMenu(),
-          const SizedBox(width: 10),
+            ],
+          ),
+        );
+      case NavStyle.pills:
+        return Scaffold(
+          body: Column(
+            children: [
+              _PillsBar(
+                sections: _sections,
+                index: _index,
+                onSelect: _select,
+                sync: SyncBadge(current.repo(context)),
+              ),
+              Expanded(child: content),
+            ],
+          ),
+        );
+      case NavStyle.masthead:
+        return Scaffold(
+          body: Column(
+            children: [
+              _Masthead(
+                sections: _sections,
+                index: _index,
+                onSelect: _select,
+                sync: SyncBadge(current.repo(context)),
+              ),
+              Expanded(child: content),
+            ],
+          ),
+        );
+    }
+  }
+
+  PreferredSizeWidget _buildAppBar(_Section current, {required bool wide}) {
+    return AppBar(
+      toolbarHeight: 58,
+      titleSpacing: wide ? 24 : 16,
+      title: Row(
+        children: [
+          Text(current.label, style: AppText.display(19, height: 1.2)),
+          const SizedBox(width: 12),
+          SyncBadge(current.repo(context)),
         ],
       ),
-      bottomNavigationBar: wide ? null : _buildBottomBar(),
-      body: wide
-          ? Row(
-              children: [
-                _buildRail(extended),
-                const VerticalDivider(width: 1, color: AppColors.border),
-                Expanded(child: content),
-              ],
-            )
-          : content,
+      // Тонкая линия вместо тени: тень на тёмном фоне читается как грязь.
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(height: 1),
+      ),
+      actions: [
+        _ProfileMenu(),
+        const SizedBox(width: 10),
+      ],
     );
   }
 
-  /// Собственная боковая панель вместо NavigationRail: там жёстко заданы
-  /// отступы и форма подсветки, а нам нужна «таблетка» с золотой засечкой
-  /// и плавным переходом. Своя реализация проще, чем бороться с чужой.
+  /// Классическая боковая панель: «таблетка» с засечкой у активного пункта.
   Widget _buildRail(bool extended) {
     return Container(
       width: extended ? 214 : 76,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF14141D), Color(0xFF0C0C13)],
-        ),
-      ),
+      color: AppColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -270,15 +313,7 @@ class _AppShellState extends State<AppShell> {
                 const Text('🐒', style: TextStyle(fontSize: 24)),
                 if (extended) ...[
                   const SizedBox(width: 10),
-                  const Text(
-                    'Monkey',
-                    style: TextStyle(
-                      color: AppColors.text,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
+                  Text('Monkey', style: AppText.display(18)),
                 ],
               ],
             ),
@@ -304,8 +339,11 @@ class _AppShellState extends State<AppShell> {
   /// под значком, как засечка в боковой панели на широком экране.
   Widget _buildBottomBar() {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
+      decoration: BoxDecoration(
+        // В «Стекле» поверхность полупрозрачная — панели нужна плотность.
+        color: AppTheme.spec.cardStyle == CardStyle.glass
+            ? AppColors.sheet.withValues(alpha: 0.92)
+            : AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: SafeArea(
@@ -460,45 +498,61 @@ class _RailItemState extends State<_RailItem> {
   }
 }
 
-/// Имя пользователя и выход.
+/// Имя пользователя, выбор темы и выход.
 class _ProfileMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
     final name = session.displayName ?? session.username ?? 'Профиль';
+    final current = AppTheme.notifier.value;
 
     return PopupMenuButton<String>(
-      color: AppColors.surface,
+      color: AppColors.sheet,
       tooltip: name,
       offset: const Offset(0, 44),
       onSelected: (value) {
         if (value == 'logout') _confirmLogout(context);
+        if (value.startsWith('theme:')) {
+          final id = AppThemeId.values.byName(value.substring(6));
+          AppTheme.select(id);
+        }
       },
       itemBuilder: (_) => [
         PopupMenuItem(
           enabled: false,
-          child: Text(name, style: const TextStyle(color: AppColors.textDim, fontSize: 13)),
+          child: Text(name, style: TextStyle(color: AppColors.textDim, fontSize: 13)),
         ),
         const PopupMenuDivider(),
-        const PopupMenuItem(
+        PopupMenuItem(
+          enabled: false,
+          height: 30,
+          child: Text('ТЕМА', style: kEyebrowStyle),
+        ),
+        for (final spec in AppTheme.specs.values)
+          PopupMenuItem(
+            value: 'theme:${spec.id.name}',
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: spec.id == current
+                      ? Icon(Icons.check, size: 18, color: AppColors.gold)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(spec.name, style: TextStyle(color: AppColors.text)),
+              ],
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
           value: 'logout',
           child: Text('Выйти', style: TextStyle(color: AppColors.red)),
         ),
       ],
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: CircleAvatar(
-          radius: 15,
-          backgroundColor: AppColors.goldDim.withValues(alpha: 0.25),
-          child: Text(
-            name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
-          ),
-        ),
+        child: _Avatar(name: name),
       ),
     );
   }
@@ -508,16 +562,16 @@ class _ProfileMenu extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Выйти?', style: TextStyle(color: AppColors.text, fontSize: 17)),
-        content: const Text(
+        backgroundColor: AppColors.sheet,
+        title: Text('Выйти?', style: TextStyle(color: AppColors.text, fontSize: 17)),
+        content: Text(
           'Локальные копии данных сотрутся. После входа они загрузятся заново.',
           style: TextStyle(color: AppColors.textDim),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+            child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -531,5 +585,276 @@ class _ProfileMenu extends StatelessWidget {
       ),
     );
     if (ok == true) await session.signOut();
+  }
+}
+
+/// Кружок с первой буквой имени.
+class _Avatar extends StatelessWidget {
+  final String name;
+  final double radius;
+
+  const _Avatar({required this.name, this.radius = 15});
+
+  @override
+  Widget build(BuildContext context) {
+    final bento = AppTheme.spec.id == AppThemeId.bento;
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: bento ? AppColors.text : AppColors.goldDim.withValues(alpha: 0.25),
+      child: Text(
+        name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+        style: TextStyle(
+          color: bento ? AppColors.surface : AppColors.gold,
+          fontWeight: FontWeight.w700,
+          fontSize: radius * 0.85,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Навигация широкого экрана по темам ─────────────────────────────
+
+/// «Стекло»: плавающая капсула из одних значков слева.
+class _FloatingNav extends StatelessWidget {
+  final List<_Section> sections;
+  final int index;
+  final ValueChanged<int> onSelect;
+  final Widget sync;
+
+  const _FloatingNav({
+    required this.sections,
+    required this.index,
+    required this.onSelect,
+    required this.sync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppRadius.large),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < sections.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Tooltip(
+                  message: sections[i].label,
+                  preferBelow: false,
+                  waitDuration: const Duration(milliseconds: 300),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => onSelect(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: i == index ? AppColors.surfaceTop : Colors.transparent,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        sections[i].icon,
+                        size: 22,
+                        color: i == index ? AppColors.text : AppColors.textDim,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 6),
+            sync,
+            const SizedBox(height: 8),
+            _ProfileMenu(),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// «Бенто»: логотип и ряд «пилюль» сверху.
+class _PillsBar extends StatelessWidget {
+  final List<_Section> sections;
+  final int index;
+  final ValueChanged<int> onSelect;
+  final Widget sync;
+
+  const _PillsBar({
+    required this.sections,
+    required this.index,
+    required this.onSelect,
+    required this.sync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(28, 16, 22, 8),
+        child: Row(
+          children: [
+            Text('monkey', style: AppText.display(22)),
+            const SizedBox(width: 28),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                      boxShadow: const [BoxShadow(color: Color(0x0F111318), blurRadius: 3, offset: Offset(0, 1))],
+                    ),
+                    child: Row(
+                      children: [
+                        for (var i = 0; i < sections.length; i++)
+                          InkWell(
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                            onTap: () => onSelect(i),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                              decoration: BoxDecoration(
+                                color: i == index ? AppColors.text : Colors.transparent,
+                                borderRadius: BorderRadius.circular(AppRadius.pill),
+                              ),
+                              child: Text(
+                                sections[i].label,
+                                style: TextStyle(
+                                  color: i == index ? AppColors.surface : AppColors.textDim,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            sync,
+            const SizedBox(width: 8),
+            _ProfileMenu(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// «Ночная газета»: шапка издания, двойная линейка и рубрики.
+class _Masthead extends StatelessWidget {
+  final List<_Section> sections;
+  final int index;
+  final ValueChanged<int> onSelect;
+  final Widget sync;
+
+  const _Masthead({
+    required this.sections,
+    required this.index,
+    required this.onSelect,
+    required this.sync,
+  });
+
+  static const _weekdays = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+  static const _months = [
+    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final issue = now.difference(DateTime(now.year)).inDays + 1;
+    final session = context.watch<Session>();
+    final name = session.displayName ?? session.username ?? '';
+
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 14, 32, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Monkey', style: AppText.display(44, height: 1)),
+                const Spacer(),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      now.hour >= 17 ? 'Вечерний выпуск № $issue' : 'Выпуск № $issue',
+                      style: TextStyle(color: AppColors.text, fontSize: 13),
+                    ),
+                    Text(
+                      '${_weekdays[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]} ${now.year}'
+                      '${name.isEmpty ? '' : ' · для $name'}',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                sync,
+                _ProfileMenu(),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // Двойная линейка под названием — как у настоящей газеты.
+            Container(height: 1, color: AppColors.border),
+            const SizedBox(height: 2),
+            Container(height: 1, color: AppColors.border),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < sections.length; i++)
+                    InkWell(
+                      onTap: () => onSelect(i),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 11, 26, 9),
+                        child: Container(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: i == index ? AppColors.gold : Colors.transparent,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            sections[i].label,
+                            style: TextStyle(
+                              color: i == index ? AppColors.gold : AppColors.textDim,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Container(height: 1, color: AppColors.border),
+          ],
+        ),
+      ),
+    );
   }
 }

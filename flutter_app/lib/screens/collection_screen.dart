@@ -96,7 +96,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
             ),
             Text(
               '${movies.length} из ${widget.movies.length}',
-              style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
             ),
           ],
         ),
@@ -143,12 +143,12 @@ class _CollectionScreenState extends State<CollectionScreen> {
           Expanded(
             child: TextField(
               onChanged: (v) => setState(() => _query = v),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Найти в подборке',
                 prefixIcon: Icon(Icons.search, color: AppColors.textDim, size: 20),
                 isDense: true,
               ),
-              style: const TextStyle(color: AppColors.text, fontSize: 14),
+              style: TextStyle(color: AppColors.text, fontSize: 14),
             ),
           ),
           const SizedBox(width: 14),
@@ -218,7 +218,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
       title: movie.title,
       actions: (sheetContext) => [
         ListTile(
-          leading: const Icon(Icons.bookmark_add_outlined, color: AppColors.gold),
+          leading: Icon(Icons.bookmark_add_outlined, color: AppColors.gold),
           title: const Text('В список «к просмотру»'),
           onTap: () {
             Navigator.pop(sheetContext);
@@ -226,7 +226,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           },
         ),
         ListTile(
-          leading: const Icon(Icons.check_circle_outline, color: AppColors.green),
+          leading: Icon(Icons.check_circle_outline, color: AppColors.green),
           title: const Text('Уже смотрел'),
           onTap: () {
             Navigator.pop(sheetContext);
@@ -234,7 +234,7 @@ class _CollectionScreenState extends State<CollectionScreen> {
           },
         ),
         ListTile(
-          leading: const Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
+          leading: Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
           title: const Text('Больше не предлагать'),
           onTap: () {
             Navigator.pop(sheetContext);

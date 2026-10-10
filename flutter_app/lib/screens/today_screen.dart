@@ -1,17 +1,23 @@
+import 'dart:ui' show FontFeature, ImageFilter;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/session.dart';
 import '../data/budget_repository.dart';
+import '../data/discover_repository.dart';
 import '../data/goal_repository.dart';
 import '../data/movie_repository.dart';
 import '../data/task_repository.dart';
 import '../data/trip_repository.dart';
+import '../models/movie.dart';
 import '../models/task.dart';
 import '../models/trip.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/poster_card.dart';
+import 'hub_screens.dart';
 import 'movie_detail_screen.dart';
 import 'tasks_screen.dart';
 import 'tonight_screen.dart';
@@ -30,16 +36,21 @@ class TodayScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      color: AppColors.gold,
-      backgroundColor: AppColors.surface,
-      onRefresh: () => Future.wait([
-        context.read<TaskRepository>().refresh(),
-        context.read<BudgetRepository>().refresh(),
-        context.read<TripRepository>().refresh(),
-        context.read<MovieRepository>().refresh(),
-      ]),
-      child: ListView(
+    // На широком экране у каждой темы своя раскладка: это её «лицо».
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      final data = _TodayData.of(context);
+      final Widget layout = switch (AppTheme.spec.id) {
+        AppThemeId.bento => _BentoToday(data: data, onOpenMoney: onOpenMoney),
+        AppThemeId.glass => _GlassToday(data: data, onOpenMoney: onOpenMoney),
+        AppThemeId.paper => _PaperToday(data: data, onOpenMoney: onOpenMoney),
+        AppThemeId.classic => _ClassicWideToday(onOpenMoney: onOpenMoney),
+      };
+      return _refreshable(context, layout);
+    }
+
+    return _refreshable(
+      context,
+      ListView(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
         children: [
           const _Greeting(),
@@ -59,6 +70,18 @@ class TodayScreen extends StatelessWidget {
     );
   }
 }
+
+Widget _refreshable(BuildContext context, Widget child) => RefreshIndicator(
+      color: AppColors.gold,
+      backgroundColor: AppColors.sheet,
+      onRefresh: () => Future.wait([
+        context.read<TaskRepository>().refresh(),
+        context.read<BudgetRepository>().refresh(),
+        context.read<TripRepository>().refresh(),
+        context.read<MovieRepository>().refresh(),
+      ]),
+      child: child,
+    );
 
 const _weekdays = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 const _monthsGen = [
@@ -89,7 +112,7 @@ class _CardTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w700),
+            style: TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w700),
           ),
         ),
         if (action != null)
@@ -128,12 +151,7 @@ class _Greeting extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           name == null || name.isEmpty ? hello : '$hello, $name',
-          style: const TextStyle(
-            color: AppColors.text,
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.6,
-          ),
+          style: AppText.display(26),
         ),
       ],
     );
@@ -147,6 +165,8 @@ class _TonightCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final evening = DateTime.now().hour >= 17;
+    final tones = featureColors(FeatureTone.tonight);
+    final fg = featureForeground(tones);
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.medium),
       onTap: () => Navigator.of(context).push(
@@ -155,13 +175,13 @@ class _TonightCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF3A2A08), Color(0xFF171009)],
+            colors: tones,
           ),
           borderRadius: BorderRadius.circular(AppRadius.medium),
-          border: Border.all(color: AppColors.goldWash(0.35)),
+          border: AppTheme.spec.isDark ? Border.all(color: AppColors.goldWash(0.35)) : null,
         ),
         child: Row(
           children: [
@@ -173,17 +193,17 @@ class _TonightCard extends StatelessWidget {
                 children: [
                   Text(
                     evening ? 'Что посмотреть сегодня?' : 'Что посмотреть вечером?',
-                    style: const TextStyle(color: AppColors.text, fontSize: 16.5, fontWeight: FontWeight.w700),
+                    style: AppText.display(17, color: fg, height: 1.2),
                   ),
                   const SizedBox(height: 3),
-                  const Text(
+                  Text(
                     'Настроение, время и компания — и подборка готова',
-                    style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                    style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12.5),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gold),
+            Icon(Icons.arrow_forward_ios, size: 16, color: fg),
           ],
         ),
       ),
@@ -231,7 +251,7 @@ class _TasksCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(26, 4, 8, 4),
               child: Text(
                 all == 0 ? 'На сегодня ничего не запланировано' : 'Всё сделано — можно отдыхать 🎉',
-                style: const TextStyle(color: AppColors.textDim, fontSize: 13.5),
+                style: TextStyle(color: AppColors.textDim, fontSize: 13.5),
               ),
             )
           else ...[
@@ -241,7 +261,7 @@ class _TasksCard extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 26, top: 2),
                 child: Text(
                   'и ещё ${pending.length - 5}',
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                 ),
               ),
           ],
@@ -276,12 +296,12 @@ class _TaskRow extends StatelessWidget {
                 task.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AppColors.text, fontSize: 14),
+                style: TextStyle(color: AppColors.text, fontSize: 14),
               ),
             ),
             if (task.timeStr != null && task.timeStr!.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Text(task.timeStr!, style: const TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+              Text(task.timeStr!, style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
             ],
             const SizedBox(width: 8),
           ],
@@ -326,18 +346,14 @@ class _BudgetCard extends StatelessWidget {
                 children: [
                   Text(
                     planned > 0 ? formatMoney(left.abs()) : formatMoney(repo.total),
-                    style: TextStyle(
-                      color: over ? AppColors.red : AppColors.text,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: AppText.number(28, color: over ? AppColors.red : AppColors.text),
                   ),
                   const SizedBox(width: 8),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       planned > 0 ? (over ? 'перерасход за месяц' : 'осталось на месяц') : 'потрачено за месяц',
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 13),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 13),
                     ),
                   ),
                 ],
@@ -349,14 +365,14 @@ class _BudgetCard extends StatelessWidget {
                   child: LinearProgressIndicator(
                     value: (repo.total / planned).clamp(0.0, 1.0),
                     minHeight: 6,
-                    backgroundColor: AppColors.bg,
+                    backgroundColor: AppColors.surfaceHigh,
                     valueColor: AlwaysStoppedAnimation(over ? AppColors.red : AppColors.gold),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'потрачено ${formatMoney(repo.total)} из ${formatMoney(planned)}',
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                 ),
               ],
             ],
@@ -429,17 +445,17 @@ class _TripCard extends StatelessWidget {
                   children: [
                     Text(
                       trip.name,
-                      style: const TextStyle(color: AppColors.text, fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(color: AppColors.text, fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
-                    Text(status, style: const TextStyle(color: AppColors.gold, fontSize: 12.5)),
+                    Text(status, style: TextStyle(color: AppColors.gold, fontSize: 12.5)),
                     if (cities.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
                         cities.map((c) => c.name).join(' → '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                       ),
                     ],
                     if (plan > 0) ...[
@@ -449,7 +465,7 @@ class _TripCard extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: (spent / plan).clamp(0.0, 1.0),
                           minHeight: 4,
-                          backgroundColor: AppColors.bg,
+                          backgroundColor: AppColors.surfaceHigh,
                           valueColor: AlwaysStoppedAnimation(
                             spent > plan ? AppColors.red : AppColors.blue,
                           ),
@@ -458,7 +474,7 @@ class _TripCard extends StatelessWidget {
                       const SizedBox(height: 5),
                       Text(
                         '${formatMoney(spent)} из ${formatMoney(plan)}',
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12),
                       ),
                     ],
                   ],
@@ -507,7 +523,7 @@ class _WatchlistRail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(2, 4, 0, 10),
             child: Text('В СПИСКЕ К ПРОСМОТРУ', style: kEyebrowStyle),
           ),
@@ -562,8 +578,8 @@ class _GoalsCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: done / total,
               minHeight: 6,
-              backgroundColor: AppColors.bg,
-              valueColor: const AlwaysStoppedAnimation(AppColors.green),
+              backgroundColor: AppColors.surfaceHigh,
+              valueColor: AlwaysStoppedAnimation(AppColors.green),
             ),
           ),
         ],
@@ -580,6 +596,8 @@ class _WrappedCard extends StatelessWidget {
     final now = DateTime.now();
     // В январе интереснее прошлый год — он уже закончился.
     final year = now.month == 1 ? now.year - 1 : now.year;
+    final tones = featureColors(FeatureTone.wrapped);
+    final fg = featureForeground(tones);
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.medium),
@@ -589,13 +607,13 @@ class _WrappedCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF2A1240), Color(0xFF0E0A18)],
+            colors: tones,
           ),
           borderRadius: BorderRadius.circular(AppRadius.medium),
-          border: Border.all(color: const Color(0x55B39DFF)),
+          border: AppTheme.spec.isDark ? Border.all(color: AppColors.border) : null,
         ),
         child: Row(
           children: [
@@ -607,20 +625,1280 @@ class _WrappedCard extends StatelessWidget {
                 children: [
                   Text(
                     'Итоги $year',
-                    style: const TextStyle(color: AppColors.text, fontSize: 16.5, fontWeight: FontWeight.w700),
+                    style: AppText.display(17, color: fg, height: 1.2),
                   ),
                   const SizedBox(height: 3),
-                  const Text(
+                  Text(
                     'Фильмы, книги, поездки и деньги за год',
-                    style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                    style: TextStyle(color: fg.withValues(alpha: 0.7), fontSize: 12.5),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: Color(0xFFB39DFF)),
+            Icon(Icons.arrow_forward_ios, size: 16, color: fg),
           ],
         ),
       ),
     );
   }
+}
+
+// ─── Широкий экран: раскладки тем ─────────────────────────────────────
+
+String _hello(DateTime now) => now.hour < 5
+    ? 'Доброй ночи'
+    : now.hour < 12
+        ? 'Доброе утро'
+        : now.hour < 18
+            ? 'Добрый день'
+            : 'Добрый вечер';
+
+String _daysWord(int n) {
+  final mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return 'дней';
+  switch (n % 10) {
+    case 1:
+      return 'день';
+    case 2:
+    case 3:
+    case 4:
+      return 'дня';
+    default:
+      return 'дней';
+  }
+}
+
+/// Всё, что нужно главному экрану, — собрано из репозиториев один раз.
+class _TodayData {
+  final DateTime now;
+  final String? name;
+  final Movie? pick;
+  final bool pickFromList;
+  final List<Movie> watchlist;
+  final BudgetRepository budget;
+  final TaskRepository tasks;
+  final TripRepository trips;
+  final GoalRepository goals;
+  final (Trip, int?, int?)? trip;
+
+  const _TodayData({
+    required this.now,
+    required this.name,
+    required this.pick,
+    required this.pickFromList,
+    required this.watchlist,
+    required this.budget,
+    required this.tasks,
+    required this.trips,
+    required this.goals,
+    required this.trip,
+  });
+
+  factory _TodayData.of(BuildContext context) {
+    final movies = context.watch<MovieRepository>();
+    final discover = context.watch<DiscoverRepository>();
+    final trips = context.watch<TripRepository>();
+    final watchlist = movies.watchlist;
+
+    // Фильм вечера: первый из списка «к просмотру», у которого есть кадр;
+    // если список пуст — что-то из популярного.
+    Movie? pick;
+    var fromList = false;
+    for (final m in watchlist) {
+      if (m.backdropPath != null && m.backdropPath!.isNotEmpty) {
+        pick = m;
+        fromList = true;
+        break;
+      }
+    }
+    if (pick == null && discover.heroSlides.isNotEmpty) pick = discover.heroSlides.first;
+
+    return _TodayData(
+      now: DateTime.now(),
+      name: context.watch<Session>().displayName,
+      pick: pick,
+      pickFromList: fromList,
+      watchlist: watchlist,
+      budget: context.watch<BudgetRepository>(),
+      tasks: context.watch<TaskRepository>(),
+      trips: trips,
+      goals: context.watch<GoalRepository>(),
+      trip: _TripCard._pick(trips),
+    );
+  }
+
+  String get greeting => name == null || name!.isEmpty ? _hello(now) : '${_hello(now)}, $name';
+  String get dateLine => '${_weekdays[now.weekday - 1]}, ${now.day} ${_monthsGen[now.month - 1]}';
+
+  int get planned => budget.plannedTotal;
+  int get spent => budget.total;
+  int get left => planned - spent;
+  bool get overspent => planned > 0 && left < 0;
+  String get monthName => monthNames[budget.month.month - 1].toLowerCase();
+
+  bool get tasksToday => _isToday(tasks.day);
+  int get tasksAll => tasks.tasks.where((t) => !t.isCancelled).length;
+  int get tasksDone => tasks.done.length;
+
+  String? get tripStatus {
+    final t = trip;
+    if (t == null) return null;
+    final (item, dayOf, total) = t;
+    if (dayOf != null) return 'идёт сейчас · день $dayOf из $total';
+    final d = item.daysUntil ?? 0;
+    return 'через $d ${_daysWord(d)}';
+  }
+
+  String get pickReason {
+    final m = pick;
+    if (m == null) return '';
+    if (m.aiReason != null && m.aiReason!.isNotEmpty) return m.aiReason!;
+    return pickFromList ? 'Давно лежит в вашем списке к просмотру' : 'Сейчас смотрят чаще всего';
+  }
+
+  String get pickMeta {
+    final m = pick;
+    if (m == null) return '';
+    return [
+      'На вечер',
+      if (m.releaseYear != null) '${m.releaseYear}',
+      if (m.genres.isNotEmpty) m.genres.first.toLowerCase(),
+    ].join(' · ');
+  }
+
+  void openPick(BuildContext context) {
+    final m = pick;
+    if (m == null) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m)));
+  }
+
+  void openTonight(BuildContext context) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TonightScreen()));
+
+  void openTrip(BuildContext context) {
+    final t = trip;
+    if (t == null) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: t.$1.id)));
+  }
+
+  void openWrapped(BuildContext context) {
+    final year = now.month == 1 ? now.year - 1 : now.year;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WrappedScreen(year: year)));
+  }
+
+  void openTasks(BuildContext context) => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(), body: const TasksScreen())),
+      );
+}
+
+/// Кадр фильма во всю площадь блока; без кадра — мягкая заливка.
+class _Still extends StatelessWidget {
+  final Movie? movie;
+  final double blur;
+
+  const _Still({required this.movie, this.blur = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = movie?.backdropUrl;
+    Widget image = url == null
+        ? ColoredBox(color: AppColors.surfaceHigh)
+        : CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            fadeInDuration: const Duration(milliseconds: 250),
+            errorWidget: (_, _, _) => ColoredBox(color: AppColors.surfaceHigh),
+          );
+    if (blur > 0) {
+      image = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur, tileMode: TileMode.decal),
+        child: image,
+      );
+    }
+    return image;
+  }
+}
+
+/// Две кнопки фильма вечера.
+class _PickButtons extends StatelessWidget {
+  final _TodayData data;
+  final Color? fg;
+  final Color? bg;
+  final bool square;
+
+  const _PickButtons({required this.data, this.fg, this.bg, this.square = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(square ? 2 : 999));
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      children: [
+        if (data.pick != null)
+          FilledButton.icon(
+            onPressed: () => data.openPick(context),
+            style: FilledButton.styleFrom(
+              backgroundColor: bg,
+              foregroundColor: fg,
+              shape: shape,
+            ),
+            icon: const Icon(Icons.play_arrow_rounded, size: 20),
+            label: const Text('Смотреть'),
+          ),
+        OutlinedButton(
+          onPressed: () => data.openTonight(context),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: bg ?? AppColors.text,
+            side: BorderSide(color: (bg ?? AppColors.text).withValues(alpha: 0.4)),
+            shape: shape,
+          ),
+          child: const Text('Подобрать другое'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Бенто ────────────────────────────────────────────────────────────
+
+/// Плитка «Бенто»: свой цвет, крупное скругление, без рамки.
+class _Tile extends StatelessWidget {
+  final Color? color;
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry padding;
+
+  const _Tile({required this.child, this.color, this.onTap, this.padding = const EdgeInsets.all(22)});
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppRadius.large);
+    return Material(
+      color: color ?? AppColors.surface,
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}
+
+class _BentoToday extends StatelessWidget {
+  final _TodayData data;
+  final VoidCallback? onOpenMoney;
+
+  const _BentoToday({required this.data, this.onOpenMoney});
+
+  static const _blue = Color(0xFF2D3BFF);
+  static const _orange = Color(0xFFFF6A2B);
+  static const _lilac = Color(0xFFCDBBFF);
+  static const _ink = Color(0xFF131418);
+
+  @override
+  Widget build(BuildContext context) {
+    final d = data;
+    final white = Colors.white;
+    final cats = d.budget.plannedCategories.take(4).toList();
+    final spentBy = d.budget.spentByCategory;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(28, 10, 28, 32),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(d.greeting, style: AppText.display(34)),
+            const SizedBox(width: 16),
+            Text(d.dateLine, style: TextStyle(color: AppColors.textDim, fontSize: 16, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 470,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Фильм вечера на две строки плиток.
+              Expanded(
+                flex: 5,
+                child: _Tile(
+                  color: _ink,
+                  padding: EdgeInsets.zero,
+                  onTap: d.pick == null ? () => d.openTonight(context) : () => d.openPick(context),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _Still(movie: d.pick),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0x00000000), Color(0x22000000), Color(0xE00A060C)],
+                            stops: [0.0, 0.45, 1.0],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 26,
+                        right: 26,
+                        bottom: 26,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              d.pick == null ? 'На вечер' : d.pickMeta,
+                              style: TextStyle(color: white.withValues(alpha: 0.8), fontSize: 14, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              d.pick?.title ?? 'Что посмотреть сегодня?',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.display(38, color: white),
+                            ),
+                            const SizedBox(height: 16),
+                            _PickButtons(data: d, bg: white, fg: _ink),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Задачи на всю высоту.
+              Expanded(
+                flex: 4,
+                child: _Tile(
+                  onTap: () => d.openTasks(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text('Задачи', style: AppText.display(20))),
+                          if (d.tasksToday && d.tasksAll > 0)
+                            Text('${d.tasksDone} из ${d.tasksAll}',
+                                style: TextStyle(color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(child: _TaskList(data: d)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 8,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _Tile(
+                              color: _blue,
+                              onTap: onOpenMoney,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    d.overspent ? 'Перерасход за ${d.monthName}' : 'Осталось на ${d.monthName}',
+                                    style: TextStyle(color: white.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
+                                  ),
+                                  const Spacer(),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      formatMoney(d.planned > 0 ? d.left.abs() : d.spent),
+                                      style: AppText.number(56, color: white),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'потрачено ${formatMoney(d.spent)} из ${formatMoney(d.planned)}',
+                                    style: TextStyle(color: white.withValues(alpha: 0.8), fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _Tile(
+                              color: d.trip == null ? AppColors.surface : _orange,
+                              onTap: d.trip == null ? null : () => d.openTrip(context),
+                              child: d.trip == null
+                                  ? Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('Поездки', style: AppText.display(20)),
+                                        const Spacer(),
+                                        Text('Ближайших поездок нет', style: TextStyle(color: AppColors.textDim)),
+                                      ],
+                                    )
+                                  : Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          d.trip!.$2 != null ? 'Сейчас в поездке' : 'Следующая поездка',
+                                          style: TextStyle(color: white.withValues(alpha: 0.85), fontWeight: FontWeight.w600),
+                                        ),
+                                        const Spacer(),
+                                        Text(
+                                          d.trip!.$1.name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppText.display(36, color: white),
+                                        ),
+                                        const Spacer(),
+                                        Text(d.tripStatus ?? '',
+                                            style: TextStyle(color: white, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _Tile(
+                              onTap: onOpenMoney,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${monthNames[d.budget.month.month - 1]} · по категориям',
+                                    style: AppText.display(17),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Expanded(
+                                    child: cats.isEmpty
+                                        ? Text('Задай план категориям — здесь появятся столбики',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 13))
+                                        : Row(
+                                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                                            children: [
+                                              for (final c in cats)
+                                                Expanded(
+                                                  child: _CategoryColumn(
+                                                    name: c.name,
+                                                    share: c.planMonthly == 0
+                                                        ? 0
+                                                        : (spentBy[c.id] ?? 0) / c.planMonthly,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _Tile(
+                              color: _lilac,
+                              onTap: () => d.openWrapped(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Итоги ${d.now.month == 1 ? d.now.year - 1 : d.now.year}',
+                                      style: const TextStyle(color: Color(0xFF24124F), fontWeight: FontWeight.w600)),
+                                  const Spacer(),
+                                  Text('Твой год', style: AppText.display(40, color: const Color(0xFF24124F))),
+                                  const SizedBox(height: 4),
+                                  const Text('кино, книги, поездки и деньги — историей',
+                                      style: TextStyle(color: Color(0xFF24124F), fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 250,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 9,
+                child: _Tile(
+                  color: _ink,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text('В списке к просмотру', style: AppText.display(19, color: white))),
+                          Text('${d.watchlist.length}', style: TextStyle(color: white.withValues(alpha: 0.6))),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(child: _PosterStrip(movies: d.watchlist)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 4,
+                child: _Tile(
+                  onTap: () => d.openTonight(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Вечер свободен?', style: TextStyle(color: AppColors.textDim, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Text('Подобрать фильм за три вопроса', style: AppText.display(26)),
+                      const Spacer(),
+                      FilledButton(onPressed: () => d.openTonight(context), child: const Text('Начать')),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Столбик категории: доля плана снизу вверх, перерасход — красным.
+class _CategoryColumn extends StatelessWidget {
+  final String name;
+  final double share;
+
+  const _CategoryColumn({required this.name, required this.share});
+
+  @override
+  Widget build(BuildContext context) {
+    final over = share > 1;
+    final near = share >= 0.8;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: Column(
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) => Container(
+                width: double.infinity,
+                alignment: Alignment.bottomCenter,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(AppRadius.small),
+                ),
+                child: Container(
+                  height: box.maxHeight * share.clamp(0.04, 1.0),
+                  decoration: BoxDecoration(
+                    color: over ? AppColors.red : (near ? AppColors.blue : AppColors.text),
+                    borderRadius: BorderRadius.circular(AppRadius.small),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            name.split(' ').first.toLowerCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppColors.textDim, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Задачи дня списком с отметкой — для плиток и колонок.
+class _TaskList extends StatelessWidget {
+  final _TodayData data;
+  final int limit;
+
+  const _TaskList({required this.data, this.limit = 6});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = data;
+    if (!d.tasksToday) {
+      return Align(
+        alignment: Alignment.topLeft,
+        child: TextButton(
+          onPressed: () => d.tasks.setDay(DateTime.now()),
+          child: const Text('Показать задачи на сегодня'),
+        ),
+      );
+    }
+    final all = [...d.tasks.pending, ...d.tasks.done].take(limit).toList();
+    if (all.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text('На сегодня ничего не запланировано', style: TextStyle(color: AppColors.textDim)),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final t in all)
+          InkWell(
+            onTap: () => d.tasks.toggleDone(t),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+              child: Row(
+                children: [
+                  _CheckMark(done: t.isDone, important: t.isHighPriority),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      t.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: t.isDone ? AppColors.textDim : AppColors.text,
+                        fontSize: 14.5,
+                        decoration: t.isDone ? TextDecoration.lineThrough : null,
+                        decorationColor: AppColors.textDim,
+                      ),
+                    ),
+                  ),
+                  if (t.timeStr != null && t.timeStr!.isNotEmpty)
+                    Text(t.timeStr!, style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Отметка задачи в духе темы: квадрат в газете, круг в остальных.
+class _CheckMark extends StatelessWidget {
+  final bool done;
+  final bool important;
+
+  const _CheckMark({required this.done, this.important = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final spec = AppTheme.spec;
+    final square = spec.cardStyle == CardStyle.ruled || spec.cardStyle == CardStyle.tile;
+    final color = done ? (spec.id == AppThemeId.paper ? AppColors.gold : AppColors.green) : Colors.transparent;
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: color,
+        shape: square ? BoxShape.rectangle : BoxShape.circle,
+        borderRadius: square ? BorderRadius.circular(spec.id == AppThemeId.paper ? 0 : 6) : null,
+        border: Border.all(
+          color: done ? color : (important ? AppColors.red : AppColors.textDim),
+          width: 1.6,
+        ),
+      ),
+      child: done ? Icon(Icons.check, size: 14, color: spec.isDark ? AppColors.bg : Colors.white) : null,
+    );
+  }
+}
+
+/// Ряд обложек «к просмотру».
+class _PosterStrip extends StatelessWidget {
+  final List<Movie> movies;
+  final double? radius;
+
+  const _PosterStrip({required this.movies, this.radius});
+
+  @override
+  Widget build(BuildContext context) {
+    if (movies.isEmpty) {
+      return Align(
+        alignment: Alignment.topLeft,
+        child: Text('Список пуст — добавляй фильмы из «Кино»', style: TextStyle(color: AppColors.textDim)),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, box) {
+        final h = box.maxHeight;
+        final w = h * 2 / 3;
+        return ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: movies.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 12),
+          itemBuilder: (context, i) {
+            final m = movies[i];
+            return InkWell(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(radius ?? AppRadius.small),
+                child: SizedBox(
+                  width: w,
+                  height: h,
+                  child: m.posterUrl == null
+                      ? ColoredBox(
+                          color: AppColors.surfaceHigh,
+                          child: Center(child: Icon(Icons.movie_outlined, color: AppColors.textDim)),
+                        )
+                      : CachedNetworkImage(imageUrl: m.posterUrl!, fit: BoxFit.cover),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ─── Стекло ───────────────────────────────────────────────────────────
+
+class _GlassPanel extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry padding;
+
+  const _GlassPanel({required this.child, this.onTap, this.padding = const EdgeInsets.all(22)});
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppRadius.large);
+    return Material(
+      color: Colors.white.withValues(alpha: 0.10),
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
+    );
+  }
+}
+
+class _GlassToday extends StatelessWidget {
+  final _TodayData data;
+  final VoidCallback? onOpenMoney;
+
+  const _GlassToday({required this.data, this.onOpenMoney});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = data;
+    const white = Colors.white;
+    final dim = white.withValues(alpha: 0.72);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Цвет экрана берётся из кадра фильма вечера: размытый кадр за всем.
+        Opacity(opacity: 0.85, child: _Still(movie: d.pick, blur: 60)),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [Color(0x99100818), Color(0x33100818), Color(0x66100818)],
+            ),
+          ),
+        ),
+        LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 30, 36, 30),
+            child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${d.greeting} · ${d.dateLine}', style: TextStyle(color: dim, fontSize: 17)),
+                          // Название опускаем к низу первого экрана, как на афише.
+                          SizedBox(height: (box.maxHeight * 0.16).clamp(30.0, 200.0)),
+                          Text(d.pick == null ? 'На вечер' : d.pickMeta, style: TextStyle(color: dim, fontSize: 15)),
+                          const SizedBox(height: 10),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 780),
+                            child: Text(
+                              d.pick?.title ?? 'Что посмотреть сегодня?',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.display(76, color: white, height: 1),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (d.pickReason.isNotEmpty)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 560),
+                              child: Text(d.pickReason, style: TextStyle(color: dim, fontSize: 18, height: 1.45)),
+                            ),
+                          const SizedBox(height: 24),
+                          _PickButtons(data: d, bg: white, fg: const Color(0xFF1B1030)),
+                          const SizedBox(height: 40),
+                          Text('В списке к просмотру', style: TextStyle(color: dim, fontSize: 15)),
+                          const SizedBox(height: 12),
+                          SizedBox(height: 190, child: _PosterStrip(movies: d.watchlist, radius: 14)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 28),
+                    SizedBox(
+                      width: 380,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _GlassPanel(
+                            onTap: onOpenMoney,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  d.overspent ? 'Перерасход за ${d.monthName}' : 'Осталось на ${d.monthName}',
+                                  style: TextStyle(color: dim, fontSize: 15),
+                                ),
+                                const SizedBox(height: 8),
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    formatMoney(d.planned > 0 ? d.left.abs() : d.spent),
+                                    style: AppText.number(58, color: d.overspent ? AppColors.red : white),
+                                  ),
+                                ),
+                                if (d.planned > 0) ...[
+                                  const SizedBox(height: 14),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(3),
+                                    child: LinearProgressIndicator(
+                                      value: (d.spent / d.planned).clamp(0.0, 1.0),
+                                      minHeight: 6,
+                                      backgroundColor: white.withValues(alpha: 0.18),
+                                      valueColor: AlwaysStoppedAnimation(d.overspent ? AppColors.red : white),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text('потрачено ${formatMoney(d.spent)} из ${formatMoney(d.planned)}',
+                                      style: TextStyle(color: dim, fontSize: 14)),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (d.trip != null) ...[
+                            const SizedBox(height: 14),
+                            _GlassPanel(
+                              onTap: () => d.openTrip(context),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 46,
+                                    height: 46,
+                                    decoration: BoxDecoration(
+                                      color: white.withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Icon(Icons.flight_takeoff, color: white, size: 22),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(d.trip!.$1.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: AppText.display(20, color: white)),
+                                        Text(d.tripStatus ?? '', style: TextStyle(color: dim, fontSize: 14)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 14),
+                          _GlassPanel(
+                              onTap: () => d.openTasks(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text('Задачи', style: AppText.display(20, color: white))),
+                                      if (d.tasksToday && d.tasksAll > 0)
+                                        Text('${d.tasksDone} из ${d.tasksAll}', style: TextStyle(color: dim)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  _TaskList(data: d, limit: 5),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 14),
+                          _GlassPanel(
+                            onTap: () => d.openWrapped(context),
+                            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text('Итоги ${d.now.month == 1 ? d.now.year - 1 : d.now.year}',
+                                      style: const TextStyle(color: white, fontSize: 17)),
+                                ),
+                                Icon(Icons.arrow_forward, color: dim, size: 20),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Ночная газета ────────────────────────────────────────────────────
+
+class _Kicker extends StatelessWidget {
+  final String text;
+
+  const _Kicker(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(text.toUpperCase(), style: kEyebrowStyle),
+      );
+}
+
+/// Строка с точками-отточиями: «Продукты ........ 6 400 ₽».
+class _Leader extends StatelessWidget {
+  final Widget left;
+  final Widget right;
+  final Widget? under;
+
+  const _Leader({required this.left, required this.right, this.under});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              left,
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                  child: SizedBox(
+                    height: 2,
+                    child: CustomPaint(painter: _DotsPainter(AppColors.textDim.withValues(alpha: 0.5))),
+                  ),
+                ),
+              ),
+              right,
+            ],
+          ),
+          if (under != null) ...[const SizedBox(height: 5), under!],
+        ],
+      ),
+    );
+  }
+}
+
+class _PaperToday extends StatelessWidget {
+  final _TodayData data;
+  final VoidCallback? onOpenMoney;
+
+  const _PaperToday({required this.data, this.onOpenMoney});
+
+  @override
+  Widget build(BuildContext context) {
+    final d = data;
+    final m = d.pick;
+    // Колонки разделены линейками, как полосы газеты.
+    BoxDecoration ruled() => BoxDecoration(border: Border(left: BorderSide(color: AppColors.border)));
+    final cats = d.budget.plannedCategories.take(6).toList();
+    final spentBy = d.budget.spentByCategory;
+    final body = TextStyle(color: AppColors.text, fontSize: 15.5, height: 1.6);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(40, 24, 40, 40),
+      child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Колонка 1: фильм вечера и программа.
+            Expanded(
+              flex: 21,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Kicker(m == null ? 'Фильм вечера' : (d.pickFromList ? 'Фильм вечера · из вашего списка' : 'Фильм вечера')),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 200,
+                        child: AspectRatio(
+                          aspectRatio: 2 / 3,
+                          child: m?.posterLargeUrl == null
+                              ? ColoredBox(color: AppColors.surface)
+                              : CachedNetworkImage(imageUrl: m!.posterLargeUrl!, fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(width: 26),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(m?.title ?? 'Что посмотреть сегодня?', style: AppText.display(46, height: 1.04)),
+                            const SizedBox(height: 10),
+                            if (m != null)
+                              Text(
+                                [
+                                  if (m.director != null) m.director!,
+                                  if (m.releaseYear != null) '${m.releaseYear}',
+                                  if (m.genres.isNotEmpty) m.genres.take(2).join(', ').toLowerCase(),
+                                ].join(' · '),
+                                style: TextStyle(color: AppColors.textDim, fontSize: 14),
+                              ),
+                            const SizedBox(height: 14),
+                            if (m != null && m.overview.isNotEmpty)
+                              Text(m.overview, maxLines: 7, overflow: TextOverflow.ellipsis, style: body),
+                            const SizedBox(height: 18),
+                            _PickButtons(data: d, square: true),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  _Kicker('Программа · к просмотру'),
+                  for (final w in d.watchlist.take(6))
+                    InkWell(
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: w)),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(w.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.display(17, height: 1.3)),
+                            ),
+                            if (w.releaseYear != null)
+                              Text('${w.releaseYear}', style: TextStyle(color: AppColors.textDim, fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (d.watchlist.isEmpty)
+                    Text('Список пуст — добавляйте фильмы в разделе «Кино».',
+                        style: TextStyle(color: AppColors.textDim)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 26),
+            // Колонка 2: деньги и поездки.
+            Expanded(
+              flex: 10,
+              child: Container(
+                decoration: ruled(),
+                padding: const EdgeInsets.only(left: 26),
+                child: InkWell(
+                onTap: onOpenMoney,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Kicker(d.overspent ? 'Перерасход за ${d.monthName}' : 'Осталось на ${d.monthName}'),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        formatMoney(d.planned > 0 ? d.left.abs() : d.spent),
+                        style: AppText.number(60, color: d.overspent ? AppColors.red : AppColors.text),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Потрачено ${formatMoney(d.spent)} из ${formatMoney(d.planned)} по плану.',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 14.5, height: 1.5),
+                    ),
+                    const SizedBox(height: 18),
+                    for (final c in cats)
+                      _Leader(
+                        left: Text(c.name, style: TextStyle(color: AppColors.text, fontSize: 14.5)),
+                        right: Text(
+                          '${formatMoney(spentBy[c.id] ?? 0)} / ${formatMoney(c.planMonthly)}',
+                          style: TextStyle(
+                            color: (spentBy[c.id] ?? 0) > c.planMonthly ? AppColors.red : AppColors.text,
+                            fontSize: 14,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    if (d.trip != null) ...[
+                      const SizedBox(height: 26),
+                      _Kicker('Поездки'),
+                      InkWell(
+                        onTap: () => d.openTrip(context),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(d.trip!.$1.name, style: AppText.display(30)),
+                            const SizedBox(height: 4),
+                            Text(
+                              [
+                                d.tripStatus ?? '',
+                                if (d.trips.plannedOf(d.trip!.$1) > 0) 'план ${formatMoney(d.trips.plannedOf(d.trip!.$1))}',
+                              ].join(' · '),
+                              style: TextStyle(color: AppColors.textDim, fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              ),
+            ),
+            const SizedBox(width: 26),
+            // Колонка 3: повестка дня и год.
+            Expanded(
+              flex: 10,
+              child: Container(
+                decoration: ruled(),
+                padding: const EdgeInsets.only(left: 26),
+                child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Kicker('Повестка дня'),
+                  _TaskList(data: d, limit: 7),
+                  const SizedBox(height: 28),
+                  _Kicker('В этом году'),
+                  InkWell(
+                    onTap: () => d.openWrapped(context),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${d.watchlist.length} фильмов ждут вечера,\nа год пора подытожить',
+                            style: AppText.display(26, height: 1.2)),
+                        const SizedBox(height: 14),
+                        OutlinedButton(
+                          onPressed: () => d.openWrapped(context),
+                          child: Text('ИТОГИ ${d.now.month == 1 ? d.now.year - 1 : d.now.year}'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+}
+
+// ─── Классика ─────────────────────────────────────────────────────────
+
+/// Прежние карточки, разложенные в две колонки.
+class _ClassicWideToday extends StatelessWidget {
+  final VoidCallback? onOpenMoney;
+
+  const _ClassicWideToday({this.onOpenMoney});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(28, 22, 28, 32),
+      children: [
+        const _Greeting(),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Column(
+                children: [
+                  const _TonightCard(),
+                  const SizedBox(height: 14),
+                  _BudgetCard(onOpen: onOpenMoney),
+                  const _TripCard(),
+                  const _WatchlistRail(),
+                ],
+              ),
+            ),
+            const SizedBox(width: 18),
+            const Expanded(
+              flex: 2,
+              child: Column(
+                children: [
+                  _TasksCard(),
+                  SizedBox(height: 14),
+                  _GoalsCard(),
+                  SizedBox(height: 14),
+                  _WrappedCard(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Точки-отточия между названием и суммой.
+class _DotsPainter extends CustomPainter {
+  final Color color;
+
+  const _DotsPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    for (var x = 0.0; x < size.width; x += 4) {
+      canvas.drawCircle(Offset(x + 0.75, size.height / 2), 0.75, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DotsPainter old) => old.color != color;
 }

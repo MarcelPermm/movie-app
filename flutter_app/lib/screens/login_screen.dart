@@ -69,11 +69,11 @@ class _LoginScreenState extends State<LoginScreen> {
       // Тёплое пятно за карточкой: ровный чёрный фон — главная примета
       // «сделано на скорую руку». Свет даёт сцене глубину.
       body: DecoratedBox(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: RadialGradient(
             center: Alignment(0, -0.55),
             radius: 1.1,
-            colors: [Color(0xFF1B1710), AppColors.bg],
+            colors: [AppColors.goldWash(0.10), AppColors.bg.withValues(alpha: AppTheme.spec.backdrop.isEmpty ? 1 : 0)],
           ),
         ),
         child: Center(
@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(32, 36, 32, 28),
               decoration: BoxDecoration(
-                color: const Color(0xCC12121A),
+                color: AppTheme.spec.backdrop.isEmpty ? AppColors.surface : AppColors.sheet.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(AppRadius.large),
                 border: Border.all(color: AppColors.border),
                 boxShadow: AppShadow.raised,
@@ -108,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Monkey App',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -122,7 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   _registering ? 'Создать аккаунт' : 'С возвращением',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 14),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 14),
                 ),
                 const SizedBox(height: 30),
                 TextField(
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 14),
                   Text(
                     _error!,
-                    style: const TextStyle(color: AppColors.red, fontSize: 13),
+                    style: TextStyle(color: AppColors.red, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -158,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 FilledButton(
                   onPressed: _busy ? null : _submit,
                   child: _busy
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 18,
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.bg),
@@ -183,7 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text(
                       'через прокси $activeProxy',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
                     ),
                   ),
               ],

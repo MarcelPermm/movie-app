@@ -74,7 +74,7 @@ class MoreScreen extends StatelessWidget {
               child: _Feature(
                 emoji: '🍿',
                 title: 'На вечер',
-                colors: const [Color(0xFF3A2A08), Color(0xFF171009)],
+                colors: featureColors(FeatureTone.tonight),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const TonightScreen()),
                 ),
@@ -85,7 +85,7 @@ class MoreScreen extends StatelessWidget {
               child: _Feature(
                 emoji: '✨',
                 title: 'Итоги $year',
-                colors: const [Color(0xFF2A1240), Color(0xFF0E0A18)],
+                colors: featureColors(FeatureTone.wrapped),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => WrappedScreen(year: year)),
                 ),
@@ -102,22 +102,122 @@ class MoreScreen extends StatelessWidget {
                 if (i > 0) const Divider(height: 1, indent: 56),
                 ListTile(
                   leading: Icon(_items[i].icon, color: AppColors.gold),
-                  title: Text(_items[i].title, style: const TextStyle(color: AppColors.text)),
+                  title: Text(_items[i].title, style: TextStyle(color: AppColors.text)),
                   subtitle: Text(
                     _items[i].subtitle,
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                   ),
-                  trailing: const Icon(Icons.chevron_right, color: AppColors.textDim),
+                  trailing: Icon(Icons.chevron_right, color: AppColors.textDim),
                   onTap: () => Navigator.of(context).push(_items[i].route()),
                 ),
               ],
             ],
           ),
         ),
+        const SizedBox(height: 22),
+        Text('ТЕМА', style: kEyebrowStyle),
+        const SizedBox(height: 10),
+        const ThemePicker(),
       ],
     );
   }
 }
+
+/// Выбор темы: карточки с названием, описанием и образцом цветов.
+class ThemePicker extends StatelessWidget {
+  const ThemePicker({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final current = AppTheme.notifier.value;
+    return Column(
+      children: [
+        for (final spec in AppTheme.specs.values)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadius.medium),
+              onTap: () => AppTheme.select(spec.id),
+              child: Ink(
+                padding: const EdgeInsets.all(12),
+                decoration: cardDecoration(highlighted: spec.id == current),
+                child: Row(
+                  children: [
+                    // Образец: фон, поверхность и акцент самой темы.
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: spec.bg,
+                        borderRadius: BorderRadius.circular(spec.radiusSmall),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: Row(
+                        children: [
+                          Expanded(child: ColoredBox(color: spec.text)),
+                          const SizedBox(width: 4),
+                          Expanded(child: ColoredBox(color: spec.accent)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            spec.name,
+                            style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: spec.displayFont,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(spec.hint, style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+                        ],
+                      ),
+                    ),
+                    if (spec.id == current) Icon(Icons.check_circle, color: AppColors.gold, size: 22),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Цвета ярких карточек («На вечер», «Итоги года») в текущей теме.
+enum FeatureTone { tonight, wrapped, money, trip }
+
+List<Color> featureColors(FeatureTone tone) {
+  switch (AppTheme.spec.id) {
+    case AppThemeId.bento:
+      return switch (tone) {
+        FeatureTone.tonight => const [Color(0xFF131418), Color(0xFF131418)],
+        FeatureTone.wrapped => const [Color(0xFFCDBBFF), Color(0xFFCDBBFF)],
+        FeatureTone.money => const [Color(0xFF2D3BFF), Color(0xFF2D3BFF)],
+        FeatureTone.trip => const [Color(0xFFFF6A2B), Color(0xFFFF6A2B)],
+      };
+    case AppThemeId.glass:
+      return const [Color(0x33FFFFFF), Color(0x14FFFFFF)];
+    case AppThemeId.paper:
+      return const [Color(0xFF15243A), Color(0xFF15243A)];
+    case AppThemeId.classic:
+      return switch (tone) {
+        FeatureTone.wrapped => const [Color(0xFF2A1240), Color(0xFF0E0A18)],
+        _ => const [Color(0xFF3A2A08), Color(0xFF171009)],
+      };
+  }
+}
+
+/// Текст поверх такой карточки: на светлой лиловой — тёмный, на остальных — светлый.
+Color featureForeground(List<Color> colors) =>
+    colors.first.computeLuminance() > 0.5 ? const Color(0xFF111318) : Colors.white;
 
 class _Feature extends StatelessWidget {
   final String emoji;
@@ -138,7 +238,7 @@ class _Feature extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
           borderRadius: BorderRadius.circular(AppRadius.medium),
-          border: Border.all(color: AppColors.border),
+          border: AppTheme.spec.isDark ? Border.all(color: AppColors.border) : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +247,7 @@ class _Feature extends StatelessWidget {
             Text(emoji, style: const TextStyle(fontSize: 26)),
             Text(
               title,
-              style: const TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w700),
+              style: AppText.display(16, color: featureForeground(colors)),
             ),
           ],
         ),

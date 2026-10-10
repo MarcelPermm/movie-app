@@ -43,12 +43,12 @@ class _AiThinkingState extends State<AiThinking> with SingleTickerProviderStateM
           const SizedBox(height: 6),
           FadeTransition(
             opacity: Tween<double>(begin: 0.35, end: 1).animate(_controller),
-            child: const Text('✦', style: TextStyle(color: AppColors.gold, fontSize: 18)),
+            child: Text('✦', style: TextStyle(color: AppColors.gold, fontSize: 18)),
           ),
           const SizedBox(height: 14),
           Text(
             widget.text,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textDim,
               fontSize: 11,
               letterSpacing: 1.6,
@@ -81,12 +81,12 @@ class AiReasonNote extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('✦', style: TextStyle(color: AppColors.gold, fontSize: 11)),
+          Text('✦', style: TextStyle(color: AppColors.gold, fontSize: 11)),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               reason,
-              style: const TextStyle(color: AppColors.textDim, fontSize: 11, height: 1.35),
+              style: TextStyle(color: AppColors.textDim, fontSize: 11, height: 1.35),
             ),
           ),
         ],
@@ -149,7 +149,7 @@ class _AiQueryBarState extends State<AiQueryBar> {
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(hintText: widget.hint),
-                  style: const TextStyle(color: AppColors.text, fontSize: 14),
+                  style: TextStyle(color: AppColors.text, fontSize: 14),
                 ),
               ),
               const SizedBox(width: 10),
@@ -176,7 +176,7 @@ class _AiQueryBarState extends State<AiQueryBar> {
                           ),
                           child: Text(
                             e,
-                            style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                           ),
                         ),
                       ))
@@ -184,7 +184,7 @@ class _AiQueryBarState extends State<AiQueryBar> {
             ),
           ],
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Оставь поле пустым — обезьянка выберет на своё усмотрение.',
             style: TextStyle(color: AppColors.textDim, fontSize: 11),
           ),

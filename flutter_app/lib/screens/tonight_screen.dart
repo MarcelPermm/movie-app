@@ -130,7 +130,7 @@ class _TonightScreenState extends State<TonightScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
       children: [
-        const Text('КАКОЕ НАСТРОЕНИЕ', style: kEyebrowStyle),
+        Text('КАКОЕ НАСТРОЕНИЕ', style: kEyebrowStyle),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -150,10 +150,10 @@ class _TonightScreenState extends State<TonightScreen> {
             hintText: 'Или своими словами: «как Интерстеллар, но короче»',
             prefixIcon: Icon(Icons.edit_note, size: 20),
           ),
-          style: const TextStyle(color: AppColors.text),
+          style: TextStyle(color: AppColors.text),
         ),
         const SizedBox(height: 24),
-        const Text('СКОЛЬКО ВРЕМЕНИ', style: kEyebrowStyle),
+        Text('СКОЛЬКО ВРЕМЕНИ', style: kEyebrowStyle),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -167,7 +167,7 @@ class _TonightScreenState extends State<TonightScreen> {
               .toList(),
         ),
         const SizedBox(height: 24),
-        const Text('С КЕМ СМОТРИШЬ', style: kEyebrowStyle),
+        Text('С КЕМ СМОТРИШЬ', style: kEyebrowStyle),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -182,7 +182,7 @@ class _TonightScreenState extends State<TonightScreen> {
         ),
         if (_error != null) ...[
           const SizedBox(height: 20),
-          Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 13)),
+          Text(_error!, style: TextStyle(color: AppColors.red, fontSize: 13)),
         ],
         const SizedBox(height: 28),
         SizedBox(
@@ -209,7 +209,7 @@ class _TonightScreenState extends State<TonightScreen> {
             children: [
               const Text('🍿', style: TextStyle(fontSize: 40)),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Ничего не подошло под эти условия.\nПопробуй другое настроение или время.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.textDim, fontSize: 14, height: 1.5),
@@ -241,7 +241,7 @@ class _TonightScreenState extends State<TonightScreen> {
                     Expanded(
                       child: Text(
                         summary,
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                       ),
                     ),
                     TextButton.icon(

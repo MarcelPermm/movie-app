@@ -584,7 +584,7 @@ class _Poster extends StatelessWidget {
                 ),
                 child: Text(
                   badge!,
-                  style: const TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w800),
+                  style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w800),
                 ),
               ),
             ),

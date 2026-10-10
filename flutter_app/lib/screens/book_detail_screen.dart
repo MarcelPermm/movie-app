@@ -76,7 +76,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             const SizedBox(height: 8),
             Text(
               _book.description,
-              style: const TextStyle(color: AppColors.text, fontSize: 13.5, height: 1.6),
+              style: TextStyle(color: AppColors.text, fontSize: 13.5, height: 1.6),
             ),
           ],
           if (_book.genres.isNotEmpty) ...[
@@ -96,7 +96,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         ),
                         child: Text(
                           g,
-                          style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                          style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                         ),
                       ))
                   .toList(),
@@ -104,7 +104,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           ],
           if (_error != null) ...[
             const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 12)),
+            Text(_error!, style: TextStyle(color: AppColors.red, fontSize: 12)),
           ],
           if (_similar.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -170,7 +170,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             children: [
               Text(
                 _book.title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
@@ -181,7 +181,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 const SizedBox(height: 5),
                 Text(
                   _book.author!,
-                  style: const TextStyle(color: AppColors.gold, fontSize: 13.5),
+                  style: TextStyle(color: AppColors.gold, fontSize: 13.5),
                 ),
               ],
               const SizedBox(height: 10),
@@ -201,7 +201,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _book.publisher!,
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                 ),
               ],
             ],
@@ -216,7 +216,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         children: [
           Text(icon, style: const TextStyle(fontSize: 11)),
           const SizedBox(width: 4),
-          Text(text, style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
+          Text(text, style: TextStyle(color: AppColors.textDim, fontSize: 12)),
         ],
       );
 
@@ -284,7 +284,7 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.textDim,
           fontSize: 10,
           letterSpacing: 0.9,

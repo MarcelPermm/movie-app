@@ -85,7 +85,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           actions: [
             IconButton(
               tooltip: 'Поиск',
-              icon: const Icon(Icons.search, color: AppColors.textDim),
+              icon: Icon(Icons.search, color: AppColors.textDim),
               onPressed: _openSearch,
             ),
           ],
@@ -93,7 +93,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<DiscoverRepository>().refresh(),
             child: repo.isEmpty
                 ? EmptyHint(
@@ -297,7 +297,7 @@ class _HeroSlide extends StatelessWidget {
 
         // Три слоя затемнения: снизу — под текст, слева — под колонку,
         // сверху — чтобы шапка не спорила с кадром.
-        const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+        DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -329,7 +329,7 @@ class _HeroSlide extends StatelessWidget {
                       ),
                       child: Text(
                         movie.isTv ? 'СЕРИАЛ' : 'ФИЛЬМ',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.bg,
                           fontSize: 9.5,
                           letterSpacing: 1.2,
@@ -355,7 +355,7 @@ class _HeroSlide extends StatelessWidget {
                   movie.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 46,
                     fontWeight: FontWeight.w800,
@@ -370,7 +370,7 @@ class _HeroSlide extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     movie.shortMeta,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.gold,
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
@@ -383,7 +383,7 @@ class _HeroSlide extends StatelessWidget {
                     movie.overview,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 14,
                       height: 1.55,

@@ -154,7 +154,7 @@ class _PosterCardState extends State<PosterCard> {
                     widget.subtitle!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                   ),
                 ),
             ],
@@ -178,7 +178,7 @@ class _HoverButton extends StatelessWidget {
       child: Container(
         height: 46,
         width: 46,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: AppColors.goldGradient,
           shape: BoxShape.circle,
           boxShadow: [BoxShadow(color: Color(0x88000000), blurRadius: 14, offset: Offset(0, 5))],
@@ -249,7 +249,7 @@ class _Fallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -279,7 +279,7 @@ class _Badge extends StatelessWidget {
       ),
       child: Text(
         '$value',
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.bg,
           fontSize: 12,
           fontWeight: FontWeight.w800,
@@ -304,7 +304,7 @@ class _SeenMark extends StatelessWidget {
           BoxShadow(color: Color(0x77000000), blurRadius: 8, offset: Offset(0, 3)),
         ],
       ),
-      child: const Icon(Icons.check, size: 15, color: AppColors.bg),
+      child: Icon(Icons.check, size: 15, color: AppColors.bg),
     );
   }
 }

@@ -152,7 +152,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             if (widget.mediaType == 'tv' && !widget.isSingleSource)
               Text(
                 'Сезон ${widget.season} · Серия ${widget.episode}',
-                style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
               ),
           ],
         ),
@@ -167,7 +167,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             PopupMenuButton<String>(
               initialValue: _source,
               tooltip: 'Источник',
-              icon: const Icon(Icons.swap_horiz, color: AppColors.textDim),
+              icon: Icon(Icons.swap_horiz, color: AppColors.textDim),
               onSelected: _switchSource,
               itemBuilder: (_) => Config.watchSources.entries
                   .map((e) => PopupMenuItem(value: e.key, child: Text(e.value)))
@@ -177,7 +177,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           // автоматический откат исчерпал попытки, это лечится одним нажатием.
           IconButton(
             tooltip: 'Вернуться к плееру',
-            icon: const Icon(Icons.refresh, color: AppColors.textDim),
+            icon: Icon(Icons.refresh, color: AppColors.textDim),
             onPressed: () {
               _recoveries = 0;
               _backToPlayer();
@@ -185,7 +185,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           IconButton(
             tooltip: 'Открыть в браузере',
-            icon: const Icon(Icons.open_in_new, color: AppColors.textDim),
+            icon: Icon(Icons.open_in_new, color: AppColors.textDim),
             onPressed: _openExternally,
           ),
           const SizedBox(width: 6),
@@ -195,7 +195,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         children: [
           Positioned.fill(child: _buildWebView()),
           if (_loading)
-            const Positioned.fill(
+            Positioned.fill(
               child: ColoredBox(
                 color: Colors.black,
                 child: Center(child: CircularProgressIndicator(color: AppColors.gold)),
@@ -340,11 +340,11 @@ class _BlockedCounter extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.shield_outlined, size: 13, color: AppColors.green),
+            Icon(Icons.shield_outlined, size: 13, color: AppColors.green),
             const SizedBox(width: 5),
             Text(
               '$count',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.green,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

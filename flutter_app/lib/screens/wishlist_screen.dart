@@ -62,7 +62,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<WishlistRepository>().refresh(),
             child: _showItems ? _buildItems(repo) : _buildFriends(repo),
           ),
@@ -95,7 +95,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) => context.read<WishlistRepository>().removeItem(item),
       child: Container(
@@ -121,7 +121,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     children: [
                       Text(
                         item.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -135,7 +135,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                             const SizedBox(width: 8),
                             Text(
                               formatMoney(item.price!),
-                              style: const TextStyle(color: AppColors.gold, fontSize: 13),
+                              style: TextStyle(color: AppColors.gold, fontSize: 13),
                             ),
                           ],
                         ],
@@ -146,7 +146,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                           item.note!,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                          style: TextStyle(color: AppColors.textDim, fontSize: 12),
                         ),
                       ],
                     ],
@@ -229,21 +229,21 @@ class _WishlistScreenState extends State<WishlistScreen> {
       ),
       child: ListTile(
         leading: _Avatar(name: request.displayName),
-        title: Text(request.displayName, style: const TextStyle(color: AppColors.text, fontSize: 15)),
+        title: Text(request.displayName, style: TextStyle(color: AppColors.text, fontSize: 15)),
         subtitle: Text('@${request.username}',
-            style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
+            style: TextStyle(color: AppColors.textDim, fontSize: 12)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (incoming)
               IconButton(
                 tooltip: 'Принять',
-                icon: const Icon(Icons.check, color: AppColors.green),
+                icon: Icon(Icons.check, color: AppColors.green),
                 onPressed: () => context.read<WishlistRepository>().acceptRequest(request),
               ),
             IconButton(
               tooltip: incoming ? 'Отклонить' : 'Отменить',
-              icon: const Icon(Icons.close, color: AppColors.textDim),
+              icon: Icon(Icons.close, color: AppColors.textDim),
               onPressed: () => context.read<WishlistRepository>().declineRequest(request),
             ),
           ],
@@ -266,10 +266,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
         )),
         onLongPress: () => _removeFriend(friend),
         leading: _Avatar(name: friend.displayName),
-        title: Text(friend.displayName, style: const TextStyle(color: AppColors.text, fontSize: 15)),
+        title: Text(friend.displayName, style: TextStyle(color: AppColors.text, fontSize: 15)),
         subtitle: Text('@${friend.username}',
-            style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.textDim),
+            style: TextStyle(color: AppColors.textDim, fontSize: 12)),
+        trailing: Icon(Icons.chevron_right, color: AppColors.textDim),
       ),
     );
   }
@@ -308,7 +308,7 @@ class _GroupLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
-        child: Text(text, style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
+        child: Text(text, style: TextStyle(color: AppColors.textDim, fontSize: 12)),
       );
 }
 
@@ -322,7 +322,7 @@ class _Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: 18,
       backgroundColor: AppColors.goldDim.withValues(alpha: 0.25),
-      child: Text(letter, style: const TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700)),
+      child: Text(letter, style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -331,7 +331,7 @@ class _PriorityChip extends StatelessWidget {
   final int priority;
   const _PriorityChip({required this.priority});
 
-  static const _colors = {
+  static Map<int, Color> get _colors => {
     1: AppColors.red,
     2: AppColors.gold,
     3: AppColors.blue,
@@ -481,10 +481,10 @@ class _WishDialogState extends State<_WishDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       title: Text(
         widget.item == null ? 'Новое желание' : 'Желание',
-        style: const TextStyle(color: AppColors.text, fontSize: 17),
+        style: TextStyle(color: AppColors.text, fontSize: 17),
       ),
       content: SizedBox(
         width: 440,
@@ -497,7 +497,7 @@ class _WishDialogState extends State<_WishDialog> {
                 controller: _title,
                 autofocus: widget.item == null,
                 decoration: const InputDecoration(hintText: 'Что хочется'),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
               ),
               const SizedBox(height: 10),
               Row(
@@ -506,19 +506,19 @@ class _WishDialogState extends State<_WishDialog> {
                     child: TextField(
                       controller: _url,
                       decoration: const InputDecoration(hintText: 'Ссылка на товар'),
-                      style: const TextStyle(color: AppColors.text),
+                      style: TextStyle(color: AppColors.text),
                     ),
                   ),
                   const SizedBox(width: 8),
                   _loadingPreview
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 18,
                           width: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.goldDim),
                         )
                       : IconButton(
                           tooltip: 'Подтянуть название и фото',
-                          icon: const Icon(Icons.download_outlined, color: AppColors.textDim),
+                          icon: Icon(Icons.download_outlined, color: AppColors.textDim),
                           onPressed: _fetchPreview,
                         ),
                 ],
@@ -527,14 +527,14 @@ class _WishDialogState extends State<_WishDialog> {
               TextField(
                 controller: _image,
                 decoration: const InputDecoration(hintText: 'Ссылка на картинку'),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: _price,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(hintText: 'Цена, ₽'),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -542,10 +542,10 @@ class _WishDialogState extends State<_WishDialog> {
                 minLines: 2,
                 maxLines: 4,
                 decoration: const InputDecoration(hintText: 'Комментарий: размер, цвет, ссылка на аналог'),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
               ),
               const SizedBox(height: 14),
-              const Text('Насколько хочется',
+              Text('Насколько хочется',
                   style: TextStyle(color: AppColors.textDim, fontSize: 12)),
               const SizedBox(height: 8),
               Wrap(
@@ -581,7 +581,7 @@ class _WishDialogState extends State<_WishDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(onPressed: _submit, child: const Text('Сохранить')),
       ],

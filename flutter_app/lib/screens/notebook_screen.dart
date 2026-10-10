@@ -17,12 +17,21 @@ class _NotebookScreenState extends State<NotebookScreen> {
   bool _showNotes = true;
 
   /// Цвета стикеров совпадают с теми, что на сайте.
-  static const _noteColors = {
-    'yellow': Color(0xFF3A3320),
-    'green': Color(0xFF1F3327),
-    'blue': Color(0xFF1E2B3D),
-    'pink': Color(0xFF3A2029),
-  };
+  /// В тёмных темах — приглушённые тона, в светлой — пастель: текст
+  /// стикера всегда цвета темы, и фон должен с ним контрастировать.
+  static Map<String, Color> get _noteColors => AppTheme.spec.isDark
+      ? const {
+          'yellow': Color(0xFF3A3320),
+          'green': Color(0xFF1F3327),
+          'blue': Color(0xFF1E2B3D),
+          'pink': Color(0xFF3A2029),
+        }
+      : const {
+          'yellow': Color(0xFFFFF1C2),
+          'green': Color(0xFFD9F5DF),
+          'blue': Color(0xFFDCE6FF),
+          'pink': Color(0xFFFFDDE6),
+        };
 
   @override
   void initState() {
@@ -64,7 +73,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<NotebookRepository>().refresh(),
             child: _showNotes ? _buildNotes(repo) : _buildLists(repo),
           ),
@@ -128,7 +137,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
                 InkWell(
                   onTap: () => _deleteNote(note),
                   borderRadius: BorderRadius.circular(6),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(2),
                     child: Icon(Icons.close, size: 16, color: AppColors.textDim),
                   ),
@@ -140,7 +149,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
               child: Text(
                 note.body,
                 overflow: TextOverflow.fade,
-                style: const TextStyle(color: AppColors.text, fontSize: 13, height: 1.4),
+                style: TextStyle(color: AppColors.text, fontSize: 13, height: 1.4),
               ),
             ),
           ],
@@ -186,10 +195,10 @@ class _NotebookScreenState extends State<NotebookScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setLocalState) => AlertDialog(
-          backgroundColor: AppColors.surface,
+          backgroundColor: AppColors.sheet,
           title: Text(
             note == null ? 'Новая заметка' : 'Заметка',
-            style: const TextStyle(color: AppColors.text, fontSize: 17),
+            style: TextStyle(color: AppColors.text, fontSize: 17),
           ),
           content: SizedBox(
             width: 420,
@@ -200,7 +209,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
                   controller: titleController,
                   autofocus: note == null,
                   decoration: const InputDecoration(hintText: 'Заголовок'),
-                  style: const TextStyle(color: AppColors.text),
+                  style: TextStyle(color: AppColors.text),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -208,7 +217,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
                   minLines: 4,
                   maxLines: 10,
                   decoration: const InputDecoration(hintText: 'Текст'),
-                  style: const TextStyle(color: AppColors.text),
+                  style: TextStyle(color: AppColors.text),
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -240,7 +249,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+              child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(
@@ -288,15 +297,15 @@ class _NotebookScreenState extends State<NotebookScreen> {
           leading: Text(list.emoji, style: const TextStyle(fontSize: 20)),
           title: Text(
             list.name,
-            style: const TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w600),
+            style: TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w600),
           ),
           subtitle: Text(
             items.isEmpty ? 'пусто' : '$done из ${items.length}',
-            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+            style: TextStyle(color: AppColors.textDim, fontSize: 12),
           ),
           trailing: PopupMenuButton<String>(
-            icon: const Icon(Icons.more_horiz, color: AppColors.textDim),
-            color: AppColors.surface,
+            icon: Icon(Icons.more_horiz, color: AppColors.textDim),
+            color: AppColors.sheet,
             onSelected: (value) {
               if (value == 'add') _addItem(list);
               if (value == 'delete') _deleteList(list);
@@ -325,7 +334,7 @@ class _NotebookScreenState extends State<NotebookScreen> {
                     ),
                   ),
                   trailing: IconButton(
-                    icon: const Icon(Icons.close, size: 16, color: AppColors.textDim),
+                    icon: Icon(Icons.close, size: 16, color: AppColors.textDim),
                     onPressed: () => context.read<NotebookRepository>().removeItem(item),
                   ),
                 )),

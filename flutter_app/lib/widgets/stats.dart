@@ -6,13 +6,13 @@ import '../theme.dart';
 class StatTile extends StatelessWidget {
   final String value;
   final String label;
-  final Color color;
+  final Color? color;
 
   const StatTile({
     super.key,
     required this.value,
     required this.label,
-    this.color = AppColors.gold,
+    this.color,
   });
 
   @override
@@ -26,12 +26,12 @@ class StatTile extends StatelessWidget {
         children: [
           Text(
             value,
-            style: TextStyle(color: color, fontSize: 26, fontWeight: FontWeight.w800, height: 1.1),
+            style: AppText.number(26, color: color ?? AppColors.gold),
           ),
           const SizedBox(height: 4),
           Text(
             label.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textDim,
               fontSize: 10,
               letterSpacing: 0.8,
@@ -53,8 +53,11 @@ class SplitBarRow extends StatelessWidget {
   final int primary;
   final int secondary;
   final int max;
-  final Color primaryColor;
-  final Color secondaryColor;
+  final Color? _primaryColor;
+  final Color? _secondaryColor;
+
+  Color get primaryColor => _primaryColor ?? AppColors.gold;
+  Color get secondaryColor => _secondaryColor ?? AppColors.blue;
 
   const SplitBarRow({
     super.key,
@@ -62,9 +65,10 @@ class SplitBarRow extends StatelessWidget {
     required this.primary,
     required this.max,
     this.secondary = 0,
-    this.primaryColor = AppColors.gold,
-    this.secondaryColor = AppColors.blue,
-  });
+    Color? primaryColor,
+    Color? secondaryColor,
+  })  : _primaryColor = primaryColor,
+        _secondaryColor = secondaryColor;
 
   @override
   Widget build(BuildContext context) {
@@ -81,7 +85,7 @@ class SplitBarRow extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: AppColors.text, fontSize: 12.5),
+              style: TextStyle(color: AppColors.text, fontSize: 12.5),
             ),
           ),
           const SizedBox(width: 10),
@@ -126,7 +130,7 @@ class SplitBarRow extends StatelessWidget {
             child: Text(
               '$total',
               textAlign: TextAlign.right,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.textDim,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -150,7 +154,7 @@ class ColumnChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final max = bars.fold<int>(0, (m, b) => b.total > m ? b.total : m);
     if (max == 0) {
-      return const SizedBox(
+      return SizedBox(
         height: 60,
         child: Center(
           child: Text('Пока нет данных', style: TextStyle(color: AppColors.textDim, fontSize: 12)),
@@ -188,7 +192,7 @@ class ColumnChart extends StatelessWidget {
                     bar.label,
                     maxLines: 1,
                     overflow: TextOverflow.clip,
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 9.5),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 9.5),
                   ),
                 ],
               ),
@@ -203,9 +207,11 @@ class ColumnChart extends StatelessWidget {
 class ColumnBar {
   final String label;
   final int total;
-  final Color color;
+  final Color? _color;
 
-  const ColumnBar({required this.label, required this.total, this.color = AppColors.gold});
+  Color get color => _color ?? AppColors.gold;
+
+  const ColumnBar({required this.label, required this.total, Color? color}) : _color = color;
 }
 
 /// Заголовок блока внутри профиля.
@@ -230,7 +236,7 @@ class StatBlock extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.text,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -238,7 +244,7 @@ class StatBlock extends StatelessWidget {
                 ),
               ),
               if (hint != null)
-                Text(hint!, style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                Text(hint!, style: TextStyle(color: AppColors.textDim, fontSize: 11)),
             ],
           ),
           const SizedBox(height: 12),
@@ -272,7 +278,7 @@ class ChartLegend extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 5),
-                  Text(e.key, style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                  Text(e.key, style: TextStyle(color: AppColors.textDim, fontSize: 11)),
                 ],
               ))
           .toList(),

@@ -69,7 +69,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         ),
         actions: [
           if (_busy)
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 14),
               child: SizedBox(
                 width: 18,
@@ -79,17 +79,17 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             ),
           IconButton(
             tooltip: 'Изменить поездку',
-            icon: const Icon(Icons.edit_outlined, color: AppColors.textDim),
+            icon: Icon(Icons.edit_outlined, color: AppColors.textDim),
             onPressed: () => _editTrip(trip),
           ),
           IconButton(
             tooltip: 'Добавить город',
-            icon: const Icon(Icons.add_location_alt_outlined, color: AppColors.textDim),
+            icon: Icon(Icons.add_location_alt_outlined, color: AppColors.textDim),
             onPressed: _busy ? null : () => _addCity(trip),
           ),
           IconButton(
             tooltip: 'Добавить трату',
-            icon: const Icon(Icons.add, color: AppColors.gold),
+            icon: Icon(Icons.add, color: AppColors.gold),
             onPressed: () => _addExpense(trip, cities),
           ),
           const SizedBox(width: 6),
@@ -97,7 +97,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       ),
       body: RefreshIndicator(
         color: AppColors.gold,
-        backgroundColor: AppColors.surface,
+        backgroundColor: AppColors.sheet,
         onRefresh: () =>
             context.read<TripRepository>().loadTree(trip.id, forceRefresh: true),
         child: ListView(
@@ -112,7 +112,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
             if (trip.isGroup)
               ..._buildCityBlocks(repo, trip, cities)
             else if (expenses.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 40),
                 child: Text(
                   'Трат пока нет.\nДобавь первую — кнопкой сверху',
@@ -181,12 +181,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   children: [
                     Text(
                       trip.dateLabel,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                     const Spacer(),
                     Text(
                       'план ${formatMoney(planned)}',
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                   ],
                 ),
@@ -227,7 +227,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ПО СТАТЬЯМ', style: kEyebrowStyle),
+          Text('ПО СТАТЬЯМ', style: kEyebrowStyle),
           const SizedBox(height: 8),
           ...entries.map((e) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 5),
@@ -239,12 +239,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         Expanded(
                           child: Text(
                             e.key,
-                            style: const TextStyle(color: AppColors.text, fontSize: 13.5),
+                            style: TextStyle(color: AppColors.text, fontSize: 13.5),
                           ),
                         ),
                         Text(
                           '${formatMoney(e.value)}  ·  ${(e.value * 100 / total).round()}%',
-                          style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                          style: TextStyle(color: AppColors.textDim, fontSize: 12),
                         ),
                       ],
                     ),
@@ -255,7 +255,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         value: e.value / max,
                         minHeight: 4,
                         backgroundColor: AppColors.bg,
-                        valueColor: const AlwaysStoppedAnimation(AppColors.blue),
+                        valueColor: AlwaysStoppedAnimation(AppColors.blue),
                       ),
                     ),
                   ],
@@ -272,7 +272,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final direct = repo.expensesOf(group.id);
     return [
       if (cities.isEmpty)
-        const Padding(
+        Padding(
           padding: EdgeInsets.only(top: 30),
           child: Text(
             'В поездке пока нет городов.\nДобавь первый — значком с булавкой сверху',
@@ -378,7 +378,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           children: [
                             Text(
                               title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.text,
                                 fontSize: 15.5,
                                 fontWeight: FontWeight.w700,
@@ -387,7 +387,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                             if (subtitle.isNotEmpty)
                               Text(
                                 subtitle,
-                                style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                                style: TextStyle(color: AppColors.textDim, fontSize: 12),
                               ),
                           ],
                         ),
@@ -406,13 +406,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         IconButton(
                           tooltip: 'Изменить город',
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.textDim),
+                          icon: Icon(Icons.edit_outlined, size: 17, color: AppColors.textDim),
                           onPressed: onEdit,
                         ),
                       if (onMenu != null)
                         IconButton(
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.more_vert, size: 18, color: AppColors.textDim),
+                          icon: Icon(Icons.more_vert, size: 18, color: AppColors.textDim),
                           onPressed: onMenu,
                         )
                       else
@@ -443,7 +443,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           if (collapsed)
             const SizedBox.shrink()
           else if (expenses.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(4, 10, 4, 0),
               child: Text(
                 'нет трат по этому городу',
@@ -460,13 +460,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   void _cityMenu(Trip city) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: AppColors.gold),
+              leading: Icon(Icons.edit_outlined, color: AppColors.gold),
               title: const Text('Изменить город'),
               onTap: () {
                 Navigator.pop(sheetContext);
@@ -474,7 +474,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.call_split, color: AppColors.gold),
+              leading: Icon(Icons.call_split, color: AppColors.gold),
               title: const Text('Вынести в отдельную поездку'),
               onTap: () async {
                 Navigator.pop(sheetContext);
@@ -622,7 +622,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               const Spacer(),
               Text(
                 formatMoney(total),
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.textDim,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -661,7 +661,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(AppRadius.small),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) => context.read<TripRepository>().removeExpense(expense),
       child: InkWell(
@@ -681,7 +681,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       expense.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.text, fontSize: 14.5),
+                      style: TextStyle(color: AppColors.text, fontSize: 14.5),
                     ),
                     if (expense.note.isNotEmpty || expense.city.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -692,7 +692,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                         ].join('  ·  '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12),
                       ),
                     ],
                   ],
@@ -713,7 +713,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                   if (planned != null && planned > 0)
                     Text(
                       'план ${formatMoney(planned)}',
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
                     ),
                 ],
               ),
@@ -734,7 +734,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final result = await showModalBottomSheet<_TripExpenseForm>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (_) => _TripExpenseSheet(
         initialDate: _defaultDate(trip),
         cities: cities,
@@ -768,7 +768,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     final result = await showModalBottomSheet<_TripExpenseForm>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (_) => _TripExpenseSheet(initial: expense),
     );
     if (result == null || !mounted) return;
@@ -921,7 +921,7 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
           children: [
             Text(
               widget.initial == null ? 'Трата в поездке' : 'Изменить трату',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -939,7 +939,7 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
                       hintText: 'Потрачено, ₽',
                       prefixIcon: Icon(Icons.payments_outlined, size: 19),
                     ),
-                    style: const TextStyle(color: AppColors.text, fontSize: 16),
+                    style: TextStyle(color: AppColors.text, fontSize: 16),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -948,13 +948,13 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
                     controller: _planned,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(hintText: 'План, ₽'),
-                    style: const TextStyle(color: AppColors.text, fontSize: 16),
+                    style: TextStyle(color: AppColors.text, fontSize: 16),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 14),
-            const Text('НА ЧТО', style: kEyebrowStyle),
+            Text('НА ЧТО', style: kEyebrowStyle),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -989,12 +989,12 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
             TextField(
               controller: _category,
               decoration: const InputDecoration(hintText: 'Или своё название'),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
             ),
             const SizedBox(height: 10),
             if (widget.cities.isNotEmpty) ...[
               const SizedBox(height: 4),
-              const Text('ГОРОД', style: kEyebrowStyle),
+              Text('ГОРОД', style: kEyebrowStyle),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -1031,13 +1031,13 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
                   hintText: 'Город',
                   prefixIcon: Icon(Icons.place_outlined, size: 19),
                 ),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
               ),
             const SizedBox(height: 10),
             TextField(
               controller: _note,
               decoration: const InputDecoration(hintText: 'Комментарий'),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
               onSubmitted: (_) => _submit(),
             ),
             const SizedBox(height: 14),
@@ -1142,10 +1142,10 @@ class _CityDialogState extends State<_CityDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       title: Text(
         widget.title ?? (widget.initial == null ? 'Новый город' : 'Изменить город'),
-        style: const TextStyle(color: AppColors.text, fontSize: 17),
+        style: TextStyle(color: AppColors.text, fontSize: 17),
       ),
       content: SizedBox(
         width: 400,
@@ -1156,7 +1156,7 @@ class _CityDialogState extends State<_CityDialog> {
             if (widget.hint != null) ...[
               Text(
                 widget.hint!,
-                style: const TextStyle(color: AppColors.textDim, fontSize: 12.5, height: 1.4),
+                style: TextStyle(color: AppColors.textDim, fontSize: 12.5, height: 1.4),
               ),
               const SizedBox(height: 14),
             ],
@@ -1168,7 +1168,7 @@ class _CityDialogState extends State<_CityDialog> {
                 hintText: widget.title == null ? 'Тбилиси' : null,
                 prefixIcon: const Icon(Icons.place_outlined, size: 19),
               ),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
             ),
             if (!widget.nameOnly) ...[
               const SizedBox(height: 14),
@@ -1189,7 +1189,7 @@ class _CityDialogState extends State<_CityDialog> {
                   labelText: 'План, ₽',
                   hintText: 'можно пропустить',
                 ),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
                 onSubmitted: (_) => _submit(),
               ),
             ],
@@ -1199,7 +1199,7 @@ class _CityDialogState extends State<_CityDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(
           onPressed: _submit,

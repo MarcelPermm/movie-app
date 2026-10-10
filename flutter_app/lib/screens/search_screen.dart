@@ -106,11 +106,11 @@ class _SearchScreenState extends State<SearchScreen> {
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
           ),
-          style: const TextStyle(color: AppColors.text, fontSize: 16),
+          style: TextStyle(color: AppColors.text, fontSize: 16),
         ),
         actions: [
           if (_loading)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(right: 18),
               child: Center(
                 child: SizedBox(
@@ -134,7 +134,7 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Text(
             _error!,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.red, fontSize: 14),
+            style: TextStyle(color: AppColors.red, fontSize: 14),
           ),
         ),
       );
@@ -146,7 +146,7 @@ class _SearchScreenState extends State<SearchScreen> {
           _controller.text.trim().isEmpty
               ? 'Начни вводить название'
               : (_loading ? '' : 'Ничего не нашлось'),
-          style: const TextStyle(color: AppColors.textDim, fontSize: 14),
+          style: TextStyle(color: AppColors.textDim, fontSize: 14),
         ),
       );
     }

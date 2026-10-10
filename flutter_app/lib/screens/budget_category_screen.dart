@@ -56,7 +56,7 @@ class BudgetCategoryScreen extends StatelessWidget {
             child: Center(
               child: Text(
                 '${monthNames[repo.month.month - 1]} ${repo.month.year}',
-                style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
               ),
             ),
           ),
@@ -93,19 +93,19 @@ class BudgetCategoryScreen extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: (total / category.planMonthly).clamp(0.0, 1.0),
                 minHeight: 7,
-                backgroundColor: AppColors.surface,
+                backgroundColor: AppColors.sheet,
                 valueColor: AlwaysStoppedAnimation(over ? AppColors.red : AppColors.gold),
               ),
             ),
             const SizedBox(height: 6),
             Text(
               'План ${formatMoney(category.planMonthly)} на месяц',
-              style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+              style: TextStyle(color: AppColors.textDim, fontSize: 12),
             ),
           ],
 
           if (own.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 60),
               child: Text(
                 'В этой категории за месяц ничего нет',
@@ -116,7 +116,7 @@ class BudgetCategoryScreen extends StatelessWidget {
 
           if (own.isNotEmpty) ...[
             const SizedBox(height: 24),
-            const Text('ТРАТЫ МЕСЯЦА', style: kEyebrowStyle),
+            Text('ТРАТЫ МЕСЯЦА', style: kEyebrowStyle),
             const SizedBox(height: 10),
             ...own.map((e) => _ExpenseRow(expense: e)),
           ],
@@ -147,19 +147,19 @@ class _ExpenseRow extends StatelessWidget {
                   expense.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.text, fontSize: 14.5),
+                  style: TextStyle(color: AppColors.text, fontSize: 14.5),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   _dayLabel(expense.date),
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12),
                 ),
               ],
             ),
           ),
           Text(
             formatMoney(expense.amount),
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 14.5,
               fontWeight: FontWeight.w700,

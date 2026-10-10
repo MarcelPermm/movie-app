@@ -94,7 +94,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               slivers: [
                 _buildHero(details),
                 if (details == null)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(child: CircularProgressIndicator(color: AppColors.gold)),
                   )
@@ -112,7 +112,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(_error!, textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.red, fontSize: 14)),
+                  style: TextStyle(color: AppColors.red, fontSize: 14)),
               const SizedBox(height: 16),
               FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Назад')),
             ],
@@ -130,7 +130,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       pinned: true,
       backgroundColor: AppColors.bg,
       leading: IconButton(
-        icon: const CircleAvatar(
+        icon: CircleAvatar(
           radius: 16,
           backgroundColor: Color(0xCC0A0A0F),
           child: Icon(Icons.arrow_back, color: AppColors.text, size: 18),
@@ -151,7 +151,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             else
               Container(color: AppColors.surface),
             // Затемнение снизу, чтобы кадр переходил в фон страницы.
-            const DecoratedBox(
+            DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
@@ -222,7 +222,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         if (!PlayerScreen.isSupported)
         PopupMenuButton<String>(
           initialValue: _source,
-          color: AppColors.surface,
+          color: AppColors.sheet,
           tooltip: 'Источник плеера',
           onSelected: (value) => setState(() => _source = value),
           itemBuilder: (_) => Config.watchSources.entries
@@ -240,9 +240,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               children: [
                 Text(
                   Config.watchSources[_source] ?? _source,
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 13),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 13),
                 ),
-                const Icon(Icons.arrow_drop_down, color: AppColors.textDim, size: 20),
+                Icon(Icons.arrow_drop_down, color: AppColors.textDim, size: 20),
               ],
             ),
           ),
@@ -263,7 +263,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         children: [
           Text(
             movie.title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.text,
               fontSize: 26,
               fontWeight: FontWeight.w800,
@@ -275,7 +275,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 details.originalTitle!,
-                style: const TextStyle(color: AppColors.textDim, fontSize: 14),
+                style: TextStyle(color: AppColors.textDim, fontSize: 14),
               ),
             ),
           if (movie.genres.isNotEmpty) ...[
@@ -292,7 +292,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             const SizedBox(height: 16),
             Text(
               movie.overview,
-              style: const TextStyle(color: AppColors.text, fontSize: 14, height: 1.55),
+              style: TextStyle(color: AppColors.text, fontSize: 14, height: 1.55),
             ),
           ],
           if (details.studios.isNotEmpty) ...[
@@ -364,7 +364,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             alignment: Alignment.center,
             child: Text(
               studio.name,
-              style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+              style: TextStyle(color: AppColors.textDim, fontSize: 12),
             ),
           );
         },
@@ -490,7 +490,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     maxLines: 2,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.text,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -503,7 +503,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       maxLines: 1,
                       textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 10),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 10),
                     ),
                 ],
               ),
@@ -533,7 +533,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 value: _season,
                 underline: const SizedBox.shrink(),
                 dropdownColor: AppColors.surface,
-                style: const TextStyle(color: AppColors.text, fontSize: 13),
+                style: TextStyle(color: AppColors.text, fontSize: 13),
                 items: details.realSeasons
                     .map((s) => DropdownMenuItem(
                           value: s.seasonNumber,
@@ -555,7 +555,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         ),
         const SizedBox(height: 12),
         if (_episodes.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 30),
             child: Center(child: CircularProgressIndicator(color: AppColors.goldDim)),
           )
@@ -691,7 +691,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           color: AppColors.text,
           fontSize: 17,
           fontWeight: FontWeight.w700,
@@ -711,7 +711,7 @@ class _Tag extends StatelessWidget {
           border: Border.all(color: AppColors.border),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(text, style: const TextStyle(color: AppColors.textDim, fontSize: 12)),
+        child: Text(text, style: TextStyle(color: AppColors.textDim, fontSize: 12)),
       );
 }
 
@@ -735,7 +735,7 @@ class _Stat extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(label.toUpperCase(),
-              style: const TextStyle(color: AppColors.textDim, fontSize: 10, letterSpacing: 0.8)),
+              style: TextStyle(color: AppColors.textDim, fontSize: 10, letterSpacing: 0.8)),
           const SizedBox(height: 3),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -743,11 +743,11 @@ class _Stat extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(value,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w700)),
               if (votes > 0)
                 Text('  ${_fmtVotes(votes)}',
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 11)),
             ],
           ),
         ],
@@ -812,7 +812,7 @@ class _RatingBlockState extends State<_RatingBlock> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Моя оценка',
+          Text('Моя оценка',
               style: TextStyle(color: AppColors.textDim, fontSize: 12, letterSpacing: 0.4)),
           const SizedBox(height: 10),
           Wrap(
@@ -853,7 +853,7 @@ class _RatingBlockState extends State<_RatingBlock> {
             controller: _review,
             minLines: 2,
             maxLines: 5,
-            style: const TextStyle(color: AppColors.text, fontSize: 14),
+            style: TextStyle(color: AppColors.text, fontSize: 14),
             decoration: const InputDecoration(hintText: 'Написать отзыв (необязательно)…'),
             onChanged: (_) => setState(() => _saved = false),
           ),
@@ -866,7 +866,7 @@ class _RatingBlockState extends State<_RatingBlock> {
               ),
               if (_saved) ...[
                 const SizedBox(width: 10),
-                const Icon(Icons.check_circle, color: AppColors.green, size: 18),
+                Icon(Icons.check_circle, color: AppColors.green, size: 18),
               ],
             ],
           ),

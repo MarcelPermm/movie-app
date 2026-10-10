@@ -330,7 +330,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: _resetFilters,
-                child: const Text('Сбросить всё', style: TextStyle(color: AppColors.textDim)),
+                child: Text('Сбросить всё', style: TextStyle(color: AppColors.textDim)),
               ),
             ),
         ],
@@ -342,7 +342,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
         children: [
           Text(
             text.toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.textDim,
               fontSize: 10,
               letterSpacing: 0.9,
@@ -351,14 +351,14 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
           ),
           if (hint != null) ...[
             const SizedBox(width: 8),
-            Text(hint, style: const TextStyle(color: AppColors.textDim, fontSize: 10.5)),
+            Text(hint, style: TextStyle(color: AppColors.textDim, fontSize: 10.5)),
           ],
         ],
       );
 
   Widget _buildBody(List<Movie> movies) {
     if (_loading && _all.isEmpty) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.gold));
+      return Center(child: CircularProgressIndicator(color: AppColors.gold));
     }
 
     if (_error != null && _all.isEmpty) {
@@ -376,7 +376,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
 
     return RefreshIndicator(
       color: AppColors.gold,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       onRefresh: _ensureLoaded,
       child: PosterGrid(
         itemCount: movies.length,
@@ -403,7 +403,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
       title: movie.title,
       actions: (sheetContext) => [
         ListTile(
-          leading: const Icon(Icons.bookmark_add_outlined, color: AppColors.gold),
+          leading: Icon(Icons.bookmark_add_outlined, color: AppColors.gold),
           title: const Text('В список «к просмотру»'),
           onTap: () {
             Navigator.pop(sheetContext);
@@ -411,7 +411,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
           },
         ),
         ListTile(
-          leading: const Icon(Icons.check_circle_outline, color: AppColors.green),
+          leading: Icon(Icons.check_circle_outline, color: AppColors.green),
           title: const Text('Уже смотрел'),
           onTap: () {
             Navigator.pop(sheetContext);
@@ -419,7 +419,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
           },
         ),
         ListTile(
-          leading: const Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
+          leading: Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
           title: const Text('Больше не предлагать'),
           onTap: () {
             Navigator.pop(sheetContext);

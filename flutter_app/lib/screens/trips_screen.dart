@@ -40,7 +40,7 @@ class _TripsScreenState extends State<TripsScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<TripRepository>().refresh(),
             child: trips.isEmpty
                 ? const EmptyHint(
@@ -118,7 +118,7 @@ class _TripsScreenState extends State<TripsScreen> {
 
     final target = await showModalBottomSheet<Trip>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -128,7 +128,7 @@ class _TripsScreenState extends State<TripsScreen> {
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
               child: Text(
                 '«${trip.name}» — объединить с…',
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
@@ -146,7 +146,7 @@ class _TripsScreenState extends State<TripsScreen> {
                             t.isGroup
                                 ? '${t.dateLabel}  ·  добавить как город'
                                 : t.dateLabel,
-                            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                            style: TextStyle(color: AppColors.textDim, fontSize: 12),
                           ),
                           onTap: () => Navigator.pop(sheetContext, t),
                         ))
@@ -236,7 +236,7 @@ class _TripCard extends StatelessWidget {
                         trip.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 16.5,
                           fontWeight: FontWeight.w700,
@@ -252,7 +252,7 @@ class _TripCard extends StatelessWidget {
                         ].join('  ·  '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                       ),
                     ],
                   ),
@@ -267,7 +267,7 @@ class _TripCard extends StatelessWidget {
                     ),
                     child: Text(
                       'через $days ${_plural(days)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.gold,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -294,7 +294,7 @@ class _TripCard extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 3),
                     child: Text(
                       'из ${formatMoney(planned)}',
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                   ),
                 ],
@@ -302,7 +302,7 @@ class _TripCard extends StatelessWidget {
                 if (_overspent)
                   Text(
                     '+${formatMoney(actual - planned)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.red,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -348,13 +348,13 @@ class _TripCard extends StatelessWidget {
   void _menu(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: AppColors.gold),
+              leading: Icon(Icons.edit_outlined, color: AppColors.gold),
               title: const Text('Изменить'),
               onTap: () {
                 Navigator.pop(sheetContext);
@@ -363,7 +363,7 @@ class _TripCard extends StatelessWidget {
             ),
             if (onMerge != null)
               ListTile(
-                leading: const Icon(Icons.merge_type, color: AppColors.blue),
+                leading: Icon(Icons.merge_type, color: AppColors.blue),
                 title: Text(trip.isGroup ? 'Добавить поездку как город' : 'Объединить с другой поездкой'),
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -371,7 +371,7 @@ class _TripCard extends StatelessWidget {
                 },
               ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppColors.red),
+              leading: Icon(Icons.delete_outline, color: AppColors.red),
               title: const Text('Удалить'),
               onTap: () {
                 Navigator.pop(sheetContext);
@@ -475,10 +475,10 @@ class _TripDialogState extends State<_TripDialog> {
     final editing = widget.initial != null;
 
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       title: Text(
         editing ? 'Изменить поездку' : 'Новая поездка',
-        style: const TextStyle(color: AppColors.text, fontSize: 17),
+        style: TextStyle(color: AppColors.text, fontSize: 17),
       ),
       content: SizedBox(
         width: 400,
@@ -491,11 +491,11 @@ class _TripDialogState extends State<_TripDialog> {
                 controller: _name,
                 autofocus: true,
                 decoration: const InputDecoration(hintText: 'Куда или что за событие'),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
                 onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 14),
-              const Text('ЗНАЧОК', style: kEyebrowStyle),
+              Text('ЗНАЧОК', style: kEyebrowStyle),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -522,7 +522,7 @@ class _TripDialogState extends State<_TripDialog> {
               ),
               if (!editing) ...[
                 const SizedBox(height: 16),
-                const Text('ТИП', style: kEyebrowStyle),
+                Text('ТИП', style: kEyebrowStyle),
                 const SizedBox(height: 8),
                 SegmentedToggle<String>(
                   value: _type,
@@ -547,7 +547,7 @@ class _TripDialogState extends State<_TripDialog> {
                 decoration: const InputDecoration(
                   hintText: 'Бюджет, ₽ — можно пропустить',
                 ),
-                style: const TextStyle(color: AppColors.text),
+                style: TextStyle(color: AppColors.text),
                 onSubmitted: (_) => _submit(),
               ),
             ],
@@ -557,7 +557,7 @@ class _TripDialogState extends State<_TripDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(
           onPressed: _submit,

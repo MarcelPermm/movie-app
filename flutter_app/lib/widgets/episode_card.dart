@@ -71,7 +71,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                       ),
                       child: Text(
                         '${ep.episodeNumber}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.gold,
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -89,7 +89,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                           color: AppColors.gold,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Text(
+                        child: Text(
                           '▶  Идёт',
                           style: TextStyle(
                             color: AppColors.bg,
@@ -122,7 +122,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                     const SizedBox(height: 4),
                     Text(
                       ep.meta,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 11),
                     ),
                   ],
                   if (ep.overview.isNotEmpty) ...[
@@ -131,7 +131,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                       ep.overview,
                       maxLines: _expanded ? null : 3,
                       overflow: _expanded ? null : TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.textDim,
                         fontSize: 12,
                         height: 1.45,
@@ -145,7 +145,7 @@ class _EpisodeCardState extends State<EpisodeCard> {
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             _expanded ? 'свернуть' : 'ещё',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.gold,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,

@@ -182,7 +182,7 @@ class _MediaRailState extends State<MediaRail> {
                         widget.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.text,
                           fontSize: 21,
                           fontWeight: FontWeight.w800,
@@ -414,7 +414,7 @@ class _CarouselCardState extends State<_CarouselCard> {
                   else
                     Container(color: AppColors.surface),
 
-                  const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+                  DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
 
                   // Боковые кадры уходят в тень — центр читается сам собой.
                   if (widget.dim > 0)
@@ -546,7 +546,7 @@ class _SeenChip extends StatelessWidget {
         color: AppColors.green,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.check, size: 13, color: AppColors.bg),

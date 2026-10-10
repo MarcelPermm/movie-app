@@ -35,7 +35,7 @@ class _MovieProfileTabState extends State<MovieProfileTab> {
     if (stats == null) {
       return Center(
         child: repo.syncing
-            ? const CircularProgressIndicator(color: AppColors.gold)
+            ? CircularProgressIndicator(color: AppColors.gold)
             : const EmptyHint(emoji: '📊', text: 'Статистика появится после первой синхронизации'),
       );
     }
@@ -49,7 +49,7 @@ class _MovieProfileTabState extends State<MovieProfileTab> {
 
     return RefreshIndicator(
       color: AppColors.gold,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       onRefresh: () => context.read<ProfileRepository>().refresh(),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
@@ -72,7 +72,7 @@ class _MovieProfileTabState extends State<MovieProfileTab> {
                   const SizedBox(height: 8),
                   Text(
                     'Оценено ${stats.ratedCount} из ${stats.total}',
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                   ),
                 ],
               ),
@@ -90,7 +90,7 @@ class _MovieProfileTabState extends State<MovieProfileTab> {
                         max: stats.topGenres.first.total,
                       )),
                   const SizedBox(height: 10),
-                  const ChartLegend({
+                  ChartLegend({
                     'фильмы': AppColors.gold,
                     'сериалы': AppColors.blue,
                   }),
@@ -206,10 +206,10 @@ class _AiAnalysisCard extends StatelessWidget {
           if (repo.analysis != null)
             Text(
               repo.analysis!,
-              style: const TextStyle(color: AppColors.text, fontSize: 13.5, height: 1.6),
+              style: TextStyle(color: AppColors.text, fontSize: 13.5, height: 1.6),
             )
           else if (!repo.analyzing)
-            const Text(
+            Text(
               'Обезьянка посмотрит, что ты смотрел, и расскажет про твой вкус.',
               style: TextStyle(color: AppColors.textDim, fontSize: 13, height: 1.5),
             ),
@@ -218,7 +218,7 @@ class _AiAnalysisCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: 10),
               child: Text(
                 repo.analysisError!,
-                style: const TextStyle(color: AppColors.red, fontSize: 12.5),
+                style: TextStyle(color: AppColors.red, fontSize: 12.5),
               ),
             ),
           const SizedBox(height: 12),
@@ -288,7 +288,7 @@ class BookProfileTab extends StatelessWidget {
             title: 'Страниц прочитано',
             child: Text(
               '${stats.totalPages}',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.gold,
                 fontSize: 30,
                 fontWeight: FontWeight.w800,

@@ -57,7 +57,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<GoalRepository>().refresh(),
             child: goals.isEmpty
                 ? const EmptyHint(emoji: '🎯', text: 'На этот период целей пока нет')
@@ -80,8 +80,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
         child: LinearProgressIndicator(
           value: fraction,
           minHeight: 6,
-          backgroundColor: AppColors.surface,
-          valueColor: const AlwaysStoppedAnimation(AppColors.gold),
+          backgroundColor: AppColors.sheet,
+          valueColor: AlwaysStoppedAnimation(AppColors.gold),
         ),
       ),
     );
@@ -99,7 +99,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) => context.read<GoalRepository>().remove(goal),
       child: Container(

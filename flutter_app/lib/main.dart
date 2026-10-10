@@ -41,6 +41,7 @@ Future<void> main() async {
   // Локальное хранилище поднимается до первого кадра — дальше все чтения
   // синхронные, и первый экран рисуется без единого сетевого запроса.
   await LocalStore.init();
+  AppTheme.restore();
 
   final session = Session()..restore();
   final api = ApiClient(session);
@@ -84,12 +85,27 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppTheme.notifier.addListener(_onThemeChanged);
   }
 
   @override
   void dispose() {
+    AppTheme.notifier.removeListener(_onThemeChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Смена темы. Цвета экраны читают из AppColors при каждой отрисовке,
+  /// поэтому достаточно перерисовать всё дерево — состояние экранов
+  /// (прокрутка, открытые вкладки) при этом сохраняется.
+  void _onThemeChanged() {
+    setState(() {});
+    void markDirty(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(markDirty);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildren(markDirty);
   }
 
   /// Возврат из фона — момент, когда данные могли устареть.
@@ -121,6 +137,17 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
       title: 'Monkey App',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
+      // Тема меняется мгновенно: плавный переход цвета смотрелся бы
+      // рассинхронно с экранами, которые перерисовываются сразу.
+      themeAnimationDuration: Duration.zero,
+      // Общий фон под всеми экранами (у «Стекла» — размытые пятна).
+      builder: (context, child) => Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(child: AppBackdrop()),
+          if (child != null) child,
+        ],
+      ),
       // Без этого горизонтальные ленты нельзя тянуть мышью на десктопе.
       scrollBehavior: const AppScrollBehavior(),
       home: Consumer<Session>(

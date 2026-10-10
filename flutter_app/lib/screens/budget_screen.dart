@@ -50,7 +50,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
             const SizedBox(width: 6),
             PopupMenuButton<String>(
               tooltip: 'Ещё',
-              icon: const Icon(Icons.more_horiz, color: AppColors.textDim),
+              icon: Icon(Icons.more_horiz, color: AppColors.textDim),
               onSelected: (value) {
                 if (value == 'category') _addCategory();
                 if (value == 'clear') _clearMonth();
@@ -67,7 +67,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         Expanded(
           child: RefreshIndicator(
             color: AppColors.gold,
-            backgroundColor: AppColors.surface,
+            backgroundColor: AppColors.sheet,
             onRefresh: () => context.read<BudgetRepository>().refresh(),
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 90),
@@ -184,9 +184,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.flight_takeoff, size: 17, color: AppColors.blue),
+              Icon(Icons.flight_takeoff, size: 17, color: AppColors.blue),
               const SizedBox(width: 9),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Поездки',
                   style: TextStyle(
@@ -260,7 +260,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                             trip.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppColors.text, fontSize: 14),
+                            style: TextStyle(color: AppColors.text, fontSize: 14),
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -268,7 +268,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                               trip.dateLabel,
                               if (hasCities) _citiesLabel(line.cities.length),
                             ].join('  ·  '),
-                            style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
                           ),
                         ],
                       ),
@@ -308,7 +308,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   const SizedBox(height: 5),
                   Text(
                     'план ${formatMoney(line.fullPlan)} учтён в месяце начала поездки',
-                    style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                    style: TextStyle(color: AppColors.textDim, fontSize: 11),
                   ),
                 ],
               ],
@@ -348,20 +348,20 @@ class _BudgetScreenState extends State<BudgetScreen> {
         padding: const EdgeInsets.fromLTRB(25, 6, 21, 6),
         child: Row(
           children: [
-            const Icon(Icons.place_outlined, size: 14, color: AppColors.textDim),
+            Icon(Icons.place_outlined, size: 14, color: AppColors.textDim),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
                 c.city.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AppColors.text, fontSize: 13),
+                style: TextStyle(color: AppColors.text, fontSize: 13),
               ),
             ),
             const SizedBox(width: 7),
             Text(
               c.city.dateLabel,
-              style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
             ),
             const Spacer(),
             Text(
@@ -393,7 +393,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ),
             child: Text(
               '${e.key} ${formatMoney(e.value)}',
-              style: const TextStyle(color: AppColors.blue, fontSize: 11.5),
+              style: TextStyle(color: AppColors.blue, fontSize: 11.5),
             ),
           );
         }).toList(),
@@ -434,7 +434,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'По категориям',
                   style: TextStyle(
@@ -454,7 +454,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           // но и мешаться среди плановых им незачем.
           if (unplanned.isNotEmpty) ...[
             const SizedBox(height: 10),
-            const Text('БЕЗ ПЛАНА', style: kEyebrowStyle),
+            Text('БЕЗ ПЛАНА', style: kEyebrowStyle),
             const SizedBox(height: 4),
             ...unplanned.map((c) => _buildCategoryRow(repo, c)),
           ],
@@ -465,7 +465,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               children: [
                 const Text('💸', style: TextStyle(fontSize: 15)),
                 const SizedBox(width: 9),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Без категории',
                     style: TextStyle(color: AppColors.textDim, fontSize: 13.5),
@@ -473,7 +473,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ),
                 Text(
                   formatMoney(repo.uncategorized),
-                  style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                  style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                 ),
               ],
             ),
@@ -511,7 +511,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     c.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.text, fontSize: 14),
+                    style: TextStyle(color: AppColors.text, fontSize: 14),
                   ),
                 ),
                 Text(
@@ -524,7 +524,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, size: 17, color: AppColors.textDim),
+                Icon(Icons.chevron_right, size: 17, color: AppColors.textDim),
               ],
             ),
             if (plan > 0) ...[
@@ -556,7 +556,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           children: [
             const Text('💸', style: TextStyle(fontSize: 34)),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Трат за этот месяц пока нет',
               style: TextStyle(color: AppColors.textDim, fontSize: 14),
             ),
@@ -586,7 +586,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   const Spacer(),
                   Text(
                     formatMoney(dayTotal),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.textDim,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -638,7 +638,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(AppRadius.small),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) => context.read<BudgetRepository>().removeExpense(expense),
       child: InkWell(
@@ -660,7 +660,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       expense.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.text, fontSize: 14.5),
+                      style: TextStyle(color: AppColors.text, fontSize: 14.5),
                     ),
                     if (category != null || (expense.note?.isNotEmpty ?? false)) ...[
                       const SizedBox(height: 3),
@@ -672,7 +672,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ].join('  ·  '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                        style: TextStyle(color: AppColors.textDim, fontSize: 12),
                       ),
                     ],
                   ],
@@ -681,7 +681,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               const SizedBox(width: 10),
               Text(
                 formatMoney(expense.amount),
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -710,7 +710,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           color: AppColors.red.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(AppRadius.small),
         ),
-        child: const Icon(Icons.delete_outline, color: AppColors.red),
+        child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
       onDismissed: (_) async {
         await context.read<BudgetRepository>().removeTripExpense(spending);
@@ -735,7 +735,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       expense.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.text, fontSize: 14.5),
+                      style: TextStyle(color: AppColors.text, fontSize: 14.5),
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -745,7 +745,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                       ].join('  ·  '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.blue, fontSize: 12),
+                      style: TextStyle(color: AppColors.blue, fontSize: 12),
                     ),
                   ],
                 ),
@@ -753,7 +753,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               const SizedBox(width: 10),
               Text(
                 formatMoney(expense.amount),
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.text,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -841,7 +841,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final result = await showModalBottomSheet<_ExpenseForm>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (_) => _ExpenseSheet(
         repo: repo,
         initialTrip: spending,
@@ -889,7 +889,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final result = await showModalBottomSheet<_ExpenseForm>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (_) => _ExpenseSheet(
         repo: repo,
         presetCategoryId: categoryId,
@@ -928,7 +928,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     final result = await showModalBottomSheet<_ExpenseForm>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (_) => _ExpenseSheet(repo: repo, initial: expense, tripTargets: targets),
     );
     if (result == null || !mounted) return;
@@ -967,13 +967,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
   void _categoryMenu(BudgetCategory category) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.edit_outlined, color: AppColors.gold),
+              leading: Icon(Icons.edit_outlined, color: AppColors.gold),
               title: const Text('Изменить категорию'),
               onTap: () async {
                 Navigator.pop(sheetContext);
@@ -991,7 +991,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppColors.red),
+              leading: Icon(Icons.delete_outline, color: AppColors.red),
               title: const Text('Удалить категорию'),
               onTap: () async {
                 Navigator.pop(sheetContext);
@@ -1203,7 +1203,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        const Text('ПОЕЗДКА', style: kEyebrowStyle),
+        Text('ПОЕЗДКА', style: kEyebrowStyle),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -1265,7 +1265,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               widget.initial == null && widget.initialTrip == null
                   ? 'Новая трата'
                   : 'Изменить трату',
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -1278,12 +1278,12 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               controller: _amount,
               autofocus: true,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: '0',
                 suffixText: '₽',
                 suffixStyle: TextStyle(color: AppColors.textDim, fontSize: 20),
               ),
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.gold,
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
@@ -1299,7 +1299,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
             if (_tripId != null)
               _buildTripCategories()
             else if (categories.isEmpty)
-              const Text(
+              Text(
                 'Категорий пока нет — трату можно записать и без неё',
                 style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
               )
@@ -1342,7 +1342,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                 hintText: 'Где — магазин, кафе, сервис',
                 prefixIcon: Icon(Icons.storefront_outlined, size: 19),
               ),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
             ),
             // Подсказки из истории: чаще всего тратят там же, где и вчера.
             if (_hints.isNotEmpty) ...[
@@ -1365,7 +1365,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                             ),
                             child: Text(
                               h,
-                              style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                              style: TextStyle(color: AppColors.textDim, fontSize: 12),
                             ),
                           ),
                         ))
@@ -1380,7 +1380,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
                 hintText: 'Комментарий',
                 prefixIcon: Icon(Icons.notes_outlined, size: 19),
               ),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
               onSubmitted: (_) => _submit(),
             ),
 
@@ -1472,10 +1472,10 @@ class _CategoryDialogState extends State<_CategoryDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       title: Text(
         widget.initial == null ? 'Новая категория' : 'Изменить категорию',
-        style: const TextStyle(color: AppColors.text, fontSize: 17),
+        style: TextStyle(color: AppColors.text, fontSize: 17),
       ),
       content: SizedBox(
         width: 380,
@@ -1487,11 +1487,11 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               controller: _name,
               autofocus: true,
               decoration: const InputDecoration(hintText: 'Название'),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
               onSubmitted: (_) => _submit(),
             ),
             const SizedBox(height: 14),
-            const Text('ЗНАЧОК', style: kEyebrowStyle),
+            Text('ЗНАЧОК', style: kEyebrowStyle),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -1519,7 +1519,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
               controller: _plan,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(hintText: 'План на месяц, ₽ — необязательно'),
-              style: const TextStyle(color: AppColors.text),
+              style: TextStyle(color: AppColors.text),
               onSubmitted: (_) => _submit(),
             ),
           ],
@@ -1528,7 +1528,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(
           onPressed: _submit,

@@ -42,7 +42,7 @@ class _BooksScreenState extends State<BooksScreen> {
         actions: [
           IconButton(
             tooltip: 'Поиск',
-            icon: const Icon(Icons.search, color: AppColors.textDim),
+            icon: Icon(Icons.search, color: AppColors.textDim),
             onPressed: _openSearch,
           ),
         ],
@@ -132,10 +132,10 @@ class _BooksDiscoverTabState extends State<BooksDiscoverTab> {
 
     if (books.isEmpty) {
       return repo.loadingPopular
-          ? const Center(child: CircularProgressIndicator(color: AppColors.gold))
+          ? Center(child: CircularProgressIndicator(color: AppColors.gold))
           : RefreshIndicator(
               color: AppColors.gold,
-              backgroundColor: AppColors.surface,
+              backgroundColor: AppColors.sheet,
               onRefresh: () => context.read<BookRepository>().loadPopular(forceRefresh: true),
               child: const EmptyHint(
                 emoji: '📚',
@@ -146,7 +146,7 @@ class _BooksDiscoverTabState extends State<BooksDiscoverTab> {
 
     return RefreshIndicator(
       color: AppColors.gold,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       onRefresh: () => context.read<BookRepository>().loadPopular(forceRefresh: true),
       child: PosterGrid(
         itemCount: books.length,
@@ -183,7 +183,7 @@ class BookListTab extends StatelessWidget {
 
     return RefreshIndicator(
       color: AppColors.gold,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       onRefresh: () => context.read<BookRepository>().refresh(),
       child: books.isEmpty
           ? EmptyHint(
@@ -218,7 +218,7 @@ class BookListTab extends StatelessWidget {
       actions: (sheetContext) => [
         if (!showRead)
           ListTile(
-            leading: const Icon(Icons.check_circle_outline, color: AppColors.green),
+            leading: Icon(Icons.check_circle_outline, color: AppColors.green),
             title: const Text('Отметить прочитанной'),
             onTap: () {
               Navigator.pop(sheetContext);
@@ -226,7 +226,7 @@ class BookListTab extends StatelessWidget {
             },
           ),
         ListTile(
-          leading: const Icon(Icons.star_outline, color: AppColors.gold),
+          leading: Icon(Icons.star_outline, color: AppColors.gold),
           title: Text(book.rating == null ? 'Поставить оценку' : 'Изменить оценку'),
           onTap: () async {
             Navigator.pop(sheetContext);
@@ -235,7 +235,7 @@ class BookListTab extends StatelessWidget {
           },
         ),
         ListTile(
-          leading: const Icon(Icons.delete_outline, color: AppColors.red),
+          leading: Icon(Icons.delete_outline, color: AppColors.red),
           title: const Text('Удалить'),
           onTap: () {
             Navigator.pop(sheetContext);

@@ -6,7 +6,7 @@ import '../theme.dart';
 Future<int?> pickRating(BuildContext context, {required String title, int? current}) {
   return showModalBottomSheet<int>(
     context: context,
-    backgroundColor: AppColors.surface,
+    backgroundColor: AppColors.sheet,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
@@ -19,7 +19,7 @@ Future<int?> pickRating(BuildContext context, {required String title, int? curre
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -61,7 +61,7 @@ Future<void> showActionSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: AppColors.surface,
+    backgroundColor: AppColors.sheet,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
@@ -74,7 +74,7 @@ Future<void> showActionSheet(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.text,
                 fontSize: 16,
                 fontWeight: FontWeight.w700,

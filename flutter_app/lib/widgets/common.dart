@@ -12,7 +12,7 @@ class SyncBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (repo.syncing) {
-      return const SizedBox(
+      return SizedBox(
         height: 13,
         width: 13,
         child: CircularProgressIndicator(strokeWidth: 1.6, color: AppColors.goldDim),
@@ -70,7 +70,7 @@ class SectionHeader extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       subtitle!,
-                      style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                   ),
               ],
@@ -116,7 +116,7 @@ class EmptyHint extends StatelessWidget {
         Text(
           text,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.textDim, fontSize: 14, height: 1.55),
+          style: TextStyle(color: AppColors.textDim, fontSize: 14, height: 1.55),
         ),
       ],
     );
@@ -207,16 +207,16 @@ class PeriodStepper extends StatelessWidget {
       children: [
         IconButton(
           onPressed: onPrev,
-          icon: const Icon(Icons.chevron_left, color: AppColors.textDim),
+          icon: Icon(Icons.chevron_left, color: AppColors.textDim),
           visualDensity: VisualDensity.compact,
         ),
         Text(
           label,
-          style: const TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+          style: TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
         ),
         IconButton(
           onPressed: onNext,
-          icon: const Icon(Icons.chevron_right, color: AppColors.textDim),
+          icon: Icon(Icons.chevron_right, color: AppColors.textDim),
           visualDensity: VisualDensity.compact,
         ),
       ],
@@ -236,7 +236,7 @@ class AddButton extends StatelessWidget {
     return IconButton(
       onPressed: onPressed,
       tooltip: tooltip,
-      icon: const Icon(Icons.add, color: AppColors.bg),
+      icon: Icon(Icons.add, color: AppColors.bg),
       style: IconButton.styleFrom(
         backgroundColor: AppColors.gold,
         minimumSize: const Size(36, 36),
@@ -260,20 +260,20 @@ Future<String?> promptText(
   return showDialog<String>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: Text(title, style: const TextStyle(color: AppColors.text, fontSize: 17)),
+      backgroundColor: AppColors.sheet,
+      title: Text(title, style: TextStyle(color: AppColors.text, fontSize: 17)),
       content: TextField(
         controller: controller,
         autofocus: true,
         keyboardType: keyboardType,
         decoration: InputDecoration(hintText: hint),
-        style: const TextStyle(color: AppColors.text),
+        style: TextStyle(color: AppColors.text),
         onSubmitted: (v) => Navigator.pop(dialogContext, v.trim()),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
@@ -289,13 +289,13 @@ Future<bool> confirmDelete(BuildContext context, String what) async {
   final result = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: const Text('Удалить?', style: TextStyle(color: AppColors.text, fontSize: 17)),
-      content: Text(what, style: const TextStyle(color: AppColors.textDim)),
+      backgroundColor: AppColors.sheet,
+      title: Text('Удалить?', style: TextStyle(color: AppColors.text, fontSize: 17)),
+      content: Text(what, style: TextStyle(color: AppColors.textDim)),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+          child: Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),

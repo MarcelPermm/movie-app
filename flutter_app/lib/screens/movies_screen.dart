@@ -51,7 +51,7 @@ class _MoviesScreenState extends State<MoviesScreen> {
           const SizedBox(width: 8),
           IconButton(
             tooltip: 'Поиск',
-            icon: const Icon(Icons.search, color: AppColors.textDim),
+            icon: Icon(Icons.search, color: AppColors.textDim),
             onPressed: _openSearch,
           ),
         ],
@@ -139,7 +139,7 @@ class MovieListTab extends StatelessWidget {
 
     return RefreshIndicator(
       color: AppColors.gold,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.sheet,
       onRefresh: () => context.read<MovieRepository>().refresh(),
       child: movies.isEmpty
           ? EmptyHint(
@@ -196,7 +196,7 @@ class MovieListTab extends StatelessWidget {
       actions: (sheetContext) => [
         if (kind == MovieListKind.dismissed)
           ListTile(
-            leading: const Icon(Icons.undo, color: AppColors.green),
+            leading: Icon(Icons.undo, color: AppColors.green),
             title: const Text('Вернуть в рекомендации'),
             onTap: () {
               Navigator.pop(sheetContext);
@@ -205,7 +205,7 @@ class MovieListTab extends StatelessWidget {
           ),
         if (kind == MovieListKind.watchlist) ...[
           ListTile(
-            leading: const Icon(Icons.check_circle_outline, color: AppColors.green),
+            leading: Icon(Icons.check_circle_outline, color: AppColors.green),
             title: const Text('Отметить просмотренным'),
             onTap: () {
               Navigator.pop(sheetContext);
@@ -216,7 +216,7 @@ class MovieListTab extends StatelessWidget {
                 leading: Text(category.emoji, style: const TextStyle(fontSize: 18)),
                 title: Text(category.label),
                 trailing: movie.category == category.value
-                    ? const Icon(Icons.check, size: 18, color: AppColors.gold)
+                    ? Icon(Icons.check, size: 18, color: AppColors.gold)
                     : null,
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -226,7 +226,7 @@ class MovieListTab extends StatelessWidget {
         ],
         if (kind != MovieListKind.dismissed)
           ListTile(
-            leading: const Icon(Icons.star_outline, color: AppColors.gold),
+            leading: Icon(Icons.star_outline, color: AppColors.gold),
             title: Text(movie.rating == null ? 'Поставить оценку' : 'Изменить оценку'),
             onTap: () async {
               Navigator.pop(sheetContext);
@@ -238,7 +238,7 @@ class MovieListTab extends StatelessWidget {
           ),
         if (kind == MovieListKind.watchlist)
           ListTile(
-            leading: const Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
+            leading: Icon(Icons.visibility_off_outlined, color: AppColors.textDim),
             title: const Text('Скрыть из рекомендаций'),
             onTap: () {
               Navigator.pop(sheetContext);
@@ -246,7 +246,7 @@ class MovieListTab extends StatelessWidget {
             },
           ),
         ListTile(
-          leading: const Icon(Icons.delete_outline, color: AppColors.red),
+          leading: Icon(Icons.delete_outline, color: AppColors.red),
           title: const Text('Удалить'),
           onTap: () {
             Navigator.pop(sheetContext);

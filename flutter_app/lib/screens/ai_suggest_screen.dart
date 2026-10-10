@@ -123,13 +123,13 @@ class _AiSuggestTabState<T> extends State<AiSuggestTab<T>> {
 class _Message extends StatelessWidget {
   final String emoji;
   final String text;
-  final Color color;
+  final Color? color;
   final Widget? action;
 
   const _Message({
     required this.emoji,
     required this.text,
-    this.color = AppColors.textDim,
+    this.color,
     this.action,
   });
 
@@ -146,7 +146,7 @@ class _Message extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: TextStyle(color: color, fontSize: 13.5, height: 1.5),
+              style: TextStyle(color: color ?? AppColors.textDim, fontSize: 13.5, height: 1.5),
             ),
             if (action != null) ...[const SizedBox(height: 8), action!],
           ],
