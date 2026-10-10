@@ -307,6 +307,48 @@ async def shutdown():
         await http_client.aclose()
 
 
+# ─── Страница-обёртка для встроенного плеера ─────────────────────────────────
+# На сайте источник видео открывается в iframe, и это важно: многие плееры
+# отказываются работать, если их открыть страницей верхнего уровня, а YouTube
+# в таком случае отвечает ошибкой 153. У приложения своей страницы нет —
+# поэтому сервер отдаёт крошечную страницу с одним iframe, и WebView грузит
+# её. Плеер видит ровно то же, что на сайте.
+_EMBED_ROOTS = ("vidsrc", "videasy.net", "2embed.cc", "youtube.com", "youtube-nocookie.com")
+
+
+def _embed_allowed(url: str) -> bool:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host:
+        return False
+    # VidSrc часто переезжает (vidsrc.to, .xyz, vidsrc-embed.ru…) — пускаем
+    # любой домен, чьё собственное имя начинается с vidsrc.
+    site = ".".join(host.split(".")[-2:])
+    return any(host == r or host.endswith("." + r) for r in _EMBED_ROOTS[1:]) or site.startswith("vidsrc")
+
+
+@app.get("/embed")
+def embed_page(u: str):
+    import html as _html
+    from fastapi.responses import HTMLResponse
+    if not _embed_allowed(u):
+        raise HTTPException(400, "Источник не из списка разрешённых")
+    src = _html.escape(u, quote=True)
+    page = f"""<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="origin">
+<title>Monkey App</title>
+<style>html,body{{margin:0;height:100%;background:#000;overflow:hidden}}
+iframe{{position:fixed;inset:0;width:100%;height:100%;border:0}}</style>
+</head><body>
+<iframe src="{src}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture; clipboard-write"
+ allowfullscreen referrerpolicy="origin"></iframe>
+</body></html>"""
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/ping")
 def ping():
     """Самый лёгкий ответ, без базы: будильник для Render (см. .github/workflows/keepalive.yml)."""
