@@ -47,6 +47,23 @@ AI_PROVIDERS = {
         "base_url": "https://openrouter.ai/api/v1",
         "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"),
     },
+    # Китайские: GLM Flash у Zhipu бесплатный, у SiliconFlow есть бесплатные
+    # модели, DeepSeek платный, но очень дешёвый.
+    "zhipu": {
+        "key": "ZHIPU_API_KEY",
+        "base_url": os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
+        "model": os.getenv("ZHIPU_MODEL", "glm-4.5-flash"),
+    },
+    "siliconflow": {
+        "key": "SILICONFLOW_API_KEY",
+        "base_url": os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.com/v1"),
+        "model": os.getenv("SILICONFLOW_MODEL", "Qwen/Qwen3-8B"),
+    },
+    "deepseek": {
+        "key": "DEEPSEEK_API_KEY",
+        "base_url": "https://api.deepseek.com",
+        "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+    },
     "cerebras": {
         "key": "CEREBRAS_API_KEY",
         "base_url": "https://api.cerebras.ai/v1",
@@ -64,7 +81,9 @@ class AIUnavailable(Exception):
 
 
 def _ai_chain() -> list:
-    order = os.getenv("AI_PROVIDERS", "groq,gemini,openrouter,cerebras")
+    order = os.getenv(
+        "AI_PROVIDERS", "groq,gemini,zhipu,siliconflow,openrouter,deepseek,cerebras"
+    )
     chain = []
     for name in [x.strip() for x in order.split(",") if x.strip()]:
         cfg = AI_PROVIDERS.get(name)
@@ -84,7 +103,7 @@ async def ai_complete(prompt: str, max_tokens: int = 2500, temperature: float = 
     chain = _ai_chain()
     if not chain:
         raise AIUnavailable(
-            "AI не настроен: добавь GROQ_API_KEY или GEMINI_API_KEY в переменные окружения"
+            "AI не настроен: добавь GROQ_API_KEY, GEMINI_API_KEY или ZHIPU_API_KEY в переменные окружения"
         )
 
     errors = []
