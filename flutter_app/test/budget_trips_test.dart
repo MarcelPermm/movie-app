@@ -44,11 +44,11 @@ TripSpending spend(int tripId, String date, int amount, {String category = ''}) 
 
 void main() {
   // Сентябрьская поездка «Вкусная еда» из четырёх городов — как в жизни.
-  final group = trip(1, 'Вкусная еда', from: '2026-09-17', to: '2026-10-01', type: 'group', plan: 1);
+  final foodTrip = trip(1, 'Вкусная еда', from: '2026-09-17', to: '2026-10-01', type: 'group', plan: 1);
   final piter = trip(2, 'Питер', from: '2026-09-17', to: '2026-09-19', plan: 20000, parent: 1);
   final tbilisi = trip(3, 'Тбилиси', from: '2026-09-26', to: '2026-09-28', plan: 20000, parent: 1);
   final batumi = trip(4, 'Батуми', from: '2026-09-28', to: '2026-10-01', plan: 20000, parent: 1);
-  final events = [group, piter, tbilisi, batumi];
+  final events = [foodTrip, piter, tbilisi, batumi];
 
   group('Категория «Путешествия»', () {
     test('узнаётся по названию в любом регистре', () {
@@ -83,7 +83,7 @@ void main() {
   group('Поездки в бюджете месяца', () {
     test('группа — одна строка с городами по датам и планом из городов', () {
       final lines = buildTripLines(
-        events: [batumi, group, tbilisi, piter],
+        events: [batumi, foodTrip, tbilisi, piter],
         spending: [spend(2, '2026-09-18', 31900), spend(3, '2026-09-27', 7300)],
         month: DateTime(2026, 9),
       );
@@ -160,7 +160,7 @@ void main() {
 
   group('Многогородняя поездка', () {
     test('план группы — сумма городов, иначе свой', () {
-      expect(groupPlanOf(group, [piter, tbilisi, batumi]), 60000);
+      expect(groupPlanOf(foodTrip, [piter, tbilisi, batumi]), 60000);
       expect(groupPlanOf(trip(5, 'Пусто', type: 'group', plan: 9000), const []), 9000);
     });
 
