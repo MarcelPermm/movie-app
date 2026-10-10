@@ -23,6 +23,103 @@ TMDB_BASE         = "https://api.themoviedb.org/3"
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY")
 GOOGLE_BOOKS_BASE = "https://www.googleapis.com/books/v1"
 
+
+# ─── ИИ: несколько провайдеров по очереди ────────────────────────────────────
+#
+# Все провайдеры ниже понимают формат OpenAI, поэтому отличаются только
+# адресом, ключом и моделью. Пробуем их по очереди: если один просит оплату
+# (402), перегружен (429) или лежит — берём следующий. Ключи — в .env / Render.
+# Порядок можно задать переменной AI_PROVIDERS, например "groq,gemini".
+
+AI_PROVIDERS = {
+    "groq": {
+        "key": "GROQ_API_KEY",
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
+    },
+    "gemini": {
+        "key": "GEMINI_API_KEY",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "model": os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
+    },
+    "openrouter": {
+        "key": "OPENROUTER_API_KEY",
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"),
+    },
+    "cerebras": {
+        "key": "CEREBRAS_API_KEY",
+        "base_url": "https://api.cerebras.ai/v1",
+        "model": os.getenv("CEREBRAS_MODEL", "gpt-oss-120b"),
+    },
+}
+
+
+class AIUnavailable(Exception):
+    """Ни один провайдер не ответил. status — что отдать клиенту."""
+
+    def __init__(self, message: str, status: int = 503):
+        super().__init__(message)
+        self.status = status
+
+
+def _ai_chain() -> list:
+    order = os.getenv("AI_PROVIDERS", "groq,gemini,openrouter,cerebras")
+    chain = []
+    for name in [x.strip() for x in order.split(",") if x.strip()]:
+        cfg = AI_PROVIDERS.get(name)
+        if cfg and os.getenv(cfg["key"]):
+            chain.append((name, cfg))
+    return chain
+
+
+def ai_configured() -> bool:
+    return bool(_ai_chain())
+
+
+async def ai_complete(prompt: str, max_tokens: int = 2500, temperature: float = 0.7) -> str:
+    """Текст ответа модели. Перебирает провайдеров, пока кто-то не ответит."""
+    from openai import AsyncOpenAI
+
+    chain = _ai_chain()
+    if not chain:
+        raise AIUnavailable(
+            "AI не настроен: добавь GROQ_API_KEY или GEMINI_API_KEY в переменные окружения"
+        )
+
+    errors = []
+    only_busy = True
+    for name, cfg in chain:
+        client = AsyncOpenAI(api_key=os.getenv(cfg["key"]), base_url=cfg["base_url"], timeout=60)
+        try:
+            response = await client.chat.completions.create(
+                model=cfg["model"],
+                messages=[{"role": "user", "content": prompt}],
+                # Думающие модели (gpt-oss) тратят часть лимита на рассуждения —
+                # с маленьким лимитом ответ приходит пустым.
+                max_tokens=max(max_tokens, 2000),
+                temperature=temperature,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            if text:
+                return text
+            errors.append(f"{name}: пустой ответ")
+            only_busy = False
+        except Exception as e:
+            msg = str(e)
+            print(f"⚠️  AI {name} не ответил: {msg[:200]}")
+            errors.append(f"{name}: {msg[:120]}")
+            if not ("429" in msg or "too_many_requests" in msg or "queue_exceeded" in msg
+                    or "rate_limit" in msg):
+                only_busy = False
+        finally:
+            await client.close()
+
+    if only_busy:
+        raise AIUnavailable("AI сейчас перегружен — подожди минуту и попробуй снова 🙏", 429)
+    raise AIUnavailable("Ошибка AI: " + " | ".join(errors))
+
+
 app = FastAPI(title="Movie Recommender API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -1049,12 +1146,10 @@ async def remove_book_wishlist(book_id: str, user_id: int = 1):
 
 @app.get("/books/suggest")
 async def books_suggest(query: str = "", user_id: int = 1):
-    api_key = os.getenv("CEREBRAS_API_KEY")
-    if not api_key:
+    if not ai_configured():
         raise HTTPException(status_code=503, detail="AI недоступен")
 
     import json, re
-    from openai import AsyncOpenAI
 
     read_books = database.get_books_read(user_id)
     read_titles = [b["title"] for b in read_books if b.get("title")][:30]
@@ -1091,15 +1186,8 @@ Recommend exactly 12 books the user hasn't read yet.
 OUTPUT: ONLY a raw JSON array. Original English titles. reason in Russian.
 Example: {example}"""
 
-    client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
     try:
-        response = await client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2500,
-            temperature=0.7 if query else 0.9,
-        )
-        raw = response.choices[0].message.content.strip()
+        raw = await ai_complete(prompt, max_tokens=2500, temperature=0.7 if query else 0.9)
         raw = re.sub(r'^```[a-z]*\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw).strip()
         match_json = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -1108,6 +1196,8 @@ Example: {example}"""
         suggestions = json.loads(match_json.group())
     except HTTPException:
         raise
+    except AIUnavailable as e:
+        raise HTTPException(e.status, str(e))
     except Exception as e:
         msg = str(e)
         if "429" in msg or "too_many_requests" in msg or "queue_exceeded" in msg:
@@ -1449,12 +1539,10 @@ async def get_profile_stats(user_id: int = 1):
 
 @app.get("/profile/analyze")
 async def analyze_profile(user_id: int = 1):
-    api_key = os.getenv("CEREBRAS_API_KEY")
-    if not api_key:
+    if not ai_configured():
         raise HTTPException(status_code=503, detail="AI анализ временно недоступен")
 
     from collections import Counter
-    from openai import AsyncOpenAI
 
     movies = database.get_watched("movie", user_id)
     tv     = database.get_watched("tv",    user_id)
@@ -1505,32 +1593,21 @@ async def analyze_profile(user_id: int = 1):
 
 Пиши как живой человек, с характером. Можно с лёгкой иронией если уместно."""
 
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url="https://api.cerebras.ai/v1"
-    )
-
     try:
-        response = await client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=600,
-            temperature=0.8,
-        )
-        analysis = response.choices[0].message.content.strip()
+        analysis = await ai_complete(prompt, max_tokens=600, temperature=0.8)
         return {"analysis": analysis}
+    except AIUnavailable as e:
+        raise HTTPException(e.status, str(e))
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
 
 
 @app.get("/ai/suggest")
 async def ai_suggest(user_id: int = 1, query: str = ""):
-    api_key = os.getenv("CEREBRAS_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="AI недоступен")
+    if not ai_configured():
+        raise HTTPException(status_code=503, detail="AI не настроен: добавь GROQ_API_KEY или GEMINI_API_KEY на сервере")
 
     from collections import Counter
-    from openai import AsyncOpenAI
     import json, re
 
     movies  = database.get_watched("movie", user_id)
@@ -1613,19 +1690,11 @@ IMPORTANT RULES:
 Example output:
 {example}"""
 
-    ai_client = AsyncOpenAI(api_key=api_key, base_url="https://api.cerebras.ai/v1")
-
     try:
         # При запросе — низкая температура для строгого следования ограничениям.
         # Без запроса — выше для разнообразия рекомендаций.
         temp = 0.4 if query else 0.8
-        response = await ai_client.chat.completions.create(
-            model="gpt-oss-120b",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2500,
-            temperature=temp,
-        )
-        raw = response.choices[0].message.content.strip()
+        raw = await ai_complete(prompt, max_tokens=2500, temperature=temp)
 
         # Убираем markdown code blocks
         raw = re.sub(r'^```[a-z]*\s*', '', raw)
@@ -1638,6 +1707,8 @@ Example output:
         suggestions = json.loads(json_match.group())
     except HTTPException:
         raise
+    except AIUnavailable as e:
+        raise HTTPException(e.status, str(e))
     except Exception as e:
         msg = str(e)
         if "429" in msg or "too_many_requests" in msg or "queue_exceeded" in msg:
