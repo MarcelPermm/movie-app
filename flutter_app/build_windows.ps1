@@ -50,13 +50,15 @@ Ok 'Flutter есть'
 
 # Компилятор C++ из Visual Studio — без него Windows-версию не собрать.
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+# -prerelease: чтобы найти и предварительные выпуски (Insiders / Preview).
 $vsPath = if (Test-Path $vswhere) {
-  & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+  & $vswhere -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath |
+    Select-Object -First 1
 }
 if (-not $vsPath) {
   Fail @"
-Не найдена Visual Studio с C++. Поставь (один раз, ~8 ГБ):
-  winget install Microsoft.VisualStudio.2022.Community --override "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive"
+Не найдена Visual Studio с C++. Поставь (один раз, ~8 ГБ), например на диск E:
+  winget install --id Microsoft.VisualStudio.2022.Community -e --override "--path install=E:\VS2022 --path cache=E:\VSCache --path shared=E:\VSShared --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive --norestart"
 Или вручную: Visual Studio Community -> «Разработка классических приложений на C++».
 "@
 }
