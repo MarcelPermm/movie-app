@@ -11,12 +11,14 @@ import '../data/goal_repository.dart';
 import '../data/movie_repository.dart';
 import '../data/task_repository.dart';
 import '../data/trip_repository.dart';
+import '../models/json.dart';
 import '../models/movie.dart';
 import '../models/task.dart';
 import '../models/trip.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/poster_card.dart';
+import '../widgets/task_bits.dart';
 import 'hub_screens.dart';
 import 'movie_detail_screen.dart';
 import 'tasks_screen.dart';
@@ -76,6 +78,7 @@ Widget _refreshable(BuildContext context, Widget child) => RefreshIndicator(
       backgroundColor: AppColors.sheet,
       onRefresh: () => Future.wait([
         context.read<TaskRepository>().refresh(),
+        context.read<WeekGoalRepository>().refresh(),
         context.read<BudgetRepository>().refresh(),
         context.read<TripRepository>().refresh(),
         context.read<MovieRepository>().refresh(),
@@ -243,7 +246,7 @@ class _TasksCard extends StatelessWidget {
           if (!today)
             // Задачи сейчас открыты на другой день — не показываем чужие.
             TextButton(
-              onPressed: () => context.read<TaskRepository>().setDay(DateTime.now()),
+              onPressed: () => _backToToday(context),
               child: const Text('Показать задачи на сегодня'),
             )
           else if (pending.isEmpty)
@@ -265,6 +268,10 @@ class _TasksCard extends StatelessWidget {
                 ),
               ),
           ],
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _WeekGoalsMini(onOpen: () => _openAll(context), divided: true),
+          ),
         ],
       ),
     );
@@ -299,6 +306,7 @@ class _TaskRow extends StatelessWidget {
                 style: TextStyle(color: AppColors.text, fontSize: 14),
               ),
             ),
+            if (task.isWork) ...[const SizedBox(width: 8), const WorkPill(dense: true)],
             if (task.timeStr != null && task.timeStr!.isNotEmpty) ...[
               const SizedBox(width: 8),
               Text(task.timeStr!, style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
@@ -990,7 +998,18 @@ class _BentoToday extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Expanded(child: _TaskList(data: d)),
+                      // Задачи дня и цели недели; если не влезают — плитка прокручивается.
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _TaskList(data: d, limit: 5),
+                              _WeekGoalsMini(onOpen: () => d.openTasks(context), limit: 3),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1235,6 +1254,119 @@ class _CategoryColumn extends StatelessWidget {
   }
 }
 
+/// Вернуть «Задачи» и цели недели к сегодняшнему дню.
+void _backToToday(BuildContext context) {
+  final now = DateTime.now();
+  context.read<TaskRepository>().setDay(now);
+  context.read<WeekGoalRepository>().showPeriodOf(now);
+}
+
+/// Цели недели под задачами дня: прогресс и то, что ещё не сделано.
+///
+/// Показываем только текущую неделю — если в «Задачах» листали вперёд,
+/// здесь не должно появиться чужое.
+class _WeekGoalsMini extends StatelessWidget {
+  final VoidCallback onOpen;
+  final int limit;
+
+  /// Отбить от задач тонкой линией (в карточке телефона).
+  final bool divided;
+
+  const _WeekGoalsMini({required this.onOpen, this.limit = 3, this.divided = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = context.watch<WeekGoalRepository>();
+    if (repo.periodKey != ymd(weekStart(DateTime.now()))) return const SizedBox.shrink();
+
+    final goals = repo.goals;
+    final done = repo.doneCount;
+    final open = goals.where((g) => !g.done).toList();
+    final paper = AppTheme.spec.id == AppThemeId.paper;
+
+    final header = Row(
+      children: [
+        Expanded(
+          child: Text(
+            paper ? 'ЦЕЛИ НЕДЕЛИ' : 'Цели недели',
+            style: paper
+                ? kEyebrowStyle
+                : TextStyle(color: AppColors.textDim, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+          ),
+        ),
+        if (goals.isNotEmpty)
+          Text(
+            '$done из ${goals.length}',
+            style: TextStyle(color: AppColors.textDim, fontSize: 12.5, fontWeight: FontWeight.w600),
+          ),
+      ],
+    );
+
+    return Padding(
+      padding: EdgeInsets.only(top: paper ? 22 : 14),
+      child: Container(
+        padding: divided ? const EdgeInsets.only(top: 12) : EdgeInsets.zero,
+        decoration: divided ? BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))) : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            if (goals.isEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4)),
+                  onPressed: onOpen,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Поставить цели на неделю'),
+                ),
+              )
+            else ...[
+              const SizedBox(height: 8),
+              ThinProgress(value: done / goals.length),
+              const SizedBox(height: 4),
+              if (open.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Все цели недели выполнены 🎉',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 13)),
+                ),
+              for (final g in open.take(limit))
+                InkWell(
+                  onTap: () => repo.toggle(g),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        TaskCheck(done: false, size: 16),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            g.text,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: AppColors.text, fontSize: 13.5),
+                          ),
+                        ),
+                        if (g.isWork) ...[const SizedBox(width: 8), const WorkPill(dense: true)],
+                      ],
+                    ),
+                  ),
+                ),
+              if (open.length > limit)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text('и ещё ${open.length - limit}',
+                      style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Задачи дня списком с отметкой — для плиток и колонок.
 class _TaskList extends StatelessWidget {
   final _TodayData data;
@@ -1249,7 +1381,7 @@ class _TaskList extends StatelessWidget {
       return Align(
         alignment: Alignment.topLeft,
         child: TextButton(
-          onPressed: () => d.tasks.setDay(DateTime.now()),
+          onPressed: () => _backToToday(context),
           child: const Text('Показать задачи на сегодня'),
         ),
       );
@@ -1272,7 +1404,7 @@ class _TaskList extends StatelessWidget {
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
               child: Row(
                 children: [
-                  _CheckMark(done: t.isDone, important: t.isHighPriority),
+                  TaskCheck(done: t.isDone, important: t.isHighPriority),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -1287,42 +1419,16 @@ class _TaskList extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (t.timeStr != null && t.timeStr!.isNotEmpty)
+                  if (t.isWork) ...[const SizedBox(width: 8), const WorkPill(dense: true)],
+                  if (t.timeStr != null && t.timeStr!.isNotEmpty) ...[
+                    const SizedBox(width: 8),
                     Text(t.timeStr!, style: TextStyle(color: AppColors.textDim, fontSize: 12.5)),
+                  ],
                 ],
               ),
             ),
           ),
       ],
-    );
-  }
-}
-
-/// Отметка задачи в духе темы: квадрат в газете, круг в остальных.
-class _CheckMark extends StatelessWidget {
-  final bool done;
-  final bool important;
-
-  const _CheckMark({required this.done, this.important = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final spec = AppTheme.spec;
-    final square = spec.cardStyle == CardStyle.ruled || spec.cardStyle == CardStyle.tile;
-    final color = done ? (spec.id == AppThemeId.paper ? AppColors.gold : AppColors.green) : Colors.transparent;
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: color,
-        shape: square ? BoxShape.rectangle : BoxShape.circle,
-        borderRadius: square ? BorderRadius.circular(spec.id == AppThemeId.paper ? 0 : 6) : null,
-        border: Border.all(
-          color: done ? color : (important ? AppColors.red : AppColors.textDim),
-          width: 1.6,
-        ),
-      ),
-      child: done ? Icon(Icons.check, size: 14, color: spec.isDark ? AppColors.bg : Colors.white) : null,
     );
   }
 }
@@ -1556,6 +1662,7 @@ class _GlassToday extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   _TaskList(data: d, limit: 5),
+                                  _WeekGoalsMini(onOpen: () => d.openTasks(context)),
                                 ],
                               ),
                             ),
@@ -1808,6 +1915,7 @@ class _PaperToday extends StatelessWidget {
                 children: [
                   _Kicker('Повестка дня'),
                   _TaskList(data: d, limit: 7),
+                  _WeekGoalsMini(onOpen: () => d.openTasks(context), limit: 4),
                   const SizedBox(height: 28),
                   _Kicker('В этом году'),
                   InkWell(

@@ -1,11 +1,13 @@
 import '../models/goal.dart';
+import '../models/json.dart';
+import '../models/task.dart' show kWorkTag;
 import 'local_first_repository.dart';
 
-/// Цели на месяц и на год.
+/// Цели на месяц и на год (а у [WeekGoalRepository] — на неделю).
 class GoalRepository extends LocalFirstRepository {
-  GoalRepository({required super.api, required super.session});
+  GoalRepository({required super.api, required super.session, String period = 'month'}) : _period = period;
 
-  String _period = 'month';
+  String _period;
   DateTime _anchor = DateTime.now();
 
   String get period => _period;
@@ -16,10 +18,12 @@ class GoalRepository extends LocalFirstRepository {
 
   int get doneCount => _goals.where((g) => g.done).length;
 
-  /// '2026-08' для месяца, '2026' для года.
-  String get periodKey => _period == 'year'
-      ? '${_anchor.year}'
-      : '${_anchor.year}-${_anchor.month.toString().padLeft(2, '0')}';
+  /// '2026-08' для месяца, '2026' для года, дата понедельника для недели.
+  String get periodKey => switch (_period) {
+        'year' => '${_anchor.year}',
+        'week' => ymd(weekStart(_anchor)),
+        _ => '${_anchor.year}-${_anchor.month.toString().padLeft(2, '0')}',
+      };
 
   String get _key => cacheKey('goals::$_period::$periodKey');
 
@@ -42,15 +46,25 @@ class GoalRepository extends LocalFirstRepository {
   }
 
   Future<void> shift(int delta) async {
-    _anchor = _period == 'year'
-        ? DateTime(_anchor.year + delta, _anchor.month)
-        : DateTime(_anchor.year, _anchor.month + delta);
+    _anchor = switch (_period) {
+      'year' => DateTime(_anchor.year + delta, _anchor.month),
+      'week' => DateTime(_anchor.year, _anchor.month, _anchor.day + 7 * delta),
+      _ => DateTime(_anchor.year, _anchor.month + delta),
+    };
+    await load();
+  }
+
+  /// Перейти к периоду, в который попадает [day] (без запроса, если он тот же).
+  Future<void> showPeriodOf(DateTime day) async {
+    final before = periodKey;
+    _anchor = day;
+    if (periodKey == before) return;
     await load();
   }
 
   Future<void> _save() => writeCache(_key, _goals.map((g) => g.toJson()).toList());
 
-  Future<void> add(String text) async {
+  Future<void> add(String text, {String? tag}) async {
     final text0 = text.trim();
     if (text0.isEmpty) return;
 
@@ -59,6 +73,7 @@ class GoalRepository extends LocalFirstRepository {
       period: _period,
       periodKey: periodKey,
       text: text0,
+      tag: tag,
     );
     _goals = [..._goals, temp];
     notifyListeners();
@@ -68,6 +83,7 @@ class GoalRepository extends LocalFirstRepository {
           'period': _period,
           'period_key': periodKey,
           'text': text0,
+          'tag': ?tag,
         }));
     if (created is Map) {
       final real = Goal.fromJson(Map<String, dynamic>.from(created));
@@ -98,6 +114,18 @@ class GoalRepository extends LocalFirstRepository {
     await push(() => api.patch('/goals/${goal.id}', body: {'text': text0}));
   }
 
+  /// Сделать цель рабочей или личной (см. [TaskRepository.setWork]).
+  Future<void> setWork(Goal goal, bool work) async {
+    if (goal.isWork == work) return;
+    final tag = work ? kWorkTag : '';
+    _goals = _goals.map((g) => g.id == goal.id ? g.copyWith(tag: tag) : g).toList();
+    notifyListeners();
+    await _save();
+
+    if (LocalFirstRepository.isTemp(goal.id)) return;
+    await push(() => api.patch('/goals/${goal.id}', body: {'tag': tag}));
+  }
+
   Future<void> remove(Goal goal) async {
     final backup = _goals;
     _goals = _goals.where((g) => g.id != goal.id).toList();
@@ -110,4 +138,19 @@ class GoalRepository extends LocalFirstRepository {
       rollback: () => _goals = backup,
     );
   }
+}
+
+
+/// Понедельник недели, в которую попадает [day].
+DateTime weekStart(DateTime day) =>
+    // Через конструктор, а не subtract: так переход на летнее время не сдвинет полночь.
+    DateTime(day.year, day.month, day.day - (day.weekday - 1));
+
+/// Цели на неделю. Отдельный репозиторий, чтобы неделя на «Сегодня» и в
+/// «Задачах» не сбивала выбранный месяц или год на экране «Цели».
+class WeekGoalRepository extends GoalRepository {
+  WeekGoalRepository({required super.api, required super.session}) : super(period: 'week');
+
+  @override
+  Future<void> setPeriod(String value) async {}
 }

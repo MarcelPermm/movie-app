@@ -2317,7 +2317,7 @@ async def delete_trip_expense(exp_id: int, user_id: int = 1):
     database.delete_trip_expense(exp_id, user_id)
     return {"ok": True}
 
-# ─── Цели (месяц / год) ───────────────────────────────────────────────────────
+# ─── Цели (неделя / месяц / год) ───────────────────────────────────────────────────────
 @app.get("/goals")
 async def get_goals(period: str, period_key: str, user_id: int = 1):
     return database.get_goals(user_id, period, period_key)
@@ -2327,7 +2327,10 @@ async def add_goal(body: dict = Body(...), user_id: int = 1):
     text = (body.get("text") or "").strip()
     if not text:
         raise HTTPException(400, "Пустая цель")
-    return database.add_goal(user_id, body["period"], body["period_key"], text)
+    if body.get("period") not in ("week", "month", "year"):
+        raise HTTPException(400, "Период: week, month или year")
+    tag = (body.get("tag") or "").strip() or None
+    return database.add_goal(user_id, body["period"], body["period_key"], text, tag)
 
 @app.patch("/goals/{goal_id}")
 async def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):

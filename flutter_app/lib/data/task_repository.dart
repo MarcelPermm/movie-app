@@ -116,6 +116,19 @@ class TaskRepository extends LocalFirstRepository {
     await push(() => api.patch('/tasks/${task.id}', body: {'title': title0}));
   }
 
+  /// Перенести задачу в рабочие или обратно в личные.
+  /// Пустой тег, а не null: сервер пропускает null-поля при обновлении.
+  Future<void> setWork(TaskItem task, bool work) async {
+    if (task.isWork == work) return;
+    final tag = work ? kWorkTag : '';
+    _tasks = _tasks.map((t) => t.id == task.id ? t.copyWith(tag: tag) : t).toList();
+    notifyListeners();
+    await _save();
+
+    if (LocalFirstRepository.isTemp(task.id)) return;
+    await push(() => api.patch('/tasks/${task.id}', body: {'tag': tag}));
+  }
+
   Future<void> remove(TaskItem task) async {
     final backup = _tasks;
     _tasks = _tasks.where((t) => t.id != task.id).toList();

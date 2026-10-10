@@ -53,11 +53,11 @@ class MoreScreen extends StatelessWidget {
   static final _items = [
     _MoreItem(Icons.auto_awesome_outlined, 'Обзор кино', 'Популярное, подборки, «для тебя»',
         () => sectionRoute(const OverviewScreen())),
-    _MoreItem(Icons.check_circle_outline, 'Задачи', 'День за днём, повторяющиеся',
+    _MoreItem(Icons.check_circle_outline, 'Задачи', 'На день и цели недели, личное и работа',
         () => sectionRoute(const TasksScreen())),
     _MoreItem(Icons.menu_book_outlined, 'Тетрадь', 'Заметки и списки',
         () => sectionRoute(const NotebookScreen())),
-    _MoreItem(Icons.flag_outlined, 'Цели', 'На месяц и на год',
+    _MoreItem(Icons.flag_outlined, 'Цели', 'На неделю, месяц и год',
         () => sectionRoute(const GoalsScreen())),
     _MoreItem(Icons.card_giftcard_outlined, 'Желания', 'Виш-лист, друзья, складчина',
         () => sectionRoute(const WishlistScreen())),

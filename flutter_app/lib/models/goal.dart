@@ -1,18 +1,24 @@
 import 'json.dart';
+import 'task.dart' show isWorkTag;
 
-/// Цель на месяц или на год.
+/// Цель на неделю, месяц или год.
 class Goal {
   final int id;
 
-  /// 'month' | 'year'
+  /// 'week' | 'month' | 'year'
   final String period;
 
-  /// '2026-08' для месяца, '2026' для года
+  /// '2026-10-05' (понедельник) для недели, '2026-08' для месяца, '2026' для года
   final String periodKey;
 
   final String text;
   final bool done;
   final int sort;
+
+  /// «работа» — рабочая цель; null — личная.
+  final String? tag;
+
+  bool get isWork => isWorkTag(tag);
 
   const Goal({
     required this.id,
@@ -21,6 +27,7 @@ class Goal {
     required this.text,
     this.done = false,
     this.sort = 0,
+    this.tag,
   });
 
   factory Goal.fromJson(Map<String, dynamic> j) => Goal(
@@ -30,6 +37,7 @@ class Goal {
         text: asString(j['text']),
         done: asBool(j['done']),
         sort: asInt(j['sort']),
+        tag: asStringOrNull(j['tag']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -39,14 +47,16 @@ class Goal {
         'text': text,
         'done': done,
         'sort': sort,
+        'tag': tag,
       };
 
-  Goal copyWith({String? text, bool? done}) => Goal(
+  Goal copyWith({String? text, bool? done, String? tag}) => Goal(
         id: id,
         period: period,
         periodKey: periodKey,
         text: text ?? this.text,
         done: done ?? this.done,
         sort: sort,
+        tag: tag ?? this.tag,
       );
 }

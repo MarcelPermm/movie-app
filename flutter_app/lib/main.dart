@@ -62,6 +62,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => TaskRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => NotebookRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => GoalRepository(api: api, session: session)),
+        ChangeNotifierProvider(create: (_) => WeekGoalRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => BudgetRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => WishlistRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => ActorRepository(api: api, session: session)),
@@ -122,6 +123,7 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
     context.read<TaskRepository>().load();
     context.read<NotebookRepository>().load();
     context.read<GoalRepository>().load();
+    context.read<WeekGoalRepository>().load();
     context.read<BudgetRepository>().load();
     context.read<WishlistRepository>().load();
     context.read<ProfileRepository>().load();

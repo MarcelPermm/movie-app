@@ -1,5 +1,13 @@
 import 'json.dart';
 
+/// Тег рабочих задач. Отдельного поля на сервере нет — хватает тега.
+const kWorkTag = 'работа';
+
+bool isWorkTag(String? tag) {
+  final t = tag?.trim().toLowerCase();
+  return t == kWorkTag || t == 'work';
+}
+
 /// Задача из планировщика.
 ///
 /// Разовые и повторяющиеся задачи отмечаются выполненными по-разному:
@@ -39,6 +47,9 @@ class TaskItem {
   bool get isCancelled => status == 'cancelled';
 
   bool get isHighPriority => priority == 'high';
+
+  /// Рабочая задача: помечена тегом «работа» (так её видно и на сайте).
+  bool get isWork => isWorkTag(tag);
 
   factory TaskItem.fromJson(Map<String, dynamic> j) => TaskItem(
         id: asInt(j['id']),

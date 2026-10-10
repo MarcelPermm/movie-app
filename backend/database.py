@@ -2324,6 +2324,9 @@ def init_goals_table():
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Неделя: period='week', period_key — дата понедельника ('2026-10-05').
+        # Тег — как у задач: «работа» отделяет рабочие цели от личных.
+        cur.execute("ALTER TABLE goals ADD COLUMN IF NOT EXISTS tag VARCHAR(50)")
         conn.commit()
     finally:
         conn.close()
@@ -2340,13 +2343,13 @@ def get_goals(user_id: int, period: str, period_key: str) -> list:
     finally:
         conn.close()
 
-def add_goal(user_id: int, period: str, period_key: str, text: str) -> dict:
+def add_goal(user_id: int, period: str, period_key: str, text: str, tag: str = None) -> dict:
     conn = _get_conn()
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO goals (user_id,period,period_key,text) VALUES (%s,%s,%s,%s) RETURNING *",
-            (user_id, period, period_key, text))
+            "INSERT INTO goals (user_id,period,period_key,text,tag) VALUES (%s,%s,%s,%s,%s) RETURNING *",
+            (user_id, period, period_key, text, tag))
         row = dict(cur.fetchone())
         conn.commit()
         return row
@@ -2354,7 +2357,7 @@ def add_goal(user_id: int, period: str, period_key: str, text: str) -> dict:
         conn.close()
 
 def update_goal(goal_id: int, user_id: int, fields: dict) -> dict:
-    allowed = ("text", "done", "sort")
+    allowed = ("text", "done", "sort", "tag")
     sets, vals = [], []
     for k in allowed:
         if k in fields:

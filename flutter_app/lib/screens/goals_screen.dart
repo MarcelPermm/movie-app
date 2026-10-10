@@ -5,6 +5,7 @@ import '../data/goal_repository.dart';
 import '../models/goal.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/task_bits.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -14,6 +15,12 @@ class GoalsScreen extends StatefulWidget {
 }
 
 class _GoalsScreenState extends State<GoalsScreen> {
+  /// Неделя живёт в своём репозитории (её же показывают «Задачи» и «Сегодня»),
+  /// месяц и год — в общем.
+  bool _week = false;
+
+  GoalRepository get _repo => _week ? context.read<WeekGoalRepository>() : context.read<GoalRepository>();
+
   @override
   void initState() {
     super.initState();
@@ -24,7 +31,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final repo = context.watch<GoalRepository>();
+    final GoalRepository repo = _week ? context.watch<WeekGoalRepository>() : context.watch<GoalRepository>();
     final goals = repo.goals;
 
     return Column(
@@ -34,9 +41,12 @@ class _GoalsScreenState extends State<GoalsScreen> {
           subtitle: goals.isEmpty ? null : 'Выполнено ${repo.doneCount} из ${goals.length}',
           actions: [
             SegmentedToggle<String>(
-              value: repo.period,
-              options: const {'month': 'Месяц', 'year': 'Год'},
-              onChanged: (v) => context.read<GoalRepository>().setPeriod(v),
+              value: _week ? 'week' : repo.period,
+              options: const {'week': 'Неделя', 'month': 'Месяц', 'year': 'Год'},
+              onChanged: (v) {
+                setState(() => _week = v == 'week');
+                if (v != 'week') context.read<GoalRepository>().setPeriod(v);
+              },
             ),
             const SizedBox(width: 8),
             AddButton(onPressed: _addGoal, tooltip: 'Новая цель'),
@@ -48,8 +58,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
             alignment: Alignment.centerLeft,
             child: PeriodStepper(
               label: _periodLabel(repo),
-              onPrev: () => context.read<GoalRepository>().shift(-1),
-              onNext: () => context.read<GoalRepository>().shift(1),
+              onPrev: () => _repo.shift(-1),
+              onNext: () => _repo.shift(1),
             ),
           ),
         ),
@@ -58,7 +68,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
           child: RefreshIndicator(
             color: AppColors.gold,
             backgroundColor: AppColors.sheet,
-            onRefresh: () => context.read<GoalRepository>().refresh(),
+            onRefresh: () => _repo.refresh(),
             child: goals.isEmpty
                 ? const EmptyHint(emoji: '🎯', text: 'На этот период целей пока нет')
                 : ListView(
@@ -101,7 +111,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
         ),
         child: Icon(Icons.delete_outline, color: AppColors.red),
       ),
-      onDismissed: (_) => context.read<GoalRepository>().remove(goal),
+      onDismissed: (_) => _repo.remove(goal),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 3),
         decoration: BoxDecoration(
@@ -110,7 +120,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: ListTile(
-          onTap: () => context.read<GoalRepository>().toggle(goal),
+          onTap: () => _repo.toggle(goal),
           onLongPress: () => _rename(goal),
           leading: Icon(
             goal.done ? Icons.check_circle : Icons.circle_outlined,
@@ -125,6 +135,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
               decorationColor: AppColors.textDim,
             ),
           ),
+          trailing: goal.isWork ? const WorkPill(dense: true) : null,
         ),
       ),
     );
@@ -133,7 +144,7 @@ class _GoalsScreenState extends State<GoalsScreen> {
   Future<void> _addGoal() async {
     final text = await promptText(context, title: 'Новая цель', hint: 'Чего хочется достичь');
     if (text == null || text.isEmpty || !mounted) return;
-    await context.read<GoalRepository>().add(text);
+    await _repo.add(text);
   }
 
   Future<void> _rename(Goal goal) async {
@@ -144,10 +155,12 @@ class _GoalsScreenState extends State<GoalsScreen> {
       confirmLabel: 'Сохранить',
     );
     if (text == null || text.isEmpty || !mounted) return;
-    await context.read<GoalRepository>().rename(goal, text);
+    await _repo.rename(goal, text);
   }
 
-  String _periodLabel(GoalRepository repo) => repo.period == 'year'
-      ? '${repo.anchor.year}'
-      : '${monthNames[repo.anchor.month - 1]} ${repo.anchor.year}';
+  String _periodLabel(GoalRepository repo) => switch (repo.period) {
+        'year' => '${repo.anchor.year}',
+        'week' => weekRangeLabel(repo.anchor),
+        _ => '${monthNames[repo.anchor.month - 1]} ${repo.anchor.year}',
+      };
 }
