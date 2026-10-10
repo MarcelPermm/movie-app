@@ -90,7 +90,7 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "online.monkeyapp" "\0"
-            VALUE "FileDescription", "movie_app" "\0"
+            VALUE "FileDescription", "Monkey App" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "movie_app" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 online.monkeyapp. All rights reserved." "\0"

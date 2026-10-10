@@ -12,3 +12,6 @@ backend/imdb_data/
 !.dev.vars.example
 .env*
 !.env.example
+
+# Собранная Windows-версия и установщик (build_windows.ps1)
+dist/
