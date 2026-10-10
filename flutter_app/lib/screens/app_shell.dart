@@ -17,10 +17,12 @@ import '../widgets/common.dart';
 import 'books_screen.dart';
 import 'budget_screen.dart';
 import 'goals_screen.dart';
+import 'hub_screens.dart';
 import 'movies_screen.dart';
 import 'notebook_screen.dart';
 import 'overview_screen.dart';
 import 'tasks_screen.dart';
+import 'today_screen.dart';
 import 'trips_screen.dart';
 import 'wishlist_screen.dart';
 
@@ -41,8 +43,11 @@ class _Section {
   });
 }
 
-/// Каркас приложения: на узком экране — выдвижное меню, на широком —
-/// боковая панель. Разделов семь, для нижней панели их слишком много.
+/// Каркас приложения.
+///
+/// На телефоне — нижняя панель из пяти пунктов: Сегодня, Кино, Книги,
+/// Деньги (бюджет и поездки) и Ещё. Всё остальное открывается из «Ещё».
+/// На широком экране места хватает — там боковая панель со всеми разделами.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -51,9 +56,59 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  /// Выбранный раздел боковой панели (широкий экран).
   int _index = 0;
 
-  static final _sections = <_Section>[
+  /// Выбранный пункт нижней панели (телефон).
+  int _tab = 0;
+
+  /// Нижняя панель телефона. Индексы нужны «Сегодня», чтобы карточка
+  /// бюджета переключала на «Деньги».
+  static const _moneyTab = 3;
+
+  late final _tabs = <_Section>[
+    _Section(
+      label: 'Сегодня',
+      icon: Icons.wb_sunny_outlined,
+      screen: TodayScreen(onOpenMoney: () => _selectTab(_moneyTab)),
+      repo: (c) => c.watch<TaskRepository>(),
+    ),
+    _Section(
+      label: 'Кино',
+      icon: Icons.movie_outlined,
+      screen: const MoviesScreen(),
+      repo: (c) => c.watch<MovieRepository>(),
+    ),
+    _Section(
+      label: 'Книги',
+      icon: Icons.menu_book_outlined,
+      screen: const BooksScreen(),
+      repo: (c) => c.watch<BookRepository>(),
+    ),
+    _Section(
+      label: 'Деньги',
+      icon: Icons.account_balance_wallet_outlined,
+      screen: const MoneyScreen(),
+      repo: (c) => c.watch<BudgetRepository>(),
+    ),
+    _Section(
+      label: 'Ещё',
+      icon: Icons.grid_view_outlined,
+      screen: const MoreScreen(),
+      repo: (c) => c.watch<NotebookRepository>(),
+    ),
+  ];
+
+  /// Пункты нижней панели строятся лениво — как вкладки внутри разделов.
+  final Set<int> _visitedTabs = {0};
+
+  late final _sections = <_Section>[
+    _Section(
+      label: 'Сегодня',
+      icon: Icons.wb_sunny_outlined,
+      screen: TodayScreen(onOpenMoney: () => setState(() => _index = _budgetIndex)),
+      repo: (c) => c.watch<TaskRepository>(),
+    ),
     _Section(
       label: 'Обзор',
       icon: Icons.auto_awesome_outlined,
@@ -110,21 +165,39 @@ class _AppShellState extends State<AppShell> {
     ),
   ];
 
+  int get _budgetIndex => _sections.indexWhere((s) => s.label == 'Бюджет');
+
   void _select(int index) {
     setState(() => _index = index);
+  }
+
+  void _selectTab(int index) {
+    setState(() {
+      _tab = index;
+      _visitedTabs.add(index);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final extended = MediaQuery.sizeOf(context).width >= 1180;
+    final current = wide ? _sections[_index] : _tabs[_tab];
 
     // IndexedStack сохраняет состояние разделов: вернувшись, ты видишь
     // ту же прокрутку и тот же выбранный день.
-    final content = IndexedStack(
-      index: _index,
-      children: _sections.map((s) => s.screen).toList(),
-    );
+    final content = wide
+        ? IndexedStack(
+            index: _index,
+            children: _sections.map((s) => s.screen).toList(),
+          )
+        : IndexedStack(
+            index: _tab,
+            children: [
+              for (var i = 0; i < _tabs.length; i++)
+                _visitedTabs.contains(i) ? _tabs[i].screen : const SizedBox.shrink(),
+            ],
+          );
 
     return Scaffold(
       appBar: AppBar(
@@ -137,7 +210,7 @@ class _AppShellState extends State<AppShell> {
               const SizedBox(width: 8),
             ],
             Text(
-              _sections[_index].label,
+              current.label,
               style: const TextStyle(
                 color: AppColors.text,
                 fontSize: 17,
@@ -146,7 +219,7 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
             const SizedBox(width: 12),
-            SyncBadge(_sections[_index].repo(context)),
+            SyncBadge(current.repo(context)),
           ],
         ),
         // Тонкая линия вместо тени: тень на тёмном фоне читается как грязь.
@@ -159,7 +232,7 @@ class _AppShellState extends State<AppShell> {
           const SizedBox(width: 10),
         ],
       ),
-      drawer: wide ? null : _buildDrawer(),
+      bottomNavigationBar: wide ? null : _buildBottomBar(),
       body: wide
           ? Row(
               children: [
@@ -227,61 +300,73 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildDrawer() {
-    return Drawer(
-      backgroundColor: AppColors.surface,
+  /// Нижняя панель телефона. Своя отрисовка подсветки — золотая «таблетка»
+  /// под значком, как засечка в боковой панели на широком экране.
+  Widget _buildBottomBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
       child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 22, 20, 18),
-              child: Row(
-                children: [
-                  Text('🐒', style: TextStyle(fontSize: 24)),
-                  SizedBox(width: 10),
-                  Text(
-                    'Monkey App',
-                    style: TextStyle(
-                      color: AppColors.gold,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
+        top: false,
+        child: SizedBox(
+          height: 62,
+          child: Row(
+            children: [
+              for (var i = 0; i < _tabs.length; i++)
+                Expanded(
+                  child: _BottomItem(
+                    section: _tabs[i],
+                    active: i == _tab,
+                    onTap: () => _selectTab(i),
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1, color: AppColors.border),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                children: List.generate(_sections.length, (i) {
-                  final section = _sections[i];
-                  final active = i == _index;
-                  return ListTile(
-                    leading: Icon(
-                      section.icon,
-                      color: active ? AppColors.gold : AppColors.textDim,
-                    ),
-                    title: Text(
-                      section.label,
-                      style: TextStyle(
-                        color: active ? AppColors.gold : AppColors.text,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                    selected: active,
-                    selectedTileColor: AppColors.gold.withValues(alpha: 0.08),
-                    onTap: () {
-                      _select(i);
-                      Navigator.pop(context);
-                    },
-                  );
-                }),
-              ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _BottomItem extends StatelessWidget {
+  final _Section section;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _BottomItem({required this.section, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? AppColors.gold : AppColors.textDim;
+    return InkResponse(
+      onTap: onTap,
+      radius: 36,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            width: active ? 54 : 34,
+            height: 30,
+            decoration: BoxDecoration(
+              color: active ? AppColors.goldWash(0.16) : Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Icon(section.icon, size: 21, color: color),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            section.label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

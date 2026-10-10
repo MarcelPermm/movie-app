@@ -1,6 +1,7 @@
 import '../core/api_client.dart';
 import '../models/json.dart';
 import '../models/trip.dart';
+import 'budget_math.dart';
 import 'local_first_repository.dart';
 
 /// Поездки и события с собственным бюджетом.
@@ -49,19 +50,13 @@ class TripRepository extends LocalFirstRepository {
 
   /// Сколько потрачено всего. У группы сами траты лежат в городах,
   /// поэтому её собственный итог почти всегда ноль — складываем детей.
-  int actualOf(Trip trip) {
-    if (!trip.isGroup) return trip.actualTotal;
-    return childrenOf(trip.id)
-        .fold<int>(trip.actualTotal, (sum, c) => sum + c.actualTotal);
-  }
+  int actualOf(Trip trip) =>
+      trip.isGroup ? groupActualOf(trip, childrenOf(trip.id)) : trip.actualTotal;
 
   /// План поездки. У группы — сумма планов городов, как на сайте:
   /// план самой группы фиксируется в момент объединения и потом устаревает.
-  int plannedOf(Trip trip) {
-    if (!trip.isGroup) return trip.plannedTotal;
-    final kids = childrenOf(trip.id).fold<int>(0, (sum, c) => sum + c.plannedTotal);
-    return kids > 0 ? kids : trip.plannedTotal;
-  }
+  int plannedOf(Trip trip) =>
+      trip.isGroup ? groupPlanOf(trip, childrenOf(trip.id)) : trip.plannedTotal;
 
   /// Все траты поездки вместе с тратами её городов.
   List<TripExpense> expensesOfTree(Trip trip) => [
@@ -299,15 +294,13 @@ class TripRepository extends LocalFirstRepository {
   void _recalcGroup(int groupId) {
     final kids = childrenOf(groupId);
     if (kids.isEmpty) return;
-    final starts = kids.map((c) => c.startDate).whereType<String>().toList()..sort();
-    final ends = kids.map((c) => c.endDate).whereType<String>().toList()..sort();
-    final plan = kids.fold<int>(0, (sum, c) => sum + c.plannedTotal);
+    final rollup = groupRollup(kids);
     _trips = _trips
         .map((t) => t.id == groupId
             ? t.copyWith(
-                startDate: starts.isEmpty ? null : starts.first,
-                endDate: ends.isEmpty ? null : ends.last,
-                plannedTotal: plan,
+                startDate: rollup.start,
+                endDate: rollup.end,
+                plannedTotal: rollup.plan,
               )
             : t)
         .toList();

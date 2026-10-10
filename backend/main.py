@@ -15,6 +15,7 @@ from passlib.context import CryptContext
 import database
 import recommender
 import imdb_loader
+import wrapped
 
 load_dotenv()
 
@@ -1619,6 +1620,109 @@ async def analyze_profile(user_id: int = 1):
         raise HTTPException(e.status, str(e))
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Ошибка AI: {str(e)}")
+
+
+# ─── Что посмотреть вечером ───────────────────────────────────────────────────
+
+@app.get("/ai/tonight")
+async def ai_tonight(
+    user_id: int = 1,
+    mood: str = "",
+    max_minutes: int = 0,
+    company: str = "",
+    kind: str = "any",
+):
+    """Подборка на вечер: настроение, свободное время и с кем смотришь.
+
+    Запрос собирается в фразу для /ai/suggest, а длительность проверяется
+    по TMDB уже после ответа модели: модели часто ошибаются в хронометраже.
+    """
+    parts = ["Подбери, что посмотреть сегодня вечером."]
+    if mood.strip():
+        parts.append(f"Настроение: {mood.strip()}.")
+    if company.strip():
+        parts.append(f"Смотрю: {company.strip()}.")
+    if kind == "movie":
+        parts.append("Только полнометражные фильмы, без сериалов.")
+    elif kind == "tv":
+        parts.append("Только сериалы.")
+    if max_minutes > 0:
+        if kind == "tv":
+            parts.append(f"Серия должна быть не длиннее {max_minutes} минут.")
+        else:
+            parts.append(
+                f"Есть не больше {max_minutes} минут: фильмы не длиннее {max_minutes} минут, "
+                "сериалы — только с короткими сериями."
+            )
+
+    # Вкус как ориентир: с текстовым запросом /ai/suggest его не учитывает.
+    rated = [
+        m for m in database.get_watched("movie", user_id) + database.get_watched("tv", user_id)
+        if m.get("user_rating")
+    ]
+    favorites = [m["title"] for m in sorted(rated, key=lambda m: m["user_rating"], reverse=True)[:6]]
+    if favorites:
+        parts.append("Мне нравились: " + ", ".join(favorites) + ".")
+
+    query = " ".join(parts)
+    data = await ai_suggest(user_id=user_id, query=query)
+    items = list(data.get("movies") or [])
+
+    async def with_runtime(m: dict) -> dict:
+        try:
+            details = await tmdb_get(f"/{m.get('media_type', 'movie')}/{m['id']}")
+            if m.get("media_type") == "tv":
+                runtimes = details.get("episode_run_time") or []
+                runtime = runtimes[0] if runtimes else (details.get("last_episode_to_air") or {}).get("runtime")
+            else:
+                runtime = details.get("runtime")
+        except Exception:
+            runtime = None
+        return {**m, "runtime": runtime or None}
+
+    items = await asyncio.gather(*[with_runtime(m) for m in items])
+
+    if max_minutes > 0:
+        # Запас в 10 минут: титры и округления не повод отказываться от фильма.
+        fits = [m for m in items if not m.get("runtime") or m["runtime"] <= max_minutes + 10]
+        if fits:
+            items = fits
+    if kind in ("movie", "tv"):
+        same_kind = [m for m in items if m.get("media_type") == kind]
+        if same_kind:
+            items = same_kind
+
+    return {"movies": items[:9], "query": query}
+
+
+# ─── Итоги года ───────────────────────────────────────────────────────────────
+
+@app.get("/wrapped")
+async def get_wrapped(year: int = 0, user_id: int = 1):
+    """Кино, книги, деньги и поездки за год — для экрана «Итоги года»."""
+    from datetime import date as _date
+    year = year or _date.today().year
+
+    watched = database.get_watched("movie", user_id) + database.get_watched("tv", user_id)
+    books = database.get_books_read(user_id)
+    expenses = []
+    for month in range(1, 13):
+        expenses += database.get_budget_expenses(user_id, year, month)
+    trips = database.get_trips(user_id)
+
+    result = wrapped.build_wrapped(year, watched, books, expenses, trips)
+
+    # Лица любимых актёров — три запроса к TMDB, остальное без сети.
+    actors = result["cinema"]["top_actors"][:3]
+    found = await asyncio.gather(
+        *[tmdb_get("/search/person", query=a["name"]) for a in actors],
+        return_exceptions=True,
+    )
+    for actor, res in zip(actors, found):
+        if not isinstance(res, Exception) and res.get("results"):
+            actor["profile_path"] = res["results"][0].get("profile_path")
+
+    return result
 
 
 @app.get("/ai/suggest")
