@@ -113,26 +113,33 @@ void main() {
     });
   });
 
-  group('Config.embedUrl: у источников разный формат ссылок', () {
+  group('Config.embedUrl: адреса источников как в Streambert', () {
     test('фильм не содержит сезон и серию', () {
-      expect(Config.embedUrl('vidsrc', 'movie', 550), 'https://vidsrc.to/embed/movie/550');
-      expect(Config.embedUrl('videasy', 'movie', 550), 'https://player.videasy.net/movie/550');
-      expect(Config.embedUrl('2embed', 'movie', 550), 'https://www.2embed.cc/embed/550');
+      expect(Config.embedUrl('videasy', 'movie', 550), 'https://player.videasy.to/movie/550?overlay=true');
+      expect(Config.embedUrl('vidsrc', 'movie', 550), 'https://vsembed.su/embed/movie/550');
+      expect(Config.embedUrl('vidking', 'movie', 550), 'https://www.vidking.net/embed/movie/550?autoPlay=true');
     });
 
     test('сериал подставляет сезон и серию', () {
       expect(
-        Config.embedUrl('vidsrc', 'tv', 1399, season: 2, episode: 5),
-        'https://vidsrc.to/embed/tv/1399/2/5',
+        Config.embedUrl('videasy', 'tv', 1399, season: 2, episode: 5),
+        'https://player.videasy.to/tv/1399/2/5?overlay=true',
       );
       expect(
-        Config.embedUrl('2embed', 'tv', 1399, season: 2, episode: 5),
-        'https://www.2embed.cc/embedtv/1399&s=2&e=5',
+        Config.embedUrl('vidsrc', 'tv', 1399, season: 2, episode: 5),
+        'https://vsembed.su/embed/tv/1399/2/5',
       );
     });
 
-    test('неизвестный источник не ломает ссылку, а падает на vidsrc', () {
-      expect(Config.embedUrl('нет-такого', 'movie', 1), contains('vidsrc.to'));
+    test('у каждого источника в списке есть свой адрес', () {
+      for (final id in Config.watchSources.keys) {
+        expect(Config.embedUrl(id, 'movie', 1), startsWith('https://'));
+      }
+      expect(Config.watchSources, contains(Config.defaultWatchSource));
+    });
+
+    test('неизвестный источник не ломает ссылку, а падает на источник по умолчанию', () {
+      expect(Config.embedUrl('нет-такого', 'movie', 1), contains('videasy.to'));
     });
   });
 }
