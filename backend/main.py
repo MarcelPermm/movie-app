@@ -1929,6 +1929,7 @@ async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int
         note=req.get("note"),
         category_id=req.get("category_id"),
         merchant=req.get("merchant"),
+        date=req.get("date"),
     )
 
 @app.delete("/budget/expenses/month")

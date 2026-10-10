@@ -89,9 +89,16 @@ class Expense {
         'merchant': merchant,
       };
 
-  Expense copyWith({int? amount, String? note, int? categoryId, String? merchant}) => Expense(
+  Expense copyWith({
+    int? amount,
+    String? note,
+    int? categoryId,
+    String? merchant,
+    String? date,
+  }) =>
+      Expense(
         id: id,
-        date: date,
+        date: date ?? this.date,
         amount: amount ?? this.amount,
         categoryId: categoryId ?? this.categoryId,
         note: note ?? this.note,

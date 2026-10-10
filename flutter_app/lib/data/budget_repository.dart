@@ -191,6 +191,21 @@ class BudgetRepository extends LocalFirstRepository {
     return map;
   }
 
+  /// Все траты месяца одной лентой — обычные и из поездок, по дням,
+  /// свежие сверху. Иначе трата в поездке видна только в итоге, а найти
+  /// и поправить её из бюджета нельзя.
+  Map<String, List<BudgetEntry>> get entriesGrouped {
+    final all = [
+      for (final e in _expenses) BudgetEntry.own(e),
+      for (final t in _tripSpending) BudgetEntry.trip(t),
+    ]..sort((a, b) => b.date.compareTo(a.date));
+    final map = <String, List<BudgetEntry>>{};
+    for (final e in all) {
+      map.putIfAbsent(e.date, () => []).add(e);
+    }
+    return map;
+  }
+
   String get _catKey => cacheKey('budget::categories');
   String get _expKey => cacheKey('budget::expenses::${_month.year}-${_month.month}');
   String get _merchKey => cacheKey('budget::merchants');
@@ -346,7 +361,9 @@ class BudgetRepository extends LocalFirstRepository {
     String? note,
     int? categoryId,
     String? merchant,
+    DateTime? date,
   }) async {
+    final dateStr = date == null ? null : ymd(date);
     _expenses = _expenses
         .map((e) => e.id == expense.id
             ? e.copyWith(
@@ -354,8 +371,11 @@ class BudgetRepository extends LocalFirstRepository {
                 note: note,
                 categoryId: categoryId,
                 merchant: merchant,
+                date: dateStr,
               )
             : e)
+        // Трату перенесли в другой месяц — из этого она уходит.
+        .where((e) => _inMonth(e.date))
         .toList();
     notifyListeners();
     await _saveExpenses();
@@ -366,7 +386,144 @@ class BudgetRepository extends LocalFirstRepository {
           'note': ?note,
           'category_id': ?categoryId,
           'merchant': ?merchant,
+          'date': ?dateStr,
         }));
+  }
+
+  bool _inMonth(String date) {
+    final d = parseDate(date);
+    return d != null && d.year == _month.year && d.month == _month.month;
+  }
+
+  // ─── Траты поездок прямо из бюджета ────────────────────────────────
+  //
+  // Трата поездки живёт в trip_expenses, а не в budget_expenses, — как на
+  // сайте, когда в форме траты выбрана поездка. Здесь меняем её на сервере
+  // и сразу у себя, чтобы блок поездок и список трат обновились мгновенно.
+
+  /// Подпись поездки для трат: «Вкусная еда · Тбилиси» у города.
+  String tripLabelOf(int tripId, {String fallback = ''}) {
+    Trip? find(int? id) {
+      for (final t in _events) {
+        if (t.id == id) return t;
+      }
+      return null;
+    }
+
+    final trip = find(tripId);
+    if (trip == null) return fallback;
+    final parent = find(trip.parentId);
+    return parent == null ? trip.name : '${parent.name} · ${trip.name}';
+  }
+
+  /// Поездка (или её группа) должна быть в списке месяца, иначе её трата
+  /// не попадёт в блок поездок.
+  void _ensureEvent(Trip trip, Trip? parent) {
+    final ids = _events.map((t) => t.id).toSet();
+    _events = [
+      ..._events,
+      if (parent != null && !ids.contains(parent.id)) parent,
+      if (!ids.contains(trip.id)) trip,
+    ];
+  }
+
+  Future<void> _saveTripState() async {
+    await writeCache(_tripKey, _tripSpending.map((t) => t.toJson()).toList());
+    await writeCache(_eventsKey, _events.map((t) => t.toJson()).toList());
+  }
+
+  Future<void> addTripExpense({
+    required Trip trip,
+    Trip? parent,
+    required int amount,
+    required DateTime date,
+    String category = '',
+    String note = '',
+  }) async {
+    if (amount <= 0) return;
+    final dateStr = ymd(date);
+    final temp = TripExpense(
+      id: LocalFirstRepository.nextTempId(),
+      tripId: trip.id,
+      date: dateStr,
+      amount: amount,
+      category: category,
+      note: note,
+    );
+    if (_inMonth(dateStr)) {
+      _ensureEvent(trip, parent);
+      _tripSpending = [
+        ..._tripSpending,
+        TripSpending(tripId: trip.id, tripName: trip.name, tripEmoji: trip.emoji, expense: temp),
+      ];
+      notifyListeners();
+      await _saveTripState();
+    }
+
+    final created = await push(() => api.post('/trips/${trip.id}/expenses', body: {
+          'date': dateStr,
+          'amount': amount,
+          'category': category,
+          'note': note,
+        }));
+    if (created is Map) {
+      final real = TripExpense.fromJson(Map<String, dynamic>.from(created));
+      _tripSpending = _tripSpending
+          .map((t) => t.expense.id == temp.id
+              ? TripSpending(
+                  tripId: t.tripId, tripName: t.tripName, tripEmoji: t.tripEmoji, expense: real)
+              : t)
+          .toList();
+      notifyListeners();
+      await _saveTripState();
+    }
+  }
+
+  Future<void> updateTripExpense(
+    TripSpending spending, {
+    int? amount,
+    String? category,
+    String? note,
+    DateTime? date,
+  }) async {
+    final dateStr = date == null ? null : ymd(date);
+    final updated = spending.expense.copyWith(
+      amount: amount,
+      category: category,
+      note: note,
+      date: dateStr,
+    );
+    _tripSpending = _tripSpending
+        .map((t) => t.expense.id == spending.expense.id
+            ? TripSpending(
+                tripId: t.tripId, tripName: t.tripName, tripEmoji: t.tripEmoji, expense: updated)
+            : t)
+        .where((t) => _inMonth(t.expense.date))
+        .toList();
+    notifyListeners();
+    await _saveTripState();
+
+    if (LocalFirstRepository.isTemp(spending.expense.id)) return;
+    await push(() => api.patch('/trip-expenses/${spending.expense.id}', body: {
+          'amount': ?amount,
+          'category': ?category,
+          'note': ?note,
+          'date': ?dateStr,
+        }));
+  }
+
+  Future<void> removeTripExpense(TripSpending spending) async {
+    final backup = _tripSpending;
+    _tripSpending =
+        _tripSpending.where((t) => t.expense.id != spending.expense.id).toList();
+    notifyListeners();
+    await _saveTripState();
+
+    if (LocalFirstRepository.isTemp(spending.expense.id)) return;
+    await push(
+      () => api.delete('/trip-expenses/${spending.expense.id}'),
+      rollback: () => _tripSpending = backup,
+    );
   }
 
   Future<void> removeExpense(Expense expense) async {
@@ -507,4 +664,16 @@ class TripCityLine {
   const TripCityLine({required this.city, required this.plan, required this.spent});
 
   bool get overspent => plan > 0 && spent > plan;
+}
+
+/// Строка в ленте трат бюджета: обычная трата или трата поездки.
+class BudgetEntry {
+  final Expense? own;
+  final TripSpending? trip;
+
+  const BudgetEntry.own(Expense e) : own = e, trip = null;
+  const BudgetEntry.trip(TripSpending t) : own = null, trip = t;
+
+  String get date => own?.date ?? trip!.expense.date;
+  int get amount => own?.amount ?? trip!.expense.amount;
 }

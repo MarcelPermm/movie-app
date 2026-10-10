@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../data/budget_repository.dart';
+import '../data/trip_repository.dart';
 import '../models/budget.dart';
 import '../models/json.dart';
+import '../models/trip.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats.dart';
@@ -546,7 +548,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
   // ─── Траты ──────────────────────────────────────────────────────────
 
   Widget _buildExpenses(BudgetRepository repo) {
-    if (repo.expenses.isEmpty) {
+    final grouped = repo.entriesGrouped;
+    if (grouped.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(top: 44),
         child: Column(
@@ -567,8 +570,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
         ),
       );
     }
-
-    final grouped = repo.expensesGrouped;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,7 +595,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 ],
               ),
             ),
-            ...entry.value.map((e) => _buildExpenseTile(repo, e)),
+            ...entry.value.map((e) => e.own != null
+                ? _buildExpenseTile(repo, e.own!)
+                : _buildTripExpenseTile(repo, e.trip!)),
           ],
         );
       }).toList(),
@@ -691,10 +694,197 @@ class _BudgetScreenState extends State<BudgetScreen> {
     );
   }
 
+  /// Трата поездки в общей ленте: синяя подпись с поездкой и городом.
+  Widget _buildTripExpenseTile(BudgetRepository repo, TripSpending spending) {
+    final expense = spending.expense;
+    final where = repo.tripLabelOf(spending.tripId, fallback: spending.tripName);
+
+    return Dismissible(
+      key: ValueKey('trip-expense-${expense.id}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.red.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(AppRadius.small),
+        ),
+        child: const Icon(Icons.delete_outline, color: AppColors.red),
+      ),
+      onDismissed: (_) async {
+        await context.read<BudgetRepository>().removeTripExpense(spending);
+        _syncTrips(spending.tripId);
+      },
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.small),
+        onTap: () => _editTripSpending(spending),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: cardDecoration(),
+          child: Row(
+            children: [
+              Text(spending.tripEmoji, style: const TextStyle(fontSize: 18)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      expense.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.text, fontSize: 14.5),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        '✈ $where',
+                        if (expense.category.isNotEmpty && expense.note.isNotEmpty) expense.note,
+                      ].join('  ·  '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.blue, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                formatMoney(expense.amount),
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ─── Действия ───────────────────────────────────────────────────────
+
+  /// Куда можно записать трату: отдельные поездки и города многогородних.
+  /// Берём поездки, задевающие открытый месяц, и ещё не закончившиеся —
+  /// билеты на будущую поездку покупают заранее.
+  List<_TripTarget> _tripTargets(BudgetRepository budget, {int? includeId}) {
+    final trips = context.read<TripRepository>().trips;
+    final byId = {for (final t in trips) t.id: t};
+    final monthStart = budget.month;
+    final monthEnd = DateTime(monthStart.year, monthStart.month + 1, 0);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    bool relevant(Trip t) {
+      if (t.id == includeId) return true;
+      final a = parseDate(t.startDate);
+      final b = parseDate(t.endDate) ?? a;
+      if (a == null || b == null) return true;
+      // Перепутанные даты (конец раньше начала) не должны прятать поездку.
+      final lo = a.isBefore(b) ? a : b;
+      final hi = a.isBefore(b) ? b : a;
+      final overlaps = !hi.isBefore(monthStart) && !lo.isAfter(monthEnd);
+      return overlaps || !hi.isBefore(today);
+    }
+
+    final targets = <_TripTarget>[];
+    for (final t in trips) {
+      // Ещё не сохранённую на сервере поездку пропускаем: тратам некуда лечь.
+      if (t.isGroup || t.id < 0) continue;
+      final parent = t.parentId == null ? null : byId[t.parentId];
+      if (!relevant(t) && !(parent != null && relevant(parent))) continue;
+      targets.add(_TripTarget(trip: t, parent: parent));
+    }
+    targets.sort((a, b) => (a.trip.startDate ?? '').compareTo(b.trip.startDate ?? ''));
+    return targets;
+  }
+
+  _TripTarget? _targetById(List<_TripTarget> targets, int id) {
+    for (final t in targets) {
+      if (t.trip.id == id) return t;
+    }
+    return null;
+  }
+
+  /// Записать трату в поездку (в выбранный город).
+  Future<void> _saveToTrip(_ExpenseForm result, List<_TripTarget> targets) async {
+    final target = _targetById(targets, result.tripId!);
+    if (target == null) return;
+    await context.read<BudgetRepository>().addTripExpense(
+          trip: target.trip,
+          parent: target.parent,
+          amount: result.amount,
+          date: result.date,
+          category: result.tripCategory,
+          note: result.combinedNote,
+        );
+    _syncTrips(target.trip.id);
+  }
+
+  /// Экран поездок держит свой кэш трат — после правки из бюджета
+  /// обновляем его, чтобы суммы там не отставали.
+  void _syncTrips(int tripId) {
+    if (!mounted) return;
+    final trips = context.read<TripRepository>();
+    final rootId = trips.tripById(tripId)?.parentId ?? tripId;
+    trips.refresh().then((_) => trips.loadTree(rootId, forceRefresh: true));
+  }
+
+  Future<void> _editTripSpending(TripSpending spending) async {
+    final repo = context.read<BudgetRepository>();
+    final targets = _tripTargets(repo, includeId: spending.tripId);
+
+    final result = await showModalBottomSheet<_ExpenseForm>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (_) => _ExpenseSheet(
+        repo: repo,
+        initialTrip: spending,
+        tripTargets: targets,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    if (result.tripId == null) {
+      // Трату вынесли из поездки в обычный бюджет месяца.
+      await repo.removeTripExpense(spending);
+      await repo.addExpense(
+        amount: result.amount,
+        date: result.date,
+        categoryId: result.categoryId,
+        merchant: result.merchant.isEmpty ? null : result.merchant,
+        note: result.note.isEmpty ? null : result.note,
+      );
+      _syncTrips(spending.tripId);
+      return;
+    }
+    if (result.tripId != spending.tripId) {
+      // Перенесли в другой город или поездку.
+      await repo.removeTripExpense(spending);
+      _syncTrips(spending.tripId);
+      if (!mounted) return;
+      await _saveToTrip(result, targets);
+      return;
+    }
+    await repo.updateTripExpense(
+      spending,
+      amount: result.amount,
+      category: result.tripCategory,
+      note: result.combinedNote,
+      date: result.date,
+    );
+    _syncTrips(spending.tripId);
+  }
+
 
   Future<void> _addExpense({int? categoryId}) async {
     final repo = context.read<BudgetRepository>();
+    final targets = _tripTargets(repo);
 
     final result = await showModalBottomSheet<_ExpenseForm>(
       context: context,
@@ -706,9 +896,15 @@ class _BudgetScreenState extends State<BudgetScreen> {
         // Месяц открыт не текущий — логичнее подставить его первое число,
         // чем сегодняшнюю дату из другого месяца.
         initialDate: _defaultDate(repo),
+        tripTargets: targets,
       ),
     );
     if (result == null || !mounted) return;
+
+    if (result.tripId != null) {
+      await _saveToTrip(result, targets);
+      return;
+    }
 
     await repo.addExpense(
       amount: result.amount,
@@ -727,21 +923,30 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Future<void> _editExpense(Expense expense) async {
     final repo = context.read<BudgetRepository>();
+    final targets = _tripTargets(repo);
 
     final result = await showModalBottomSheet<_ExpenseForm>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
-      builder: (_) => _ExpenseSheet(repo: repo, initial: expense),
+      builder: (_) => _ExpenseSheet(repo: repo, initial: expense, tripTargets: targets),
     );
     if (result == null || !mounted) return;
 
+    if (result.tripId != null) {
+      // Обычную трату отнесли к поездке — переносим её туда.
+      await repo.removeExpense(expense);
+      if (!mounted) return;
+      await _saveToTrip(result, targets);
+      return;
+    }
     await repo.updateExpense(
       expense,
       amount: result.amount,
       categoryId: result.categoryId,
       merchant: result.merchant,
       note: result.note,
+      date: result.date,
     );
   }
 
@@ -822,13 +1027,36 @@ class _ExpenseForm {
   final String merchant;
   final String note;
 
+  /// Поездка или город, куда записать трату. null — обычный бюджет.
+  final int? tripId;
+
+  /// Статья траты в поездке: «Жильё», «Еда»…
+  final String tripCategory;
+
   const _ExpenseForm({
     required this.amount,
     required this.date,
     this.categoryId,
     this.merchant = '',
     this.note = '',
+    this.tripId,
+    this.tripCategory = '',
   });
+
+  /// У трат поездки нет поля «где» — оно уходит в комментарий, как на сайте.
+  String get combinedNote =>
+      [merchant, note].where((s) => s.trim().isNotEmpty).join(' · ');
+}
+
+/// Куда можно отнести трату: поездка или город многогородней поездки.
+class _TripTarget {
+  final Trip trip;
+  final Trip? parent;
+
+  const _TripTarget({required this.trip, this.parent});
+
+  String get label => parent == null ? trip.name : '${parent!.name} · ${trip.name}';
+  String get emoji => parent?.emoji ?? trip.emoji;
 }
 
 /// Ввод траты: сумма, дата, категория, место и комментарий.
@@ -838,14 +1066,23 @@ class _ExpenseForm {
 class _ExpenseSheet extends StatefulWidget {
   final BudgetRepository repo;
   final Expense? initial;
+
+  /// Правим трату поездки, а не обычную.
+  final TripSpending? initialTrip;
+
   final int? presetCategoryId;
   final DateTime? initialDate;
+
+  /// Поездки и города, к которым можно отнести трату.
+  final List<_TripTarget> tripTargets;
 
   const _ExpenseSheet({
     required this.repo,
     this.initial,
+    this.initialTrip,
     this.presetCategoryId,
     this.initialDate,
+    this.tripTargets = const [],
   });
 
   @override
@@ -854,14 +1091,34 @@ class _ExpenseSheet extends StatefulWidget {
 
 class _ExpenseSheetState extends State<_ExpenseSheet> {
   late final _amount = TextEditingController(
-    text: widget.initial == null ? '' : '${widget.initial!.amount}',
+    text: widget.initial != null
+        ? '${widget.initial!.amount}'
+        : widget.initialTrip != null
+            ? '${widget.initialTrip!.expense.amount}'
+            : '',
   );
   late final _merchant = TextEditingController(text: widget.initial?.merchant ?? '');
-  late final _note = TextEditingController(text: widget.initial?.note ?? '');
+  late final _note = TextEditingController(
+    text: widget.initial?.note ?? widget.initialTrip?.expense.note ?? '',
+  );
 
   late int? _categoryId = widget.initial?.categoryId ?? widget.presetCategoryId;
-  late DateTime _date =
-      parseDate(widget.initial?.date) ?? widget.initialDate ?? DateTime.now();
+  late DateTime _date = parseDate(widget.initial?.date) ??
+      parseDate(widget.initialTrip?.expense.date) ??
+      widget.initialDate ??
+      DateTime.now();
+
+  late int? _tripId = widget.initialTrip?.tripId;
+  late String _tripCategory = widget.initialTrip?.expense.category ?? '';
+
+  static const _tripPresets = [
+    ('🏨', 'Жильё'),
+    ('✈️', 'Дорога'),
+    ('🍽️', 'Еда'),
+    ('🎟️', 'Развлечения'),
+    ('🚕', 'Транспорт'),
+    ('🛍️', 'Покупки'),
+  ];
 
   List<String> _hints = const [];
 
@@ -900,7 +1157,91 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
         categoryId: _categoryId,
         merchant: _merchant.text.trim(),
         note: _note.text.trim(),
+        tripId: _tripId,
+        tripCategory: _tripCategory,
       ),
+    );
+  }
+
+  Widget _chip({
+    required String text,
+    required bool selected,
+    required VoidCallback onTap,
+    bool accent = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          gradient: selected && !accent ? AppColors.goldGradient : null,
+          color: selected
+              ? (accent ? AppColors.blue.withValues(alpha: 0.22) : null)
+              : AppColors.bg,
+          border: Border.all(
+            color: selected
+                ? (accent ? AppColors.blue : Colors.transparent)
+                : AppColors.border,
+          ),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: selected ? (accent ? AppColors.blue : AppColors.bg) : AppColors.text,
+            fontSize: 12.5,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Куда записать: обычный бюджет или поездка с городом.
+  Widget _buildTripPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text('ПОЕЗДКА', style: kEyebrowStyle),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _chip(
+              text: 'Без поездки',
+              selected: _tripId == null,
+              onTap: () => setState(() => _tripId = null),
+            ),
+            ...widget.tripTargets.map((t) => _chip(
+                  text: '${t.emoji} ${t.label}',
+                  selected: _tripId == t.trip.id,
+                  accent: true,
+                  onTap: () => setState(() => _tripId = t.trip.id),
+                )),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Статьи поездки вместо категорий месяца: у поездки свой план.
+  Widget _buildTripCategories() {
+    final presets = _tripPresets.map((p) => p.$2).toSet();
+    final custom = _tripCategory.trim();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ..._tripPresets.map((p) => _chip(
+              text: '${p.$1} ${p.$2}',
+              selected: _tripCategory == p.$2,
+              onTap: () => setState(() => _tripCategory = _tripCategory == p.$2 ? '' : p.$2),
+            )),
+        if (custom.isNotEmpty && !presets.contains(custom))
+          _chip(text: custom, selected: true, onTap: () => setState(() => _tripCategory = '')),
+      ],
     );
   }
 
@@ -921,7 +1262,9 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.initial == null ? 'Новая трата' : 'Изменить трату',
+              widget.initial == null && widget.initialTrip == null
+                  ? 'Новая трата'
+                  : 'Изменить трату',
               style: const TextStyle(
                 color: AppColors.text,
                 fontSize: 17,
@@ -948,10 +1291,14 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               onSubmitted: (_) => _submit(),
             ),
 
+            if (widget.tripTargets.isNotEmpty) _buildTripPicker(),
+
             const SizedBox(height: 16),
-            const Text('КАТЕГОРИЯ', style: kEyebrowStyle),
+            Text(_tripId == null ? 'КАТЕГОРИЯ' : 'НА ЧТО', style: kEyebrowStyle),
             const SizedBox(height: 8),
-            if (categories.isEmpty)
+            if (_tripId != null)
+              _buildTripCategories()
+            else if (categories.isEmpty)
               const Text(
                 'Категорий пока нет — трату можно записать и без неё',
                 style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
@@ -1049,7 +1396,11 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: _submit,
-                child: Text(widget.initial == null ? 'Добавить трату' : 'Сохранить'),
+                child: Text(
+                  widget.initial == null && widget.initialTrip == null
+                      ? 'Добавить трату'
+                      : 'Сохранить',
+                ),
               ),
             ),
           ],

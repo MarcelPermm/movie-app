@@ -252,11 +252,12 @@ class TripExpense {
     String? note,
     String? city,
     String? day,
+    String? date,
   }) =>
       TripExpense(
         id: id,
         tripId: tripId,
-        date: date,
+        date: date ?? this.date,
         amount: amount ?? this.amount,
         plannedAmount: plannedAmount ?? this.plannedAmount,
         plannedMax: plannedMax,

@@ -1999,9 +1999,11 @@ def delete_budget_expense(exp_id: int, user_id: int):
 
 def update_budget_expense(exp_id: int, user_id: int,
                           amount: int = None, note: str = None,
-                          category_id: int = None, merchant: str = None) -> dict:
+                          category_id: int = None, merchant: str = None,
+                          date: str = None) -> dict:
     fields = {}
     if amount is not None:      fields["amount"] = amount
+    if date:                    fields["date"]   = date
     if note is not None:        fields["note"]   = note
     if category_id is not None: fields["category_id"] = category_id
     if merchant is not None:    fields["merchant"] = merchant
