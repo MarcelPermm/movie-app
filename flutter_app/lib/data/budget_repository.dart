@@ -17,9 +17,12 @@ class BudgetRepository extends LocalFirstRepository {
   List<BudgetCategory> get categories => List.unmodifiable(_categories);
   List<Expense> get expenses => List.unmodifiable(_expenses);
 
-  /// Траты поездок, попавшие в этот месяц.
+  /// Траты поездок, попавшие в этот месяц (по дате самой траты).
   List<TripSpending> _tripSpending = [];
   List<TripSpending> get tripSpending => List.unmodifiable(_tripSpending);
+
+  /// Поездки, пересекающиеся с месяцем, — вместе с городами групп.
+  List<Trip> _events = [];
 
   int get tripTotal => _tripSpending.fold(0, (sum, t) => sum + t.expense.amount);
 
@@ -28,59 +31,122 @@ class BudgetRepository extends LocalFirstRepository {
   /// Итог месяца вместе с поездками — деньги-то одни.
   int get total => ownTotal + tripTotal;
 
-  int get plannedTotal => _categories.fold(0, (sum, c) => sum + c.planMonthly);
+  /// Категория «Путешествия» дублирует план поездок: на одни и те же деньги
+  /// получалось два плана. Главный — план самих поездок, а категорию
+  /// прячем и в план месяца не считаем.
+  static bool isTravelCategory(BudgetCategory c) {
+    final name = c.name.toLowerCase();
+    return name.contains('путешеств') || name.contains('поездк');
+  }
 
-  /// Сопоставление названия категории поездки с категорией месяца.
+  /// План повседневных трат — всё, кроме путешествий.
+  int get regularPlan => _categories
+      .where((c) => !isTravelCategory(c))
+      .fold(0, (sum, c) => sum + c.planMonthly);
+
+  /// План поездок этого месяца: поездка целиком относится к месяцу,
+  /// в котором началась.
+  int get tripPlan => tripLines.fold(0, (sum, t) => sum + t.plan);
+
+  int get plannedTotal => regularPlan + tripPlan;
+
+  /// Поездки месяца с разбивкой по городам и статьям.
   ///
-  /// В поездке категория — просто строка («Еда»), в месяце — запись со
-  /// своим id. Связываем по названию: это единственное, что у них общего,
-  /// и ровно так их и заводят руками.
-  int? _matchCategory(String name) {
-    final key = name.trim().toLowerCase();
-    if (key.isEmpty) return null;
-    for (final c in _categories) {
-      if (c.name.trim().toLowerCase() == key) return c.id;
+  /// Траты попадают в месяц по своей дате, план — целиком в месяц начала
+  /// поездки. Поэтому поездка на стыке месяцев в следующем месяце видна
+  /// с тратами, но без плана.
+  List<TripBudgetLine> get tripLines {
+    final ids = _events.map((t) => t.id).toSet();
+    final roots = _events
+        .where((t) => t.parentId == null || !ids.contains(t.parentId))
+        .toList()
+      ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+
+    final lines = <TripBudgetLine>[];
+    for (final root in roots) {
+      final cities = root.isGroup
+          ? (_events.where((t) => t.parentId == root.id).toList()
+            ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? '')))
+          : const <Trip>[];
+      final treeIds = {root.id, ...cities.map((c) => c.id)};
+      final spending = _tripSpending.where((t) => treeIds.contains(t.tripId)).toList();
+
+      final fullPlan = root.isGroup
+          ? () {
+              final kids = cities.fold<int>(0, (sum, c) => sum + c.plannedTotal);
+              return kids > 0 ? kids : root.plannedTotal;
+            }()
+          : root.plannedTotal;
+      final start = root.start;
+      final startsHere =
+          start == null || (start.year == _month.year && start.month == _month.month);
+
+      final byCategory = <String, int>{};
+      for (final t in spending) {
+        final key = t.expense.category.trim().isEmpty ? 'Прочее' : t.expense.category.trim();
+        byCategory[key] = (byCategory[key] ?? 0) + t.expense.amount;
+      }
+
+      final line = TripBudgetLine(
+        trip: root,
+        plan: startsHere ? fullPlan : 0,
+        fullPlan: fullPlan,
+        planCarried: !startsHere,
+        spent: spending.fold(0, (sum, t) => sum + t.expense.amount),
+        cities: [
+          for (final c in cities)
+            TripCityLine(
+              city: c,
+              plan: c.plannedTotal,
+              spent: spending
+                  .where((t) => t.tripId == c.id)
+                  .fold(0, (sum, t) => sum + t.expense.amount),
+            ),
+        ],
+        byCategory: Map.fromEntries(
+          byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
+        ),
+      );
+      // Поездка задела месяц краем, но ни плана, ни трат в нём нет — шум.
+      if (line.plan == 0 && line.spent == 0) continue;
+      lines.add(line);
     }
-    return null;
+    return lines;
   }
 
   /// Сколько потрачено по каждой категории — для полосок выполнения плана.
-  /// Учитываются и обычные траты, и то, что ушло в поездках.
+  /// Траты поездок сюда не входят: у них свой блок и свой план.
   Map<int?, int> get spentByCategory {
     final map = <int?, int>{};
     for (final e in _expenses) {
       map[e.categoryId] = (map[e.categoryId] ?? 0) + e.amount;
     }
-    for (final t in _tripSpending) {
-      final id = _matchCategory(t.expense.category);
-      map[id] = (map[id] ?? 0) + t.expense.amount;
-    }
     return map;
   }
 
-  /// Траты поездок, отнесённые к конкретной категории месяца.
-  List<TripSpending> tripSpendingOf(int? categoryId) => _tripSpending
-      .where((t) => _matchCategory(t.expense.category) == categoryId)
-      .toList();
-
   /// Категории, которые есть смысл показывать: с планом или с тратами.
-  /// Пустые строки с нулями только зашумляют экран.
+  /// Пустые строки с нулями только зашумляют экран. «Путешествия» видны,
+  /// только если в них записали обычную трату, — и уже без плана.
   List<BudgetCategory> get visibleCategories {
     final spent = spentByCategory;
     return _categories
-        .where((c) => c.planMonthly > 0 || (spent[c.id] ?? 0) > 0)
+        .where((c) => isTravelCategory(c)
+            ? (spent[c.id] ?? 0) > 0
+            : c.planMonthly > 0 || (spent[c.id] ?? 0) > 0)
         .toList()
       ..sort((a, b) => b.planMonthly.compareTo(a.planMonthly));
   }
 
   /// Категории с планом — основной блок.
-  List<BudgetCategory> get plannedCategories =>
-      visibleCategories.where((c) => c.planMonthly > 0).toList();
+  List<BudgetCategory> get plannedCategories => visibleCategories
+      .where((c) => c.planMonthly > 0 && !isTravelCategory(c))
+      .toList();
 
   /// Есть траты, но плана нет. Показываем отдельно, чтобы деньги
   /// не пропадали из виду, но и не мешались среди плановых.
-  List<BudgetCategory> get unplannedCategories =>
-      visibleCategories.where((c) => c.planMonthly == 0).toList();
+  List<BudgetCategory> get unplannedCategories => visibleCategories
+      .where((c) => c.planMonthly == 0 || isTravelCategory(c))
+      .toList();
 
   /// Потрачено мимо всех категорий.
   int get uncategorized => spentByCategory[null] ?? 0;
@@ -129,12 +195,14 @@ class BudgetRepository extends LocalFirstRepository {
   String get _expKey => cacheKey('budget::expenses::${_month.year}-${_month.month}');
   String get _merchKey => cacheKey('budget::merchants');
   String get _tripKey => cacheKey('budget::trips::${_month.year}-${_month.month}');
+  String get _eventsKey => cacheKey('budget::events::${_month.year}-${_month.month}');
 
   Future<void> load({bool forceRefresh = false}) async {
     _categories = readCache(_catKey).map(BudgetCategory.fromJson).toList();
     _expenses = readCache(_expKey).map(Expense.fromJson).toList();
     _merchants = readCache(_merchKey).map((m) => asString(m['name'])).toList();
     _tripSpending = readCache(_tripKey).map(TripSpending.fromJson).toList();
+    _events = readCache(_eventsKey).map(Trip.fromJson).toList();
     notifyListeners();
     if (forceRefresh || isStale(_expKey)) await refresh();
   }
@@ -169,28 +237,30 @@ class BudgetRepository extends LocalFirstRepository {
         await _refreshTripSpending();
       });
 
-  /// Траты поездок, чьи даты попали в открытый месяц.
+  /// Поездки месяца и их траты, чьи даты попали в открытый месяц.
   ///
-  /// Сервер отдаёт поездки месяца одним запросом, а траты — по одной
-  /// поездке за раз. Поездок в месяце обычно ноль или одна, поэтому
-  /// отдельного эндпоинта под это заводить не стоило.
+  /// Сервер отдаёт поездки месяца одним запросом (с городами групп), а
+  /// траты — по одной поездке. Запросы трат идут параллельно.
   Future<void> _refreshTripSpending() async {
     try {
       final events = await api.get('/budget/events', query: {
         'year': '${_month.year}',
         'month': '${_month.month}',
       });
+      final rawEvents = ((events as List?) ?? const []).whereType<Map>().toList();
+      await writeCache(_eventsKey, rawEvents, fromServer: true);
+      final trips = readCache(_eventsKey).map(Trip.fromJson).toList();
 
-      final trips = ((events as List?) ?? const [])
-          .whereType<Map>()
-          .map((e) => Trip.fromJson(Map<String, dynamic>.from(e)))
-          .where((t) => !t.isGroup)
-          .toList();
+      // У группы своих трат обычно нет — они в городах, — но сайт позволяет
+      // записать трату и на саму группу, поэтому спрашиваем всех.
+      final results = await Future.wait(
+        trips.map((t) => api.get('/trips/${t.id}/expenses')),
+      );
 
       final collected = <TripSpending>[];
-      for (final trip in trips) {
-        final raw = await api.get('/trips/${trip.id}/expenses');
-        for (final item in ((raw as List?) ?? const []).whereType<Map>()) {
+      for (var i = 0; i < trips.length; i++) {
+        final trip = trips[i];
+        for (final item in ((results[i] as List?) ?? const []).whereType<Map>()) {
           final expense = TripExpense.fromJson(Map<String, dynamic>.from(item));
           if (expense.amount <= 0) continue; // только план, денег ещё не было
 
@@ -213,6 +283,7 @@ class BudgetRepository extends LocalFirstRepository {
         fromServer: true,
       );
       _tripSpending = collected;
+      _events = trips;
     } on ApiException {
       // Не смогли получить поездки — месяц всё равно показываем,
       // просто без их трат.
@@ -390,4 +461,50 @@ class BudgetRepository extends LocalFirstRepository {
       rollback: () => _categories = backup,
     );
   }
+}
+
+/// Поездка в бюджете месяца.
+class TripBudgetLine {
+  final Trip trip;
+
+  /// План, учтённый в этом месяце: весь план поездки или ноль, если
+  /// поездка началась в другом месяце.
+  final int plan;
+
+  /// План поездки целиком — для подписи «план учтён в …».
+  final int fullPlan;
+
+  /// План уже учтён в месяце начала поездки.
+  final bool planCarried;
+
+  /// Потрачено в этом месяце.
+  final int spent;
+
+  final List<TripCityLine> cities;
+
+  /// На что ушли деньги: статья → сумма, по убыванию.
+  final Map<String, int> byCategory;
+
+  const TripBudgetLine({
+    required this.trip,
+    required this.plan,
+    required this.fullPlan,
+    required this.planCarried,
+    required this.spent,
+    required this.cities,
+    required this.byCategory,
+  });
+
+  bool get overspent => plan > 0 && spent > plan;
+}
+
+/// Город многогородней поездки в бюджете месяца.
+class TripCityLine {
+  final Trip city;
+  final int plan;
+  final int spent;
+
+  const TripCityLine({required this.city, required this.plan, required this.spent});
+
+  bool get overspent => plan > 0 && spent > plan;
 }

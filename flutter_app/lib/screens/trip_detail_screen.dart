@@ -10,9 +10,10 @@ import '../widgets/stats.dart';
 
 /// Экран поездки: сколько заложено, сколько ушло и на что.
 ///
-/// Траты сгруппированы по датам — в поездке это единственная группировка,
-/// которая имеет смысл: вспоминаешь не «сколько на еду за всё», а «что было
-/// во второй день».
+/// Многогородняя поездка (на сервере — группа) показывается как на сайте:
+/// сверху сводка по статьям за всю поездку, ниже — каждый город со своим
+/// планом и тратами. У обычной поездки траты разбиваются по городам из
+/// поля «город», если оно заполнено, иначе — по датам.
 class TripDetailScreen extends StatefulWidget {
   final int tripId;
 
@@ -23,11 +24,13 @@ class TripDetailScreen extends StatefulWidget {
 }
 
 class _TripDetailScreenState extends State<TripDetailScreen> {
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<TripRepository>().loadExpenses(widget.tripId);
+      context.read<TripRepository>().loadTree(widget.tripId);
     });
   }
 
@@ -42,8 +45,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       );
     }
 
-    final expenses = repo.expensesOf(trip.id);
-    final byDate = _groupByDate(expenses);
+    final cities = trip.isGroup ? repo.citiesOf(trip.id) : const <Trip>[];
+    final expenses = repo.expensesOfTree(trip);
+    final planned = repo.plannedOf(trip);
 
     return Scaffold(
       appBar: AppBar(
@@ -61,10 +65,24 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           ],
         ),
         actions: [
+          if (_busy)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold),
+              ),
+            ),
+          IconButton(
+            tooltip: 'Добавить город',
+            icon: const Icon(Icons.add_location_alt_outlined, color: AppColors.textDim),
+            onPressed: _busy ? null : () => _addCity(trip),
+          ),
           IconButton(
             tooltip: 'Добавить трату',
             icon: const Icon(Icons.add, color: AppColors.gold),
-            onPressed: () => _addExpense(trip),
+            onPressed: () => _addExpense(trip, cities),
           ),
           const SizedBox(width: 6),
         ],
@@ -73,13 +91,19 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         color: AppColors.gold,
         backgroundColor: AppColors.surface,
         onRefresh: () =>
-            context.read<TripRepository>().loadExpenses(trip.id, forceRefresh: true),
+            context.read<TripRepository>().loadTree(trip.id, forceRefresh: true),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 32),
           children: [
-            _buildSummary(trip, expenses),
-            const SizedBox(height: 18),
-            if (expenses.isEmpty)
+            _buildSummary(trip, expenses, planned),
+            if (expenses.any((e) => e.isPaid)) ...[
+              const SizedBox(height: 14),
+              _buildCategories(expenses),
+            ],
+            const SizedBox(height: 8),
+            if (trip.isGroup)
+              ..._buildCityBlocks(repo, trip, cities)
+            else if (expenses.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: 40),
                 child: Text(
@@ -89,26 +113,18 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 ),
               )
             else
-              ...byDate.entries.map((entry) => _buildDay(entry.key, entry.value)),
+              ..._buildSingleTrip(expenses),
           ],
         ),
       ),
     );
   }
 
-  /// Траты по датам, свежие сверху.
-  Map<String, List<TripExpense>> _groupByDate(List<TripExpense> expenses) {
-    final map = <String, List<TripExpense>>{};
-    for (final e in expenses) {
-      map.putIfAbsent(e.date, () => []).add(e);
-    }
-    final keys = map.keys.toList()..sort((a, b) => b.compareTo(a));
-    return {for (final k in keys) k: map[k]!};
-  }
+  // ─── Сводка ─────────────────────────────────────────────────────────
 
-  Widget _buildSummary(Trip trip, List<TripExpense> expenses) {
-    final planned = trip.plannedTotal;
+  Widget _buildSummary(Trip trip, List<TripExpense> expenses, int planned) {
     final spent = expenses.fold<int>(0, (sum, e) => sum + e.amount);
+    final overspent = planned > 0 && spent > planned;
     // План по отдельным тратам: то, что записали заранее, но ещё не оплатили.
     final reserved = expenses
         .where((e) => !e.isPaid)
@@ -122,15 +138,15 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               child: StatTile(
                 value: formatMoney(spent),
                 label: 'потрачено',
-                color: trip.overspent ? AppColors.red : AppColors.gold,
+                color: overspent ? AppColors.red : AppColors.gold,
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: StatTile(
-                value: planned > 0 ? formatMoney(planned - spent) : '—',
-                label: 'осталось',
-                color: AppColors.green,
+                value: planned > 0 ? formatMoney((planned - spent).abs()) : '—',
+                label: overspent ? 'перерасход' : 'осталось',
+                color: overspent ? AppColors.red : AppColors.green,
               ),
             ),
             if (reserved > 0) ...[
@@ -174,7 +190,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     minHeight: 7,
                     backgroundColor: AppColors.bg,
                     valueColor: AlwaysStoppedAnimation(
-                      trip.overspent ? AppColors.red : AppColors.gold,
+                      overspent ? AppColors.red : AppColors.gold,
                     ),
                   ),
                 ),
@@ -184,6 +200,305 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         ],
       ],
     );
+  }
+
+  /// Сводка по статьям за всю поездку: куда ушли деньги.
+  Widget _buildCategories(List<TripExpense> expenses) {
+    final sums = <String, int>{};
+    for (final e in expenses.where((e) => e.isPaid)) {
+      final key = e.category.trim().isEmpty ? 'Прочее' : e.category.trim();
+      sums[key] = (sums[key] ?? 0) + e.amount;
+    }
+    final entries = sums.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final max = entries.first.value;
+    final total = entries.fold<int>(0, (sum, e) => sum + e.value);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ПО СТАТЬЯМ', style: kEyebrowStyle),
+          const SizedBox(height: 8),
+          ...entries.map((e) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: const TextStyle(color: AppColors.text, fontSize: 13.5),
+                          ),
+                        ),
+                        Text(
+                          '${formatMoney(e.value)}  ·  ${(e.value * 100 / total).round()}%',
+                          style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: e.value / max,
+                        minHeight: 4,
+                        backgroundColor: AppColors.bg,
+                        valueColor: const AlwaysStoppedAnimation(AppColors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  // ─── Города ─────────────────────────────────────────────────────────
+
+  List<Widget> _buildCityBlocks(TripRepository repo, Trip group, List<Trip> cities) {
+    final direct = repo.expensesOf(group.id);
+    return [
+      if (cities.isEmpty)
+        const Padding(
+          padding: EdgeInsets.only(top: 30),
+          child: Text(
+            'В поездке пока нет городов.\nДобавь первый — значком с булавкой сверху',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textDim, fontSize: 14, height: 1.6),
+          ),
+        ),
+      for (final city in cities)
+        _buildCityBlock(
+          title: city.name,
+          emoji: city.emoji,
+          dates: city.dateLabel,
+          plan: city.plannedTotal,
+          expenses: repo.expensesOf(city.id),
+          onMenu: () => _cityMenu(city),
+        ),
+      // Траты, записанные на саму группу (так умеет сайт), не теряем.
+      if (direct.isNotEmpty)
+        _buildCityBlock(
+          title: 'Без города',
+          emoji: '🧳',
+          dates: '',
+          plan: 0,
+          expenses: direct,
+        ),
+    ];
+  }
+
+  /// Обычная поездка: города берутся из поля «город» у трат.
+  List<Widget> _buildSingleTrip(List<TripExpense> expenses) {
+    final cities = <String, List<TripExpense>>{};
+    for (final e in expenses) {
+      cities.putIfAbsent(e.city.trim(), () => []).add(e);
+    }
+    final named = cities.keys.where((k) => k.isNotEmpty).toList();
+    if (named.isEmpty) {
+      return _groupByDate(expenses).entries.map((e) => _buildDay(e.key, e.value)).toList();
+    }
+    return [
+      for (final name in [...named, if (cities.containsKey('')) ''])
+        _buildCityBlock(
+          title: name.isEmpty ? 'Без города' : name,
+          emoji: name.isEmpty ? '🧳' : '📍',
+          dates: '',
+          plan: 0,
+          expenses: cities[name]!,
+        ),
+    ];
+  }
+
+  Widget _buildCityBlock({
+    required String title,
+    required String emoji,
+    required String dates,
+    required int plan,
+    required List<TripExpense> expenses,
+    VoidCallback? onMenu,
+  }) {
+    final spent = expenses.fold<int>(0, (sum, e) => sum + e.amount);
+    final over = plan > 0 && spent > plan;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.small),
+            onLongPress: onMenu,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+              decoration: cardDecoration(highlighted: true),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text(emoji, style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (dates.isNotEmpty)
+                              Text(
+                                dates,
+                                style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        plan > 0
+                            ? '${formatMoney(spent)} / ${formatMoney(plan)}'
+                            : formatMoney(spent),
+                        style: TextStyle(
+                          color: over ? AppColors.red : AppColors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (onMenu != null)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.more_vert, size: 18, color: AppColors.textDim),
+                          onPressed: onMenu,
+                        )
+                      else
+                        const SizedBox(width: 8),
+                    ],
+                  ),
+                  if (plan > 0) ...[
+                    const SizedBox(height: 9),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: (spent / plan).clamp(0.0, 1.0),
+                          minHeight: 4,
+                          backgroundColor: AppColors.bg,
+                          valueColor: AlwaysStoppedAnimation(
+                            over ? AppColors.red : AppColors.gold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (expenses.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 10, 4, 0),
+              child: Text(
+                'нет трат по этому городу',
+                style: TextStyle(color: AppColors.textDim, fontSize: 12.5),
+              ),
+            )
+          else
+            ..._groupByDate(expenses).entries.map((e) => _buildDay(e.key, e.value)),
+        ],
+      ),
+    );
+  }
+
+  void _cityMenu(Trip city) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.call_split, color: AppColors.gold),
+              title: const Text('Вынести в отдельную поездку'),
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                setState(() => _busy = true);
+                final ok = await context.read<TripRepository>().ungroup(city);
+                if (!mounted) return;
+                setState(() => _busy = false);
+                if (!ok) _showCityError();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addCity(Trip trip) async {
+    final result = await showDialog<_CityForm>(
+      context: context,
+      builder: (_) => _CityDialog(
+        hint: trip.isGroup
+            ? null
+            : '«${trip.name}» станет первым городом, а поездка — многогородней',
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    setState(() => _busy = true);
+    final repo = context.read<TripRepository>();
+    final groupId = await repo.addCity(
+      trip,
+      name: result.name,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      plannedTotal: result.planned,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+
+    if (groupId == null) {
+      _showCityError();
+      return;
+    }
+    await repo.loadTree(groupId, forceRefresh: true);
+    if (!mounted) return;
+    // Обычная поездка превратилась в город новой группы — открываем группу.
+    if (groupId != widget.tripId) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: groupId)),
+      );
+    }
+  }
+
+  void _showCityError() {
+    final error = context.read<TripRepository>().cityError;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Нужна связь с сервером${error == null ? '' : ': $error'}'),
+    ));
+  }
+
+  // ─── Траты по дням ──────────────────────────────────────────────────
+
+  /// Траты по датам, свежие сверху.
+  Map<String, List<TripExpense>> _groupByDate(List<TripExpense> expenses) {
+    final map = <String, List<TripExpense>>{};
+    for (final e in expenses) {
+      map.putIfAbsent(e.date, () => []).add(e);
+    }
+    final keys = map.keys.toList()..sort((a, b) => b.compareTo(a));
+    return {for (final k in keys) k: map[k]!};
   }
 
   Widget _buildDay(String date, List<TripExpense> expenses) {
@@ -302,19 +617,26 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     );
   }
 
-  Future<void> _addExpense(Trip trip) async {
+  Future<void> _addExpense(Trip trip, List<Trip> cities) async {
+    if (trip.isGroup && cities.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Сначала добавь город — траты многогородней поездки живут в городах'),
+      ));
+      return;
+    }
     final result = await showModalBottomSheet<_TripExpenseForm>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       builder: (_) => _TripExpenseSheet(
-        initialDate: parseDate(trip.startDate) ?? DateTime.now(),
+        initialDate: _defaultDate(trip),
+        cities: cities,
       ),
     );
     if (result == null || !mounted) return;
 
     await context.read<TripRepository>().addExpense(
-          trip.id,
+          result.tripId ?? trip.id,
           amount: result.amount,
           plannedAmount: result.planned,
           date: result.date,
@@ -322,6 +644,17 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           note: result.note,
           city: result.city,
         );
+  }
+
+  /// Сегодня, если поездка идёт сейчас, иначе — её первый день.
+  DateTime _defaultDate(Trip trip) {
+    final now = DateTime.now();
+    final start = parseDate(trip.startDate);
+    final end = parseDate(trip.endDate);
+    if (start != null && end != null && !now.isBefore(start) && !now.isAfter(end)) {
+      return now;
+    }
+    return start ?? now;
   }
 
   Future<void> _editExpense(TripExpense expense) async {
@@ -352,6 +685,9 @@ class _TripExpenseForm {
   final String note;
   final String city;
 
+  /// Город многогородней поездки, в который ложится трата.
+  final int? tripId;
+
   const _TripExpenseForm({
     required this.amount,
     required this.date,
@@ -359,6 +695,7 @@ class _TripExpenseForm {
     this.category = '',
     this.note = '',
     this.city = '',
+    this.tripId,
   });
 }
 
@@ -368,7 +705,11 @@ class _TripExpenseSheet extends StatefulWidget {
   final TripExpense? initial;
   final DateTime? initialDate;
 
-  const _TripExpenseSheet({this.initial, this.initialDate});
+  /// Города многогородней поездки. Если не пусто — город выбирается
+  /// из них, а не вписывается текстом.
+  final List<Trip> cities;
+
+  const _TripExpenseSheet({this.initial, this.initialDate, this.cities = const []});
 
   @override
   State<_TripExpenseSheet> createState() => _TripExpenseSheetState();
@@ -387,6 +728,20 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
 
   late DateTime _date =
       parseDate(widget.initial?.date) ?? widget.initialDate ?? DateTime.now();
+
+  /// Выбранный город: по умолчанию тот, в чьи даты попадает трата.
+  late int? _cityId = _cityForDate(_date);
+
+  int? _cityForDate(DateTime date) {
+    if (widget.cities.isEmpty) return null;
+    final day = ymd(date);
+    for (final c in widget.cities) {
+      final from = c.startDate ?? '';
+      final to = c.endDate ?? from;
+      if (from.isNotEmpty && day.compareTo(from) >= 0 && day.compareTo(to) <= 0) return c.id;
+    }
+    return widget.cities.first.id;
+  }
 
   static const _presets = [
     ('🏨', 'Жильё'),
@@ -415,7 +770,12 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
       firstDate: DateTime(now.year - 3),
       lastDate: DateTime(now.year + 5),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null) {
+      setState(() {
+        _date = picked;
+        _cityId = _cityForDate(picked);
+      });
+    }
   }
 
   void _submit() {
@@ -432,7 +792,8 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
         date: _date,
         category: _category.text.trim(),
         note: _note.text.trim(),
-        city: _city.text.trim(),
+        city: widget.cities.isEmpty ? _city.text.trim() : '',
+        tripId: _cityId,
       ),
     );
   }
@@ -524,14 +885,47 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
               style: const TextStyle(color: AppColors.text),
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: _city,
-              decoration: const InputDecoration(
-                hintText: 'Город',
-                prefixIcon: Icon(Icons.place_outlined, size: 19),
+            if (widget.cities.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              const Text('ГОРОД', style: kEyebrowStyle),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.cities.map((c) {
+                  final selected = c.id == _cityId;
+                  return GestureDetector(
+                    onTap: () => setState(() => _cityId = c.id),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: selected ? AppColors.goldWash(0.2) : AppColors.bg,
+                        border: Border.all(
+                          color: selected ? AppColors.gold : AppColors.border,
+                        ),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Text(
+                        '📍 ${c.name}',
+                        style: TextStyle(
+                          color: selected ? AppColors.gold : AppColors.text,
+                          fontSize: 12.5,
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-              style: const TextStyle(color: AppColors.text),
-            ),
+            ] else
+              TextField(
+                controller: _city,
+                decoration: const InputDecoration(
+                  hintText: 'Город',
+                  prefixIcon: Icon(Icons.place_outlined, size: 19),
+                ),
+                style: const TextStyle(color: AppColors.text),
+              ),
             const SizedBox(height: 10),
             TextField(
               controller: _note,
@@ -556,6 +950,132 @@ class _TripExpenseSheetState extends State<_TripExpenseSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CityForm {
+  final String name;
+  final String? startDate;
+  final String? endDate;
+  final int planned;
+
+  const _CityForm({required this.name, required this.planned, this.startDate, this.endDate});
+}
+
+/// Новый город в поездке: название, даты и свой бюджет.
+class _CityDialog extends StatefulWidget {
+  /// Пояснение, что будет с поездкой, — когда она становится многогородней.
+  final String? hint;
+
+  const _CityDialog({this.hint});
+
+  @override
+  State<_CityDialog> createState() => _CityDialogState();
+}
+
+class _CityDialogState extends State<_CityDialog> {
+  final _name = TextEditingController();
+  final _planned = TextEditingController();
+  DateTime? _start;
+  DateTime? _end;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _planned.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 5),
+      initialDateRange: _start != null && _end != null
+          ? DateTimeRange(start: _start!, end: _end!)
+          : null,
+    );
+    if (range == null) return;
+    setState(() {
+      _start = range.start;
+      _end = range.end;
+    });
+  }
+
+  void _submit() {
+    final name = _name.text.trim();
+    if (name.isEmpty) return;
+    Navigator.pop(
+      context,
+      _CityForm(
+        name: name,
+        startDate: _start == null ? null : ymd(_start!),
+        endDate: _end == null ? null : ymd(_end!),
+        planned: int.tryParse(_planned.text.trim()) ?? 0,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: const Text(
+        'Новый город',
+        style: TextStyle(color: AppColors.text, fontSize: 17),
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.hint != null) ...[
+              Text(
+                widget.hint!,
+                style: const TextStyle(color: AppColors.textDim, fontSize: 12.5, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+            ],
+            TextField(
+              controller: _name,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Тбилиси',
+                prefixIcon: Icon(Icons.place_outlined, size: 19),
+              ),
+              style: const TextStyle(color: AppColors.text),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _pickRange,
+              icon: const Icon(Icons.date_range_outlined, size: 18),
+              label: Text(
+                _start == null
+                    ? 'Выбрать даты'
+                    : '${ymd(_start!)} — ${_end == null ? '?' : ymd(_end!)}',
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _planned,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(hintText: 'Бюджет города, ₽ — можно пропустить'),
+              style: const TextStyle(color: AppColors.text),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Добавить')),
+      ],
     );
   }
 }

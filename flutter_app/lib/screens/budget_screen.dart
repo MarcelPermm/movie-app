@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats.dart';
 import 'budget_category_screen.dart';
+import 'trip_detail_screen.dart';
 
 /// Бюджет месяца: сколько ушло, по каким категориям и на что конкретно.
 class BudgetScreen extends StatefulWidget {
@@ -18,6 +19,9 @@ class BudgetScreen extends StatefulWidget {
 }
 
 class _BudgetScreenState extends State<BudgetScreen> {
+  /// Какие поездки раскрыты до городов.
+  final Set<int> _expandedTrips = {};
+
   @override
   void initState() {
     super.initState();
@@ -34,7 +38,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       children: [
         SectionHeader(
           title: 'Бюджет',
-          subtitle: '${repo.expenses.length} трат за месяц',
+          subtitle: _subtitle(repo),
           actions: [
             PeriodStepper(
               label: '${monthNames[repo.month.month - 1]} ${repo.month.year}',
@@ -67,6 +71,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 90),
               children: [
                 _buildTotal(repo),
+                if (repo.tripLines.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  _buildTrips(repo),
+                ],
                 if (repo.categories.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   _buildCategories(repo),
@@ -79,6 +87,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
         ),
       ],
     );
+  }
+
+  String _subtitle(BudgetRepository repo) {
+    final parts = ['${repo.expenses.length} трат'];
+    final trips = repo.tripLines.length;
+    if (trips > 0) parts.add('$trips ${trips == 1 ? 'поездка' : 'поездки'}');
+    return '${parts.join(' + ')} за месяц';
   }
 
   // ─── Итог месяца ────────────────────────────────────────────────────
@@ -119,35 +134,284 @@ class _BudgetScreenState extends State<BudgetScreen> {
             ],
           ],
         ),
-        if (planned > 0) ...[
+        if (planned > 0 || repo.tripTotal > 0) ...[
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: (repo.total / planned).clamp(0.0, 1.0),
-              minHeight: 7,
-              backgroundColor: AppColors.surface,
-              valueColor: AlwaysStoppedAnimation(overspent ? AppColors.red : AppColors.gold),
-            ),
+          _SplitBar(
+            regular: repo.ownTotal,
+            trips: repo.tripTotal,
+            capacity: planned > repo.total ? planned : repo.total,
+            overspent: overspent,
           ),
-        ],
-        // Итог месяца включает поездки — иначе он занижен и вводит в
-        // заблуждение. Но откуда взялась разница, надо сказать прямо.
-        if (repo.tripTotal > 0) ...[
-          const SizedBox(height: 10),
-          Row(
+          const SizedBox(height: 9),
+          // Две части месяца живут по своим планам — показываем обе,
+          // чтобы было видно, какая из них съела остаток.
+          Wrap(
+            spacing: 16,
+            runSpacing: 6,
             children: [
-              const Icon(Icons.flight_takeoff, size: 14, color: AppColors.blue),
-              const SizedBox(width: 7),
-              Text(
-                'из них ${formatMoney(repo.tripTotal)} в поездках',
-                style: const TextStyle(color: AppColors.blue, fontSize: 12),
+              _LegendItem(
+                color: AppColors.gold,
+                label: 'повседневное',
+                spent: repo.ownTotal,
+                plan: repo.regularPlan,
               ),
+              if (repo.tripTotal > 0 || repo.tripPlan > 0)
+                _LegendItem(
+                  color: AppColors.blue,
+                  label: 'поездки',
+                  spent: repo.tripTotal,
+                  plan: repo.tripPlan,
+                ),
             ],
           ),
         ],
       ],
     );
+  }
+
+  // ─── Поездки ────────────────────────────────────────────────────────
+
+  Widget _buildTrips(BudgetRepository repo) {
+    final lines = repo.tripLines;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      decoration: cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flight_takeoff, size: 17, color: AppColors.blue),
+              const SizedBox(width: 9),
+              const Expanded(
+                child: Text(
+                  'Поездки',
+                  style: TextStyle(
+                    color: AppColors.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                repo.tripPlan > 0
+                    ? '${formatMoney(repo.tripTotal)} / ${formatMoney(repo.tripPlan)}'
+                    : formatMoney(repo.tripTotal),
+                style: TextStyle(
+                  color: repo.tripPlan > 0 && repo.tripTotal > repo.tripPlan
+                      ? AppColors.red
+                      : AppColors.textDim,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (var i = 0; i < lines.length; i++) ...[
+            if (i > 0) const Divider(height: 14),
+            _buildTripLine(lines[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTripLine(TripBudgetLine line) {
+    final trip = line.trip;
+    final hasCities = line.cities.isNotEmpty;
+    final expanded = _expandedTrips.contains(trip.id);
+    final planText = line.plan > 0
+        ? '${formatMoney(line.spent)} / ${formatMoney(line.plan)}'
+        : formatMoney(line.spent);
+
+    void openTrip() => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: trip.id)),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.small),
+          // Нажатие раскрывает города, если они есть; иначе сразу в поездку.
+          onTap: hasCities
+              ? () => setState(() => expanded
+                  ? _expandedTrips.remove(trip.id)
+                  : _expandedTrips.add(trip.id))
+              : openTrip,
+          onLongPress: openTrip,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(trip.emoji, style: const TextStyle(fontSize: 16)),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            trip.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppColors.text, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              trip.dateLabel,
+                              if (hasCities) _citiesLabel(line.cities.length),
+                            ].join('  ·  '),
+                            style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      planText,
+                      style: TextStyle(
+                        color: line.overspent ? AppColors.red : AppColors.textDim,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      hasCities
+                          ? (expanded ? Icons.expand_less : Icons.expand_more)
+                          : Icons.chevron_right,
+                      size: 17,
+                      color: AppColors.textDim,
+                    ),
+                  ],
+                ),
+                if (line.plan > 0) ...[
+                  const SizedBox(height: 7),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: (line.spent / line.plan).clamp(0.0, 1.0),
+                      minHeight: 4,
+                      backgroundColor: AppColors.bg,
+                      valueColor: AlwaysStoppedAnimation(
+                        line.overspent ? AppColors.red : AppColors.blue,
+                      ),
+                    ),
+                  ),
+                ],
+                if (line.planCarried && line.fullPlan > 0) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    'план ${formatMoney(line.fullPlan)} учтён в месяце начала поездки',
+                    style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (expanded) ...[
+          ...line.cities.map((c) => _buildCityRow(c, showPlan: !line.planCarried)),
+          if (line.byCategory.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildCategoryChips(line.byCategory),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: openTrip,
+              icon: const Icon(Icons.open_in_new, size: 15),
+              label: const Text('Открыть поездку'),
+            ),
+          ),
+        ] else if (!hasCities && line.byCategory.length > 1) ...[
+          _buildCategoryChips(line.byCategory),
+          const SizedBox(height: 6),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCityRow(TripCityLine c, {required bool showPlan}) {
+    final plan = showPlan && c.plan > 0;
+    return InkWell(
+      borderRadius: BorderRadius.circular(AppRadius.small),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: c.city.parentId ?? c.city.id)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(25, 6, 21, 6),
+        child: Row(
+          children: [
+            const Icon(Icons.place_outlined, size: 14, color: AppColors.textDim),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                c.city.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: AppColors.text, fontSize: 13),
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              c.city.dateLabel,
+              style: const TextStyle(color: AppColors.textDim, fontSize: 11.5),
+            ),
+            const Spacer(),
+            Text(
+              plan ? '${formatMoney(c.spent)} / ${formatMoney(c.plan)}' : formatMoney(c.spent),
+              style: TextStyle(
+                color: plan && c.overspent ? AppColors.red : AppColors.textDim,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// На что ушли деньги поездки — компактной строкой плашек.
+  Widget _buildCategoryChips(Map<String, int> byCategory) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 25),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: byCategory.entries.map((e) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.blue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(
+              '${e.key} ${formatMoney(e.value)}',
+              style: const TextStyle(color: AppColors.blue, fontSize: 11.5),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  static String _citiesLabel(int n) {
+    final mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 14) return '$n городов';
+    switch (n % 10) {
+      case 1:
+        return '$n город';
+      case 2:
+      case 3:
+      case 4:
+        return '$n города';
+      default:
+        return '$n городов';
+    }
   }
 
   // ─── Категории ──────────────────────────────────────────────────────
@@ -219,10 +483,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   Widget _buildCategoryRow(BudgetRepository repo, BudgetCategory c) {
     final value = repo.spentByCategory[c.id] ?? 0;
-    final fromTrips = repo
-        .tripSpendingOf(c.id)
-        .fold<int>(0, (sum, t) => sum + t.expense.amount);
-    final over = c.planMonthly > 0 && value > c.planMonthly;
+    // План «Путешествий» заменён планом поездок — здесь его не показываем.
+    final plan = BudgetRepository.isTravelCategory(c) ? 0 : c.planMonthly;
+    final over = plan > 0 && value > plan;
 
     return InkWell(
       borderRadius: BorderRadius.circular(AppRadius.small),
@@ -249,29 +512,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     style: const TextStyle(color: AppColors.text, fontSize: 14),
                   ),
                 ),
-                // Отмечаем, что часть суммы пришла из поездки, — иначе
-                // непонятно, откуда взялось расхождение со списком трат.
-                if (fromTrips > 0) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.blue.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                    child: Text(
-                      '✈ ${formatMoney(fromTrips)}',
-                      style: const TextStyle(
-                        color: AppColors.blue,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
                 Text(
-                  c.planMonthly > 0
-                      ? '${formatMoney(value)} / ${formatMoney(c.planMonthly)}'
+                  plan > 0
+                      ? '${formatMoney(value)} / ${formatMoney(plan)}'
                       : formatMoney(value),
                   style: TextStyle(
                     color: over ? AppColors.red : AppColors.textDim,
@@ -282,12 +525,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                 const Icon(Icons.chevron_right, size: 17, color: AppColors.textDim),
               ],
             ),
-            if (c.planMonthly > 0) ...[
+            if (plan > 0) ...[
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
                 child: LinearProgressIndicator(
-                  value: (value / c.planMonthly).clamp(0.0, 1.0),
+                  value: (value / plan).clamp(0.0, 1.0),
                   minHeight: 4,
                   backgroundColor: AppColors.bg,
                   valueColor: AlwaysStoppedAnimation(over ? AppColors.red : AppColors.goldDim),
@@ -939,6 +1182,90 @@ class _CategoryDialogState extends State<_CategoryDialog> {
         FilledButton(
           onPressed: _submit,
           child: Text(widget.initial == null ? 'Добавить' : 'Сохранить'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Полоса месяца из двух частей: повседневное и поездки.
+class _SplitBar extends StatelessWidget {
+  final int regular;
+  final int trips;
+  final int capacity;
+  final bool overspent;
+
+  const _SplitBar({
+    required this.regular,
+    required this.trips,
+    required this.capacity,
+    required this.overspent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cap = capacity <= 0 ? 1 : capacity;
+    final free = cap - regular - trips;
+    final rest = free > 0 ? free : 0;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        height: 7,
+        color: AppColors.surface,
+        child: Row(
+          children: [
+            if (regular > 0)
+              Expanded(
+                flex: regular,
+                child: Container(color: overspent ? AppColors.red : AppColors.gold),
+              ),
+            if (regular > 0 && trips > 0) const SizedBox(width: 2),
+            if (trips > 0)
+              Expanded(
+                flex: trips,
+                child: Container(
+                  color: overspent ? AppColors.red.withValues(alpha: 0.7) : AppColors.blue,
+                ),
+              ),
+            if (rest > 0) Expanded(flex: rest, child: const SizedBox()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+  final int spent;
+  final int plan;
+
+  const _LegendItem({
+    required this.color,
+    required this.label,
+    required this.spent,
+    required this.plan,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final over = plan > 0 && spent > plan;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          plan > 0
+              ? '$label ${formatMoney(spent)} / ${formatMoney(plan)}'
+              : '$label ${formatMoney(spent)}',
+          style: TextStyle(color: over ? AppColors.red : AppColors.textDim, fontSize: 12),
         ),
       ],
     );

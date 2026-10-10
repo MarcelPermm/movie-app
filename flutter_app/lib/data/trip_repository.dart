@@ -1,3 +1,4 @@
+import '../core/api_client.dart';
 import '../models/json.dart';
 import '../models/trip.dart';
 import 'local_first_repository.dart';
@@ -37,6 +38,159 @@ class TripRepository extends LocalFirstRepository {
       if (t.id == id) return t;
     }
     return null;
+  }
+
+  /// Города многогородней поездки — по датам.
+  List<Trip> citiesOf(int groupId) {
+    final list = childrenOf(groupId);
+    list.sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
+    return list;
+  }
+
+  /// Сколько потрачено всего. У группы сами траты лежат в городах,
+  /// поэтому её собственный итог почти всегда ноль — складываем детей.
+  int actualOf(Trip trip) {
+    if (!trip.isGroup) return trip.actualTotal;
+    return childrenOf(trip.id)
+        .fold<int>(trip.actualTotal, (sum, c) => sum + c.actualTotal);
+  }
+
+  /// План поездки. У группы — сумма планов городов, как на сайте:
+  /// план самой группы фиксируется в момент объединения и потом устаревает.
+  int plannedOf(Trip trip) {
+    if (!trip.isGroup) return trip.plannedTotal;
+    final kids = childrenOf(trip.id).fold<int>(0, (sum, c) => sum + c.plannedTotal);
+    return kids > 0 ? kids : trip.plannedTotal;
+  }
+
+  /// Все траты поездки вместе с тратами её городов.
+  List<TripExpense> expensesOfTree(Trip trip) => [
+        ...expensesOf(trip.id),
+        if (trip.isGroup) for (final c in childrenOf(trip.id)) ...expensesOf(c.id),
+      ];
+
+  /// Траты поездки и всех её городов за один заход в сеть.
+  ///
+  /// Отдельные loadExpenses тут не годятся: runSync не пускает второе
+  /// обновление, пока идёт первое, и города загрузились бы через один.
+  Future<void> loadTree(int tripId, {bool forceRefresh = false}) async {
+    final trip = tripById(tripId);
+    final ids = [
+      tripId,
+      if (trip != null && trip.isGroup) ...childrenOf(tripId).map((c) => c.id),
+    ];
+
+    for (final id in ids) {
+      _expenses[id] = readCache(_expensesKey(id)).map(TripExpense.fromJson).toList();
+    }
+    notifyListeners();
+
+    final stale = ids.any((id) => isStale(_expensesKey(id)));
+    if (!forceRefresh && !stale) return;
+
+    await runSync(() async {
+      final results = await Future.wait(
+        ids.map((id) => api.get('/trips/$id/expenses')),
+      );
+      for (var i = 0; i < ids.length; i++) {
+        final key = _expensesKey(ids[i]);
+        await writeCache(key, (results[i] as List?) ?? const [], fromServer: true);
+        _expenses[ids[i]] = readCache(key).map(TripExpense.fromJson).toList();
+      }
+    });
+  }
+
+  // ─── Несколько городов в одной поездке ─────────────────────────────
+  //
+  // На сервере многогородняя поездка — это группа, а города — обычные
+  // поездки внутри неё. Объединение требует настоящих id с сервера, поэтому
+  // эти операции работают только при наличии сети и не ложатся в очередь.
+
+  /// Добавить город. Если [parent] — обычная поездка, она превращается в
+  /// первый город новой группы с тем же названием.
+  ///
+  /// Возвращает id группы, в которой теперь лежит город, или null при ошибке
+  /// (текст ошибки — в [lastError]).
+  Future<int?> addCity(
+    Trip parent, {
+    required String name,
+    String emoji = '📍',
+    String? startDate,
+    String? endDate,
+    int plannedTotal = 0,
+  }) async {
+    try {
+      final created = await api.post('/trips', queueOnFailure: false, body: {
+        'name': name.trim(),
+        'emoji': emoji,
+        'start_date': ?startDate,
+        'end_date': ?endDate,
+        'planned_total': plannedTotal,
+        'event_type': 'trip',
+      });
+      if (created is! Map) throw ApiException('Сервер не вернул новый город');
+      final cityId = asInt(created['id']);
+      final group = await api.post('/trips/group', queueOnFailure: false, body: {
+        'trip_a': parent.id,
+        'trip_b': cityId,
+        if (!parent.isGroup) 'name': parent.name,
+        if (!parent.isGroup) 'emoji': parent.emoji,
+      });
+      await _reloadTrips();
+      return group is Map ? asInt(group['id']) : null;
+    } on ApiException catch (e) {
+      _reportError(e.message);
+      return null;
+    }
+  }
+
+  /// Объединить две поездки в одну многогороднюю.
+  Future<int?> groupWith(Trip a, Trip b) async {
+    try {
+      final group = await api.post('/trips/group', queueOnFailure: false, body: {
+        'trip_a': a.id,
+        'trip_b': b.id,
+        if (!a.isGroup && !b.isGroup) 'name': a.name,
+        if (!a.isGroup && !b.isGroup) 'emoji': a.emoji,
+      });
+      await _reloadTrips();
+      return group is Map ? asInt(group['id']) : null;
+    } on ApiException catch (e) {
+      _reportError(e.message);
+      return null;
+    }
+  }
+
+  /// Вынести город из поездки — он снова станет отдельной поездкой.
+  Future<bool> ungroup(Trip city) async {
+    try {
+      await api.post('/trips/${city.id}/ungroup', queueOnFailure: false);
+      await _reloadTrips();
+      return true;
+    } on ApiException catch (e) {
+      _reportError(e.message);
+      return false;
+    }
+  }
+
+  /// Перечитать список поездок сразу, в обход runSync: тот молча
+  /// пропускает обновление, если параллельно уже идёт другое.
+  Future<void> _reloadTrips() async {
+    final data = await api.get('/trips');
+    await writeCache(_tripsKey, (data as List?) ?? const [], fromServer: true);
+    _trips = readCache(_tripsKey).map(Trip.fromJson).toList();
+    _error = null;
+    notifyListeners();
+  }
+
+  String? _error;
+
+  /// Последняя ошибка операций с городами — для подсказки на экране.
+  String? get cityError => _error;
+
+  void _reportError(String message) {
+    _error = message;
+    notifyListeners();
   }
 
   String get _tripsKey => cacheKey('trips');

@@ -53,10 +53,13 @@ class _TripsScreenState extends State<TripsScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, i) => _TripCard(
                       trip: trips[i],
-                      children: repo.childrenOf(trips[i].id),
+                      children: repo.citiesOf(trips[i].id),
+                      actual: repo.actualOf(trips[i]),
+                      planned: repo.plannedOf(trips[i]),
                       onOpen: _openTrip,
                       onEdit: _editTrip,
                       onDelete: _deleteTrip,
+                      onMerge: trips.length > 1 ? _mergeTrip : null,
                     ),
                   ),
           ),
@@ -103,6 +106,71 @@ class _TripsScreenState extends State<TripsScreen> {
         );
   }
 
+  /// Объединить с другой поездкой — так из отдельных городов собирается
+  /// одна многогородняя поездка, как на сайте.
+  Future<void> _mergeTrip(Trip trip) async {
+    final repo = context.read<TripRepository>();
+    // Группу в группу не вкладываем — сервер такое не разбирает.
+    final others = repo.rootTrips
+        .where((t) => t.id != trip.id && !(trip.isGroup && t.isGroup))
+        .toList();
+    if (others.isEmpty) return;
+
+    final target = await showModalBottomSheet<Trip>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: Text(
+                '«${trip.name}» — объединить с…',
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: others
+                    .map((t) => ListTile(
+                          leading: Text(t.emoji, style: const TextStyle(fontSize: 20)),
+                          title: Text(t.name),
+                          subtitle: Text(
+                            t.isGroup
+                                ? '${t.dateLabel}  ·  добавить как город'
+                                : t.dateLabel,
+                            style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+                          ),
+                          onTap: () => Navigator.pop(sheetContext, t),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (target == null || !mounted) return;
+
+    // Если одна из поездок уже многогородняя — вторая становится её городом.
+    final groupId = target.isGroup
+        ? await repo.groupWith(target, trip)
+        : await repo.groupWith(trip, target);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(groupId != null
+          ? 'Готово: теперь это одна поездка'
+          : 'Не получилось объединить: ${repo.cityError ?? 'нет связи с сервером'}'),
+    ));
+  }
+
   Future<void> _deleteTrip(Trip trip) async {
     final ok = await confirmDelete(
       context,
@@ -117,21 +185,32 @@ class _TripsScreenState extends State<TripsScreen> {
 class _TripCard extends StatelessWidget {
   final Trip trip;
   final List<Trip> children;
+
+  /// Итоги с учётом городов: у группы свои поля почти всегда пустые.
+  final int actual;
+  final int planned;
+
   final void Function(Trip) onOpen;
   final void Function(Trip) onEdit;
   final void Function(Trip) onDelete;
+  final void Function(Trip)? onMerge;
 
   const _TripCard({
     required this.trip,
     required this.children,
+    required this.actual,
+    required this.planned,
     required this.onOpen,
     required this.onEdit,
     required this.onDelete,
+    this.onMerge,
   });
+
+  bool get _overspent => planned > 0 && actual > planned;
 
   @override
   Widget build(BuildContext context) {
-    final progress = trip.progress;
+    final progress = planned > 0 ? (actual / planned).clamp(0.0, 1.0) : null;
     final days = trip.daysUntil;
 
     return InkWell(
@@ -169,7 +248,7 @@ class _TripCard extends StatelessWidget {
                         [
                           trip.dateLabel,
                           if (trip.subtitle.isNotEmpty) trip.subtitle,
-                          if (children.isNotEmpty) '${children.length} внутри',
+                          if (children.isNotEmpty) children.map((c) => c.name).join(' → '),
                         ].join('  ·  '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -202,27 +281,27 @@ class _TripCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  formatMoney(trip.actualTotal),
+                  formatMoney(actual),
                   style: TextStyle(
-                    color: trip.overspent ? AppColors.red : AppColors.gold,
+                    color: _overspent ? AppColors.red : AppColors.gold,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (trip.plannedTotal > 0) ...[
+                if (planned > 0) ...[
                   const SizedBox(width: 8),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 3),
                     child: Text(
-                      'из ${formatMoney(trip.plannedTotal)}',
+                      'из ${formatMoney(planned)}',
                       style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
                     ),
                   ),
                 ],
                 const Spacer(),
-                if (trip.overspent)
+                if (_overspent)
                   Text(
-                    '+${formatMoney(trip.actualTotal - trip.plannedTotal)}',
+                    '+${formatMoney(actual - planned)}',
                     style: const TextStyle(
                       color: AppColors.red,
                       fontSize: 12.5,
@@ -240,7 +319,7 @@ class _TripCard extends StatelessWidget {
                   minHeight: 6,
                   backgroundColor: AppColors.bg,
                   valueColor: AlwaysStoppedAnimation(
-                    trip.overspent ? AppColors.red : AppColors.gold,
+                    _overspent ? AppColors.red : AppColors.gold,
                   ),
                 ),
               ),
@@ -282,6 +361,15 @@ class _TripCard extends StatelessWidget {
                 onEdit(trip);
               },
             ),
+            if (onMerge != null)
+              ListTile(
+                leading: const Icon(Icons.merge_type, color: AppColors.blue),
+                title: Text(trip.isGroup ? 'Добавить поездку как город' : 'Объединить с другой поездкой'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  onMerge!(trip);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: AppColors.red),
               title: const Text('Удалить'),

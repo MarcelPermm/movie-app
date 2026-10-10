@@ -4,11 +4,9 @@ import 'package:provider/provider.dart';
 import '../data/budget_repository.dart';
 import '../models/budget.dart';
 import '../models/json.dart';
-import '../models/trip.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/stats.dart';
-import 'trip_detail_screen.dart';
 
 /// Одна категория за месяц: сколько ушло, из чего сложилось и как это
 /// соотносится с планом.
@@ -32,11 +30,9 @@ class BudgetCategoryScreen extends StatelessWidget {
 
     final own = repo.expenses.where((e) => e.categoryId == categoryId).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-    final fromTrips = repo.tripSpendingOf(categoryId);
-
-    final ownTotal = own.fold<int>(0, (sum, e) => sum + e.amount);
-    final tripTotal = fromTrips.fold<int>(0, (sum, t) => sum + t.expense.amount);
-    final total = ownTotal + tripTotal;
+    // Траты поездок сюда не подмешиваются: у поездок свой блок и свой
+    // план в бюджете, иначе одни и те же деньги считались бы дважды.
+    final total = own.fold<int>(0, (sum, e) => sum + e.amount);
     final over = category.planMonthly > 0 && total > category.planMonthly;
 
     return Scaffold(
@@ -88,16 +84,6 @@ class BudgetCategoryScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              if (tripTotal > 0) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatTile(
-                    value: formatMoney(tripTotal),
-                    label: 'в поездках',
-                    color: AppColors.blue,
-                  ),
-                ),
-              ],
             ],
           ),
           if (category.planMonthly > 0) ...[
@@ -118,7 +104,7 @@ class BudgetCategoryScreen extends StatelessWidget {
             ),
           ],
 
-          if (own.isEmpty && fromTrips.isEmpty)
+          if (own.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 60),
               child: Text(
@@ -133,13 +119,6 @@ class BudgetCategoryScreen extends StatelessWidget {
             const Text('ТРАТЫ МЕСЯЦА', style: kEyebrowStyle),
             const SizedBox(height: 10),
             ...own.map((e) => _ExpenseRow(expense: e)),
-          ],
-
-          if (fromTrips.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            const Text('ИЗ ПОЕЗДОК', style: kEyebrowStyle),
-            const SizedBox(height: 10),
-            ...fromTrips.map((t) => _TripExpenseRow(spending: t)),
           ],
         ],
       ),
@@ -187,64 +166,6 @@ class _ExpenseRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Трата из поездки. Нажатие уводит в саму поездку — оттуда её и правят.
-class _TripExpenseRow extends StatelessWidget {
-  final TripSpending spending;
-
-  const _TripExpenseRow({required this.spending});
-
-  @override
-  Widget build(BuildContext context) {
-    final expense = spending.expense;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppRadius.small),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => TripDetailScreen(tripId: spending.tripId)),
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-        decoration: cardDecoration(),
-        child: Row(
-          children: [
-            Text(spending.tripEmoji, style: const TextStyle(fontSize: 17)),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    expense.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.text, fontSize: 14.5),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${spending.tripName}  ·  ${_dayLabel(expense.date)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppColors.blue, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Text(
-              formatMoney(expense.amount),
-              style: const TextStyle(
-                color: AppColors.text,
-                fontSize: 14.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

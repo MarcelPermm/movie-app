@@ -38,6 +38,9 @@ class Trip {
 
   bool get isGroup => eventType == 'group';
 
+  /// Город внутри многогородней поездки.
+  bool get isChild => parentId != null;
+
   /// Доля потраченного от плана — для полоски. null, если плана нет.
   double? get progress {
     if (plannedTotal <= 0) return null;
@@ -111,6 +114,8 @@ class Trip {
     int? plannedTotal,
     int? actualTotal,
     String? subtitle,
+    int? parentId,
+    bool clearParent = false,
   }) =>
       Trip(
         id: id,
@@ -122,8 +127,11 @@ class Trip {
         actualTotal: actualTotal ?? this.actualTotal,
         eventType: eventType,
         subtitle: subtitle ?? this.subtitle,
-        parentId: parentId,
+        parentId: clearParent ? null : (parentId ?? this.parentId),
       );
+
+  /// Дата начала — по ней план поездки относится к месяцу.
+  DateTime? get start => parseDate(startDate);
 }
 
 /// Трата поездки, попавшая в месячный бюджет.
