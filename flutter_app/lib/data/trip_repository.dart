@@ -262,6 +262,8 @@ class TripRepository extends LocalFirstRepository {
     String? emoji,
     String? subtitle,
     int? plannedTotal,
+    String? startDate,
+    String? endDate,
   }) async {
     _trips = _trips
         .map((t) => t.id == trip.id
@@ -270,9 +272,14 @@ class TripRepository extends LocalFirstRepository {
                 emoji: emoji,
                 subtitle: subtitle,
                 plannedTotal: plannedTotal,
+                startDate: startDate,
+                endDate: endDate,
               )
             : t)
         .toList();
+    // Город поменял даты или план — у группы они складываются из городов,
+    // пересчитываем сразу, не дожидаясь сервера.
+    if (trip.parentId != null) _recalcGroup(trip.parentId!);
     notifyListeners();
     await _saveTrips();
 
@@ -282,7 +289,28 @@ class TripRepository extends LocalFirstRepository {
           'emoji': ?emoji,
           'subtitle': ?subtitle,
           'planned_total': ?plannedTotal,
+          'start_date': ?startDate,
+          'end_date': ?endDate,
         }));
+  }
+
+  /// Даты группы — от первого города до последнего, план — сумма городов.
+  /// Так же считает сервер.
+  void _recalcGroup(int groupId) {
+    final kids = childrenOf(groupId);
+    if (kids.isEmpty) return;
+    final starts = kids.map((c) => c.startDate).whereType<String>().toList()..sort();
+    final ends = kids.map((c) => c.endDate).whereType<String>().toList()..sort();
+    final plan = kids.fold<int>(0, (sum, c) => sum + c.plannedTotal);
+    _trips = _trips
+        .map((t) => t.id == groupId
+            ? t.copyWith(
+                startDate: starts.isEmpty ? null : starts.first,
+                endDate: ends.isEmpty ? null : ends.last,
+                plannedTotal: plan,
+              )
+            : t)
+        .toList();
   }
 
   Future<void> removeTrip(Trip trip) async {

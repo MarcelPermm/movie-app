@@ -2063,7 +2063,10 @@ async def ungroup_trip(trip_id: int, user_id: int = 1):
 
 @app.patch("/trips/{trip_id}")
 async def patch_trip(trip_id: int, body: dict, user_id: int = 1):
-    """Обновляет название/emoji/subtitle группы или поездки."""
+    """Обновляет название/emoji/subtitle/план/даты группы или поездки.
+
+    Если поездка — город внутри группы, даты и план группы пересчитываются
+    по её городам, как при объединении."""
     conn = database._get_conn()
     try:
         cur = conn.cursor()
@@ -2071,10 +2074,24 @@ async def patch_trip(trip_id: int, body: dict, user_id: int = 1):
         for f in ("name", "emoji", "subtitle", "planned_total"):
             if f in body:
                 fields.append(f"{f}=%s"); vals.append(body[f])
+        for f in ("start_date", "end_date"):
+            if f in body:
+                # Пустая строка — сбросить дату.
+                fields.append(f"{f}=%s"); vals.append(body[f] or None)
         if not fields:
             return {"ok": True}
         vals += [trip_id, user_id]
-        cur.execute(f"UPDATE trips SET {', '.join(fields)} WHERE id=%s AND user_id=%s", vals)
+        cur.execute(f"UPDATE trips SET {', '.join(fields)} WHERE id=%s AND user_id=%s RETURNING parent_id", vals)
+        row = cur.fetchone()
+        parent_id = (row["parent_id"] if isinstance(row, dict) else row[0]) if row else None
+        if parent_id and any(f in body for f in ("start_date", "end_date", "planned_total")):
+            cur.execute("""
+                UPDATE trips SET
+                  start_date = (SELECT MIN(c.start_date) FROM trips c WHERE c.parent_id = trips.id AND c.start_date IS NOT NULL),
+                  end_date   = (SELECT MAX(c.end_date)   FROM trips c WHERE c.parent_id = trips.id AND c.end_date   IS NOT NULL),
+                  planned_total = (SELECT COALESCE(SUM(c.planned_total), 0) FROM trips c WHERE c.parent_id = trips.id)
+                WHERE trips.id = %s AND trips.user_id = %s
+            """, (parent_id, user_id))
         conn.commit()
     finally:
         conn.close()

@@ -26,6 +26,9 @@ class TripDetailScreen extends StatefulWidget {
 class _TripDetailScreenState extends State<TripDetailScreen> {
   bool _busy = false;
 
+  /// Свёрнутые города — их траты спрятаны, виден только заголовок.
+  final Set<String> _collapsed = {};
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +77,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.gold),
               ),
             ),
+          IconButton(
+            tooltip: 'Изменить поездку',
+            icon: const Icon(Icons.edit_outlined, color: AppColors.textDim),
+            onPressed: () => _editTrip(trip),
+          ),
           IconButton(
             tooltip: 'Добавить город',
             icon: const Icon(Icons.add_location_alt_outlined, color: AppColors.textDim),
@@ -274,16 +282,19 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         ),
       for (final city in cities)
         _buildCityBlock(
+          key: 'trip-${city.id}',
           title: city.name,
           emoji: city.emoji,
           dates: city.dateLabel,
           plan: city.plannedTotal,
           expenses: repo.expensesOf(city.id),
           onMenu: () => _cityMenu(city),
+          onEdit: () => _editCity(city),
         ),
       // Траты, записанные на саму группу (так умеет сайт), не теряем.
       if (direct.isNotEmpty)
         _buildCityBlock(
+          key: 'direct',
           title: 'Без города',
           emoji: '🧳',
           dates: '',
@@ -306,6 +317,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
     return [
       for (final name in [...named, if (cities.containsKey('')) ''])
         _buildCityBlock(
+          key: 'name-$name',
           title: name.isEmpty ? 'Без города' : name,
           emoji: name.isEmpty ? '🧳' : '📍',
           dates: '',
@@ -316,15 +328,23 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   }
 
   Widget _buildCityBlock({
+    required String key,
     required String title,
     required String emoji,
     required String dates,
     required int plan,
     required List<TripExpense> expenses,
     VoidCallback? onMenu,
+    VoidCallback? onEdit,
   }) {
     final spent = expenses.fold<int>(0, (sum, e) => sum + e.amount);
     final over = plan > 0 && spent > plan;
+    final collapsed = _collapsed.contains(key);
+    final subtitle = [
+      if (dates.isNotEmpty) dates,
+      // Свёрнутый город всё равно говорит, сколько в нём трат.
+      if (collapsed && expenses.isNotEmpty) _expensesLabel(expenses.length),
+    ].join('  ·  ');
 
     return Padding(
       padding: const EdgeInsets.only(top: 16),
@@ -333,6 +353,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(AppRadius.small),
+            // Нажатие сворачивает траты города, долгое — меню.
+            onTap: () => setState(() =>
+                collapsed ? _collapsed.remove(key) : _collapsed.add(key)),
             onLongPress: onMenu,
             child: Container(
               padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
@@ -341,6 +364,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                 children: [
                   Row(
                     children: [
+                      Icon(
+                        collapsed ? Icons.chevron_right : Icons.expand_more,
+                        size: 20,
+                        color: AppColors.textDim,
+                      ),
+                      const SizedBox(width: 4),
                       Text(emoji, style: const TextStyle(fontSize: 18)),
                       const SizedBox(width: 10),
                       Expanded(
@@ -355,9 +384,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            if (dates.isNotEmpty)
+                            if (subtitle.isNotEmpty)
                               Text(
-                                dates,
+                                subtitle,
                                 style: const TextStyle(color: AppColors.textDim, fontSize: 12),
                               ),
                           ],
@@ -373,6 +402,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                      if (onEdit != null)
+                        IconButton(
+                          tooltip: 'Изменить город',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.textDim),
+                          onPressed: onEdit,
+                        ),
                       if (onMenu != null)
                         IconButton(
                           visualDensity: VisualDensity.compact,
@@ -404,7 +440,9 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
               ),
             ),
           ),
-          if (expenses.isEmpty)
+          if (collapsed)
+            const SizedBox.shrink()
+          else if (expenses.isEmpty)
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 10, 4, 0),
               child: Text(
@@ -428,6 +466,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.gold),
+              title: const Text('Изменить город'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _editCity(city);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.call_split, color: AppColors.gold),
               title: const Text('Вынести в отдельную поездку'),
               onTap: () async {
@@ -443,6 +489,67 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
         ),
       ),
     );
+  }
+
+  static String _expensesLabel(int n) {
+    final mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 14) return '$n трат';
+    switch (n % 10) {
+      case 1:
+        return '$n трата';
+      case 2:
+      case 3:
+      case 4:
+        return '$n траты';
+      default:
+        return '$n трат';
+    }
+  }
+
+  /// Название, даты и план города. Даты и план группы сервер и репозиторий
+  /// пересчитают сами — из городов.
+  Future<void> _editCity(Trip city) async {
+    final result = await showDialog<_CityForm>(
+      context: context,
+      builder: (_) => _CityDialog(initial: city),
+    );
+    if (result == null || !mounted) return;
+
+    await context.read<TripRepository>().updateTrip(
+          city,
+          name: result.name,
+          plannedTotal: result.planned,
+          startDate: result.startDate,
+          endDate: result.endDate,
+        );
+  }
+
+  /// Сама поездка. У многогородней даты и план складываются из городов,
+  /// поэтому меняется только название.
+  Future<void> _editTrip(Trip trip) async {
+    final result = await showDialog<_CityForm>(
+      context: context,
+      builder: (_) => _CityDialog(
+        initial: trip,
+        title: 'Изменить поездку',
+        nameOnly: trip.isGroup,
+        hint: trip.isGroup ? 'Даты и план поездки складываются из её городов' : null,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    final repo = context.read<TripRepository>();
+    if (trip.isGroup) {
+      await repo.updateTrip(trip, name: result.name);
+    } else {
+      await repo.updateTrip(
+        trip,
+        name: result.name,
+        plannedTotal: result.planned,
+        startDate: result.startDate,
+        endDate: result.endDate,
+      );
+    }
   }
 
   Future<void> _addCity(Trip trip) async {
@@ -965,20 +1072,31 @@ class _CityForm {
 
 /// Новый город в поездке: название, даты и свой бюджет.
 class _CityDialog extends StatefulWidget {
-  /// Пояснение, что будет с поездкой, — когда она становится многогородней.
+  /// Пояснение под заголовком: что будет с поездкой или откуда её даты.
   final String? hint;
 
-  const _CityDialog({this.hint});
+  /// Город или поездка, которые правим. null — создаём новый город.
+  final Trip? initial;
+
+  /// Заголовок окна, если это не город.
+  final String? title;
+
+  /// Только название — для многогородней поездки.
+  final bool nameOnly;
+
+  const _CityDialog({this.hint, this.initial, this.title, this.nameOnly = false});
 
   @override
   State<_CityDialog> createState() => _CityDialogState();
 }
 
 class _CityDialogState extends State<_CityDialog> {
-  final _name = TextEditingController();
-  final _planned = TextEditingController();
-  DateTime? _start;
-  DateTime? _end;
+  late final _name = TextEditingController(text: widget.initial?.name ?? '');
+  late final _planned = TextEditingController(
+    text: (widget.initial?.plannedTotal ?? 0) > 0 ? '${widget.initial!.plannedTotal}' : '',
+  );
+  late DateTime? _start = parseDate(widget.initial?.startDate);
+  late DateTime? _end = parseDate(widget.initial?.endDate);
 
   @override
   void dispose() {
@@ -993,8 +1111,11 @@ class _CityDialogState extends State<_CityDialog> {
       context: context,
       firstDate: DateTime(now.year - 2),
       lastDate: DateTime(now.year + 5),
+      // Перепутанные даты (конец раньше начала) пикер не примет — меняем местами.
       initialDateRange: _start != null && _end != null
-          ? DateTimeRange(start: _start!, end: _end!)
+          ? (_end!.isBefore(_start!)
+              ? DateTimeRange(start: _end!, end: _start!)
+              : DateTimeRange(start: _start!, end: _end!))
           : null,
     );
     if (range == null) return;
@@ -1022,9 +1143,9 @@ class _CityDialogState extends State<_CityDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: const Text(
-        'Новый город',
-        style: TextStyle(color: AppColors.text, fontSize: 17),
+      title: Text(
+        widget.title ?? (widget.initial == null ? 'Новый город' : 'Изменить город'),
+        style: const TextStyle(color: AppColors.text, fontSize: 17),
       ),
       content: SizedBox(
         width: 400,
@@ -1042,30 +1163,36 @@ class _CityDialogState extends State<_CityDialog> {
             TextField(
               controller: _name,
               autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Тбилиси',
-                prefixIcon: Icon(Icons.place_outlined, size: 19),
+              decoration: InputDecoration(
+                labelText: widget.title == null ? 'Город' : 'Название',
+                hintText: widget.title == null ? 'Тбилиси' : null,
+                prefixIcon: const Icon(Icons.place_outlined, size: 19),
               ),
               style: const TextStyle(color: AppColors.text),
             ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: _pickRange,
-              icon: const Icon(Icons.date_range_outlined, size: 18),
-              label: Text(
-                _start == null
-                    ? 'Выбрать даты'
-                    : '${ymd(_start!)} — ${_end == null ? '?' : ymd(_end!)}',
+            if (!widget.nameOnly) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _pickRange,
+                icon: const Icon(Icons.date_range_outlined, size: 18),
+                label: Text(
+                  _start == null
+                      ? 'Выбрать даты'
+                      : '${ymd(_start!)} — ${_end == null ? '?' : ymd(_end!)}',
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _planned,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(hintText: 'Бюджет города, ₽ — можно пропустить'),
-              style: const TextStyle(color: AppColors.text),
-              onSubmitted: (_) => _submit(),
-            ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _planned,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'План, ₽',
+                  hintText: 'можно пропустить',
+                ),
+                style: const TextStyle(color: AppColors.text),
+                onSubmitted: (_) => _submit(),
+              ),
+            ],
           ],
         ),
       ),
@@ -1074,7 +1201,10 @@ class _CityDialogState extends State<_CityDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Отмена', style: TextStyle(color: AppColors.textDim)),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Добавить')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.initial == null ? 'Добавить' : 'Сохранить'),
+        ),
       ],
     );
   }
