@@ -51,7 +51,7 @@ AI_PROVIDERS = {
     # модели, DeepSeek платный, но очень дешёвый.
     "zhipu": {
         "key": "ZHIPU_API_KEY",
-        "base_url": os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/"),
+        "base_url": os.getenv("ZHIPU_BASE_URL", "https://api.z.ai/api/paas/v4/"),
         "model": os.getenv("ZHIPU_MODEL", "glm-4.5-flash"),
     },
     "siliconflow": {
