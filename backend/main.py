@@ -1039,7 +1039,13 @@ def remove_watchlist(movie_id: int, media_type: str = "movie", user_id: int = 1)
 
 @app.get("/dismissed")
 def get_dismissed(media_type: str = "movie", user_id: int = 1):
-    return database.get_dismissed(media_type, user_id)
+    items = database.get_dismissed(media_type, user_id)
+    # Как в /watched и /watchlist: id — это TMDB, а не номер строки в базе.
+    # Иначе карточка из «Отклонённых» открывала чужой фильм, а плеер не находил его.
+    for m in items:
+        if m.get("movie_id"):
+            m["id"] = m["movie_id"]
+    return items
 
 
 class DismissRequest(BaseModel):
