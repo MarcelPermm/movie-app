@@ -121,8 +121,25 @@ Get-Process -Name ($ExeName -replace '\.exe$', '') -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 500
 }
 
+# Вывод сборки и показываем, и запоминаем, чтобы узнать причину ошибки.
+# Continue: в Windows PowerShell перенаправленный stderr иначе станет исключением.
+function Invoke-Build {
+  $ErrorActionPreference = 'Continue'
+  flutter build windows --release 2>&1 | Tee-Object -Variable log | ForEach-Object { "$_" } | Out-Host
+  $script:buildLog = ($log | ForEach-Object { "$_" }) -join "`n"
+  return $LASTEXITCODE
+}
+
 Step 'Собираю Windows-версию (первый раз — несколько минут)'
-Invoke-Checked 'flutter build windows' { flutter build windows --release }
+$code = Invoke-Build
+# Старая папка сборки помнит другую Visual Studio (например, 2026 вместо 2022) —
+# CMake отказывается её переиспользовать. Чистим и собираем заново.
+if ($code -ne 0 -and $buildLog -match 'generator used previously|CMakeCache') {
+  Warn 'Сборка помнит другую версию Visual Studio — удаляю build\windows и собираю заново'
+  Remove-Item -Recurse -Force (Join-Path $Project 'build\windows') -ErrorAction SilentlyContinue
+  $code = Invoke-Build
+}
+if ($code -ne 0) { Fail "Не получилось: flutter build windows (код $code). Смотри сообщения выше." }
 
 if (-not (Test-Path (Join-Path $Release $ExeName))) { Fail "Сборка прошла, но $ExeName не найден в $Release" }
 
