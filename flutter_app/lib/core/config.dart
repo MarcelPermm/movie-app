@@ -9,13 +9,6 @@ class Config {
     defaultValue: 'https://movie-app-xwuo.onrender.com',
   );
 
-  /// Сайт. Встроенный плеер открывает источники через его страницу
-  /// /player/ — с того же домена, что и сайт, где они точно работают.
-  static const String siteUrl = String.fromEnvironment(
-    'SITE_URL',
-    defaultValue: 'https://monkey-app.online',
-  );
-
   /// Базовые URL картинок TMDB (совпадают с фронтендом).
   static const String tmdbCard = 'https://image.tmdb.org/t/p/w342';
   static const String tmdbPoster = 'https://image.tmdb.org/t/p/w500';
@@ -32,12 +25,17 @@ class Config {
   /// поэтому запас щедрый — но UI на него не смотрит, он уже отрисован из кэша.
   static const Duration requestTimeout = Duration(seconds: 60);
 
-  /// Источники плеера — те же, что на сайте.
+  /// Источники плеера — как в Streambert (github.com/truelockmc/streambert),
+  /// где они проверены на десктопе. Прежние адреса (vidsrc.to,
+  /// player.videasy.net, 2embed.cc) устарели: страница плеера открывалась,
+  /// но отвечала «We couldn't find that». Первый в списке — по умолчанию.
   static const watchSources = {
-    'vidsrc': 'VidSrc',
     'videasy': 'Videasy',
-    '2embed': '2Embed',
+    'vidsrc': 'VidSrc',
+    'vidking': 'Vidking',
   };
+
+  static const defaultWatchSource = 'videasy';
 
   /// Ссылка на плеер конкретной серии или фильма.
   static String embedUrl(
@@ -49,19 +47,19 @@ class Config {
   }) {
     final isTv = mediaType == 'tv';
     switch (source) {
-      case 'videasy':
-        return isTv
-            ? 'https://player.videasy.net/tv/$tmdbId/$season/$episode'
-            : 'https://player.videasy.net/movie/$tmdbId';
-      case '2embed':
-        return isTv
-            ? 'https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode'
-            : 'https://www.2embed.cc/embed/$tmdbId';
       case 'vidsrc':
+        return isTv
+            ? 'https://vsembed.su/embed/tv/$tmdbId/$season/$episode'
+            : 'https://vsembed.su/embed/movie/$tmdbId';
+      case 'vidking':
+        return isTv
+            ? 'https://www.vidking.net/embed/tv/$tmdbId/$season/$episode?autoPlay=true'
+            : 'https://www.vidking.net/embed/movie/$tmdbId?autoPlay=true';
+      case 'videasy':
       default:
         return isTv
-            ? 'https://vidsrc.to/embed/tv/$tmdbId/$season/$episode'
-            : 'https://vidsrc.to/embed/movie/$tmdbId';
+            ? 'https://player.videasy.to/tv/$tmdbId/$season/$episode?overlay=true'
+            : 'https://player.videasy.to/movie/$tmdbId?overlay=true';
     }
   }
 

@@ -21,6 +21,9 @@ class PlayerScreen extends StatefulWidget {
   final int season;
   final int episode;
 
+  /// С какого источника начать (см. [Config.watchSources]).
+  final String? source;
+
   /// Готовый адрес — на случай, если понадобится открыть чужую страницу.
   final String? directUrl;
 
@@ -37,6 +40,7 @@ class PlayerScreen extends StatefulWidget {
     this.mediaType = 'movie',
     this.season = 1,
     this.episode = 1,
+    this.source,
     this.directUrl,
     this.youtubeId,
   });
@@ -60,15 +64,18 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   InAppWebViewController? _controller;
-  String _source = 'vidsrc';
+  late String _source = Config.watchSources.containsKey(widget.source)
+      ? widget.source!
+      : Config.defaultWatchSource;
   bool _loading = true;
   int _blocked = 0;
 
-  /// Адрес самого плеера источника (или ролика YouTube).
+  /// Адрес, который открывает WebView: плеер источника напрямую, как в
+  /// Streambert, — без промежуточных страниц на сайте или сервере.
   String get _url {
-    if (widget.youtubeId != null) {
-      return 'https://www.youtube.com/embed/${widget.youtubeId}?autoplay=1&rel=0';
-    }
+    // Трейлер — обычной страницей ролика: /embed верхним уровнем YouTube
+    // не играет (ошибка 153), а своей страницы-обёртки на Windows нет.
+    if (widget.youtubeId != null) return Config.youtubeUrl(widget.youtubeId!);
     return widget.directUrl ??
         Config.embedUrl(
           _source,
@@ -79,38 +86,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         );
   }
 
-  /// Что на самом деле открывает WebView: страницу сайта с плеером внутри
-  /// iframe — ровно как на сайте.
-  ///
-  /// Открытые напрямую, страницей верхнего уровня, источники ведут себя
-  /// иначе, чем в iframe: часть отказывается играть, часть перекидывает на
-  /// новый домен, YouTube отвечает ошибкой 153. А страница-обёртка должна
-  /// жить именно на домене сайта: со страницы на сервере API источники
-  /// отвечали «We couldn't find that», хотя с сайта тот же фильм играл.
-  /// Своя HTML-страница через initialData на Windows не поддержана.
-  String get _pageUrl => '${Config.siteUrl}/player/?u=${Uri.encodeComponent(_url)}';
-
-  static final String _ourHost = Uri.parse(Config.siteUrl).host.toLowerCase();
-
-  /// Верхний кадр всегда должен оставаться на нашей странице-обёртке.
-  /// Плеер внутри iframe может ходить по своим доменам сколько угодно.
-  bool _isOurPage(WebUri? uri) {
-    final host = uri?.host.toLowerCase() ?? '';
-    if (host.isEmpty) return true; // about:blank и т. п.
-    String bare(String h) => h.startsWith('www.') ? h.substring(4) : h;
-    return bare(host) == bare(_ourHost);
-  }
-
-  /// Отсекаем по списку рекламных доменов, а не по списку разрешённых.
-  ///
-  /// Разрешённый список выглядел безопаснее, но ломал сам плеер: источники
-  /// перекидывают на свои CDN, и адреса этих CDN меняются. Один такой
-  /// переход зарезался — и вместо видео оставался белый экран. Правильнее
-  /// пропускать всё, кроме того, что мы знаем как рекламу.
+  /// Отсекаем по списку рекламных доменов, а не по списку разрешённых:
+  /// источники ходят на свои CDN, адреса которых меняются.
   bool _isAdHost(WebUri? uri) {
     final host = uri?.host.toLowerCase();
     if (host == null || host.isEmpty) return false;
     return AdBlock.blockedDomains.any((d) => host == d || host.endsWith('.$d'));
+  }
+
+  /// Тот же ли это сайт, что открытый плеер: сравниваем по «корню» домена,
+  /// потому что плеер живёт на поддоменах.
+  bool _isSameSite(String? host) {
+    if (host == null || host.isEmpty) return true;
+    return _rootDomain(host.toLowerCase()) == _rootDomain(Uri.parse(_url).host.toLowerCase());
+  }
+
+  /// «player.videasy.to» → «videasy.to»
+  static String _rootDomain(String host) {
+    final parts = host.split('.');
+    if (parts.length <= 2) return host;
+    return parts.sublist(parts.length - 2).join('.');
   }
 
   /// Сколько раз уже возвращали плеер на место.
@@ -124,7 +119,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_recoveries >= 3) return;
     _recoveries++;
     setState(() => _loading = true);
-    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_pageUrl)));
+    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
   }
 
   Future<void> _switchSource(String source) async {
@@ -135,12 +130,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _blocked = 0;
       _recoveries = 0;
     });
-    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_pageUrl)));
+    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
   }
 
   Future<void> _openExternally() async {
-    // В браузере — та же страница-обёртка: так источник ведёт себя как на сайте.
-    await launchUrl(Uri.parse(_pageUrl), mode: LaunchMode.externalApplication);
+    await launchUrl(Uri.parse(_url), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -225,9 +219,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final limited = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
     return InAppWebView(
-      // Только обычная загрузка по адресу: initialData на Windows не
-      // поддержан. Адрес — страница-обёртка с плеером в iframe.
-      initialUrlRequest: URLRequest(url: WebUri(_pageUrl)),
+      // Только обычная загрузка по адресу: initialData на Windows не поддержан.
+      initialUrlRequest: URLRequest(url: WebUri(_url)),
       initialSettings: InAppWebViewSettings(
         // Реклама сначала не загружается…
         contentBlockers: limited ? const [] : AdBlock.rules,
@@ -280,23 +273,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return NavigationActionPolicy.CANCEL;
         }
 
-        // Попытка увести с нашей страницы всё окно целиком — это реклама:
-        // сам плеер живёт внутри iframe и верхний кадр не трогает. Переходы
-        // внутри iframe (смена сервера, CDN источника) не мешаем.
-        if (action.isForMainFrame == true && !_isOurPage(uri)) {
+        // Клик, который уводит всё окно на посторонний сайт, — реклама.
+        // Переходы без клика (редиректы плеера на свои домены) и переходы
+        // внутри iframe не трогаем: на этом плеер и ломался.
+        final byClick = action.hasGesture ?? false;
+        if (byClick && action.isForMainFrame && !_isSameSite(uri?.host)) {
           if (mounted) setState(() => _blocked++);
           return NavigationActionPolicy.CANCEL;
         }
 
         return NavigationActionPolicy.ALLOW;
-      },
-
-      // Если увести всё-таки удалось — замечаем это и возвращаемся.
-      onUpdateVisitedHistory: (controller, url, _) async {
-        if (url == null || _isOurPage(url)) return;
-        if (!mounted) return;
-        setState(() => _blocked++);
-        await _backToPlayer();
       },
 
       // Источники иногда подсовывают «скачать плеер» — не наш случай.

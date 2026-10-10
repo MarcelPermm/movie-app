@@ -31,7 +31,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
   int _season = 1;
   int? _playingEpisode;
-  String _source = 'vidsrc';
+  String _source = Config.defaultWatchSource;
 
   String? _error;
 
@@ -628,6 +628,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         builder: (_) => PlayerScreen(
           tmdbId: widget.movie.id,
           mediaType: _mediaType,
+          source: _source,
           title: widget.movie.title,
           season: _season,
           episode: selectedEpisode,
