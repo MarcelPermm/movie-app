@@ -304,12 +304,6 @@ class _BudgetCard extends StatelessWidget {
 
     final left = planned - repo.total;
     final over = planned > 0 && left < 0;
-    final now = DateTime.now();
-    final thisMonth = repo.month.year == now.year && repo.month.month == now.month;
-
-    // Сколько можно тратить в день до конца месяца, чтобы уложиться в план.
-    final daysLeft = DateTime(now.year, now.month + 1, 0).day - now.day + 1;
-    final perDay = thisMonth && left > 0 ? left ~/ daysLeft : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -342,7 +336,7 @@ class _BudgetCard extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      planned > 0 ? (over ? 'перерасход' : 'осталось') : 'потрачено',
+                      planned > 0 ? (over ? 'перерасход за месяц' : 'осталось на месяц') : 'потрачено за месяц',
                       style: const TextStyle(color: AppColors.textDim, fontSize: 13),
                     ),
                   ),
@@ -361,10 +355,7 @@ class _BudgetCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  [
-                    '${formatMoney(repo.total)} из ${formatMoney(planned)}',
-                    if (perDay != null) 'можно ${formatMoney(perDay)} в день',
-                  ].join('  ·  '),
+                  'потрачено ${formatMoney(repo.total)} из ${formatMoney(planned)}',
                   style: const TextStyle(color: AppColors.textDim, fontSize: 12.5),
                 ),
               ],
