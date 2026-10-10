@@ -9,6 +9,13 @@ class Config {
     defaultValue: 'https://movie-app-xwuo.onrender.com',
   );
 
+  /// Сайт. Встроенный плеер открывает источники через его страницу
+  /// /player/ — с того же домена, что и сайт, где они точно работают.
+  static const String siteUrl = String.fromEnvironment(
+    'SITE_URL',
+    defaultValue: 'https://monkey-app.online',
+  );
+
   /// Базовые URL картинок TMDB (совпадают с фронтендом).
   static const String tmdbCard = 'https://image.tmdb.org/t/p/w342';
   static const String tmdbPoster = 'https://image.tmdb.org/t/p/w500';

@@ -79,24 +79,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         );
   }
 
-  /// Что на самом деле открывает WebView: страницу нашего сервера с плеером
-  /// внутри iframe — ровно как на сайте.
+  /// Что на самом деле открывает WebView: страницу сайта с плеером внутри
+  /// iframe — ровно как на сайте.
   ///
   /// Открытые напрямую, страницей верхнего уровня, источники ведут себя
   /// иначе, чем в iframe: часть отказывается играть, часть перекидывает на
-  /// свой новый домен (а такой переход мы принимали за рекламу и
-  /// возвращали назад), YouTube отвечает ошибкой 153. Своя HTML-страница
-  /// через initialData на Windows не поддержана — поэтому её отдаёт сервер.
-  String get _pageUrl => '${Config.apiBaseUrl}/embed?u=${Uri.encodeComponent(_url)}';
+  /// новый домен, YouTube отвечает ошибкой 153. А страница-обёртка должна
+  /// жить именно на домене сайта: со страницы на сервере API источники
+  /// отвечали «We couldn't find that», хотя с сайта тот же фильм играл.
+  /// Своя HTML-страница через initialData на Windows не поддержана.
+  String get _pageUrl => '${Config.siteUrl}/player/?u=${Uri.encodeComponent(_url)}';
 
-  static final String _ourHost = Uri.parse(Config.apiBaseUrl).host.toLowerCase();
+  static final String _ourHost = Uri.parse(Config.siteUrl).host.toLowerCase();
 
   /// Верхний кадр всегда должен оставаться на нашей странице-обёртке.
   /// Плеер внутри iframe может ходить по своим доменам сколько угодно.
   bool _isOurPage(WebUri? uri) {
     final host = uri?.host.toLowerCase() ?? '';
     if (host.isEmpty) return true; // about:blank и т. п.
-    return host == _ourHost;
+    String bare(String h) => h.startsWith('www.') ? h.substring(4) : h;
+    return bare(host) == bare(_ourHost);
   }
 
   /// Отсекаем по списку рекламных доменов, а не по списку разрешённых.
