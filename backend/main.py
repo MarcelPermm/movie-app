@@ -307,8 +307,14 @@ async def shutdown():
         await http_client.aclose()
 
 
+@app.get("/ping")
+def ping():
+    """Самый лёгкий ответ, без базы: будильник для Render (см. .github/workflows/keepalive.yml)."""
+    return {"ok": True}
+
+
 @app.get("/health")
-async def health_check():
+def health_check():
     """Пинг для поддержания Render + Neon живыми. Делает SELECT 1 к БД.
     При мёртвом соединении автоматически сбрасывает пул и переподключается."""
     try:
@@ -454,7 +460,7 @@ class LoginRequest(BaseModel):
     password: str = ""
 
 @app.post("/auth/register")
-async def register(req: RegisterRequest):
+def register(req: RegisterRequest):
     username     = req.username.strip().lower()
     display_name = req.display_name.strip()
     password     = req.password.strip()
@@ -469,7 +475,7 @@ async def register(req: RegisterRequest):
     return user
 
 @app.post("/auth/login")
-async def login(req: LoginRequest):
+def login(req: LoginRequest):
     user = database.get_user_by_username(req.username.strip().lower())
     if not user:
         raise HTTPException(404, "Пользователь не найден")
@@ -480,7 +486,7 @@ async def login(req: LoginRequest):
     return {"id": user["id"], "username": user["username"], "display_name": user["display_name"]}
 
 @app.get("/auth/user/{user_id}")
-async def get_user(user_id: int):
+def get_user(user_id: int):
     user = database.get_user_by_id(user_id)
     if not user:
         raise HTTPException(404, "Пользователь не найден")
@@ -497,7 +503,7 @@ async def get_genres(media_type: str = "movie"):
 
 
 @app.get("/studios")
-async def get_studios(media_type: str = "movie"):
+def get_studios(media_type: str = "movie"):
     return TV_NETWORKS if media_type == "tv" else STUDIOS
 
 
@@ -815,18 +821,18 @@ class FavoriteActorRequest(BaseModel):
 
 
 @app.get("/favorite-actors")
-async def get_favorite_actors(user_id: int = 1):
+def get_favorite_actors(user_id: int = 1):
     return database.get_favorite_actors(user_id)
 
 
 @app.post("/favorite-actors")
-async def add_favorite_actor(req: FavoriteActorRequest):
+def add_favorite_actor(req: FavoriteActorRequest):
     database.add_favorite_actor(req.actor_id, req.actor_name, req.profile_path, req.user_id)
     return {"message": "Добавлен в избранные"}
 
 
 @app.delete("/favorite-actors/{actor_id}")
-async def remove_favorite_actor(actor_id: int, user_id: int = 1):
+def remove_favorite_actor(actor_id: int, user_id: int = 1):
     database.remove_favorite_actor(actor_id, user_id)
     return {"message": "Убран из избранных"}
 
@@ -917,7 +923,7 @@ async def rate_watched(req: RateRequest):
 
 
 @app.delete("/watched/{movie_id}")
-async def remove_watched(movie_id: int, media_type: str = "movie", user_id: int = 1):
+def remove_watched(movie_id: int, media_type: str = "movie", user_id: int = 1):
     if not database.remove_watched(movie_id, media_type, user_id): raise HTTPException(404, "Не найден")
     return {"message": "Удалено"}
 
@@ -972,7 +978,7 @@ class WatchlistCategoryUpdate(BaseModel):
 
 
 @app.patch("/watchlist/{movie_id}/category")
-async def update_watchlist_category(movie_id: int, req: WatchlistCategoryUpdate):
+def update_watchlist_category(movie_id: int, req: WatchlistCategoryUpdate):
     if req.category not in {"must_see", "not_sure", "last_resort"}:
         raise HTTPException(400, "Недопустимая категория")
     updated = database.update_watchlist_category(movie_id, req.category, req.media_type, req.user_id)
@@ -982,7 +988,7 @@ async def update_watchlist_category(movie_id: int, req: WatchlistCategoryUpdate)
 
 
 @app.delete("/watchlist/{movie_id}")
-async def remove_watchlist(movie_id: int, media_type: str = "movie", user_id: int = 1):
+def remove_watchlist(movie_id: int, media_type: str = "movie", user_id: int = 1):
     if not database.remove_watchlist(movie_id, media_type, user_id): raise HTTPException(404, "Не найден")
     return {"message": "Удалено"}
 
@@ -990,7 +996,7 @@ async def remove_watchlist(movie_id: int, media_type: str = "movie", user_id: in
 # ─── Отклонённые ──────────────────────────────────────────────────────────────
 
 @app.get("/dismissed")
-async def get_dismissed(media_type: str = "movie", user_id: int = 1):
+def get_dismissed(media_type: str = "movie", user_id: int = 1):
     return database.get_dismissed(media_type, user_id)
 
 
@@ -1027,7 +1033,7 @@ async def dismiss_movie(req: DismissRequest):
 
 
 @app.delete("/dismissed/{movie_id}")
-async def undismiss_movie(movie_id: int, media_type: str = "movie", user_id: int = 1):
+def undismiss_movie(movie_id: int, media_type: str = "movie", user_id: int = 1):
     database.remove_dismissed(movie_id, media_type, user_id)
     return {"message": "Возвращено"}
 
@@ -1098,7 +1104,7 @@ async def books_search(q: str = "", user_id: int = 1):
 
 
 @app.get("/books/read")
-async def get_books_read(user_id: int = 1):
+def get_books_read(user_id: int = 1):
     return database.get_books_read(user_id)
 
 
@@ -1133,14 +1139,14 @@ async def rate_book(req: BookRateRequest):
 
 
 @app.delete("/books/read/{book_id}")
-async def remove_book_read(book_id: str, user_id: int = 1):
+def remove_book_read(book_id: str, user_id: int = 1):
     if not database.remove_book_read(book_id, user_id):
         raise HTTPException(404, "Не найдено")
     return {"message": "Удалено"}
 
 
 @app.get("/books/wishlist")
-async def get_books_wishlist(user_id: int = 1):
+def get_books_wishlist(user_id: int = 1):
     return database.get_books_wishlist(user_id)
 
 
@@ -1158,7 +1164,7 @@ async def add_book_wishlist(req: BookWishlistRequest):
 
 
 @app.delete("/books/wishlist/{book_id}")
-async def remove_book_wishlist(book_id: str, user_id: int = 1):
+def remove_book_wishlist(book_id: str, user_id: int = 1):
     if not database.remove_book_wishlist(book_id, user_id):
         raise HTTPException(404, "Не найдено")
     return {"message": "Удалено"}
@@ -1471,7 +1477,7 @@ async def get_recommendations(country: str = "", studio_id: int = 0, media_type:
 # ─── Профиль / статистика ─────────────────────────────────────────────────────
 
 @app.get("/profile/stats")
-async def get_profile_stats(user_id: int = 1):
+def get_profile_stats(user_id: int = 1):
     from collections import Counter
 
     movies = database.get_watched("movie", user_id)
@@ -1954,22 +1960,22 @@ class TaskUpdate(BaseModel):
     recurrence: Optional[str] = None
 
 @app.get("/tasks")
-async def get_tasks(date: str, user_id: int = 1):
+def get_tasks(date: str, user_id: int = 1):
     return database.get_tasks(user_id, date)
 
 @app.get("/tasks/week")
-async def get_tasks_week(date_from: str, date_to: str, user_id: int = 1):
+def get_tasks_week(date_from: str, date_to: str, user_id: int = 1):
     return database.get_tasks_range(user_id, date_from, date_to)
 
 @app.post("/tasks")
-async def create_task(req: TaskCreate, user_id: int = 1):
+def create_task(req: TaskCreate, user_id: int = 1):
     return database.add_task(
         user_id, req.title, req.date,
         req.time_str, req.tag, req.priority, req.recurrence
     )
 
 @app.patch("/tasks/{task_id}")
-async def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
+def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
     fields = {k: v for k, v in req.dict().items() if v is not None}
     try:
         return database.update_task(task_id, user_id, **fields)
@@ -1977,17 +1983,17 @@ async def patch_task(task_id: int, req: TaskUpdate, user_id: int = 1):
         raise HTTPException(404, "Задача не найдена")
 
 @app.delete("/tasks/{task_id}")
-async def remove_task(task_id: int, user_id: int = 1):
+def remove_task(task_id: int, user_id: int = 1):
     database.delete_task(task_id, user_id)
     return {"ok": True}
 
 @app.post("/tasks/{task_id}/complete")
-async def complete_task(task_id: int, date: str, user_id: int = 1):
+def complete_task(task_id: int, date: str, user_id: int = 1):
     database.add_task_completion(task_id, date)
     return {"ok": True}
 
 @app.delete("/tasks/{task_id}/complete")
-async def uncomplete_task(task_id: int, date: str, user_id: int = 1):
+def uncomplete_task(task_id: int, date: str, user_id: int = 1):
     database.remove_task_completion(task_id, date)
     return {"ok": True}
 
@@ -2002,32 +2008,32 @@ class ListItemCreate(BaseModel):
     title: str
 
 @app.get("/notebook/lists")
-async def get_lists(user_id: int = 1):
+def get_lists(user_id: int = 1):
     return database.get_lists(user_id)
 
 @app.post("/notebook/lists")
-async def create_list(req: ListCreate, user_id: int = 1):
+def create_list(req: ListCreate, user_id: int = 1):
     return database.add_list(user_id, req.name, req.emoji)
 
 @app.delete("/notebook/lists/{list_id}")
-async def delete_list(list_id: int, user_id: int = 1):
+def delete_list(list_id: int, user_id: int = 1):
     database.delete_list(list_id, user_id)
     return {"ok": True}
 
 @app.get("/notebook/lists/{list_id}/items")
-async def get_list_items(list_id: int, user_id: int = 1):
+def get_list_items(list_id: int, user_id: int = 1):
     return database.get_list_items(list_id, user_id)
 
 @app.post("/notebook/lists/{list_id}/items")
-async def add_list_item(list_id: int, req: ListItemCreate, user_id: int = 1):
+def add_list_item(list_id: int, req: ListItemCreate, user_id: int = 1):
     return database.add_list_item(list_id, user_id, req.title)
 
 @app.patch("/notebook/list-items/{item_id}")
-async def toggle_item(item_id: int, done: bool, user_id: int = 1):
+def toggle_item(item_id: int, done: bool, user_id: int = 1):
     return database.toggle_list_item(item_id, user_id, done)
 
 @app.delete("/notebook/list-items/{item_id}")
-async def delete_list_item(item_id: int, user_id: int = 1):
+def delete_list_item(item_id: int, user_id: int = 1):
     database.delete_list_item(item_id, user_id)
     return {"ok": True}
 
@@ -2045,20 +2051,20 @@ class NoteUpdate(BaseModel):
     color: Optional[str] = None
 
 @app.get("/notebook/notes")
-async def get_notes(user_id: int = 1):
+def get_notes(user_id: int = 1):
     return database.get_notes(user_id)
 
 @app.post("/notebook/notes")
-async def create_note(req: NoteCreate, user_id: int = 1):
+def create_note(req: NoteCreate, user_id: int = 1):
     return database.add_note(user_id, req.body, req.title, req.color)
 
 @app.patch("/notebook/notes/{note_id}")
-async def update_note(note_id: int, req: NoteUpdate, user_id: int = 1):
+def update_note(note_id: int, req: NoteUpdate, user_id: int = 1):
     fields = {k: v for k, v in req.dict().items() if v is not None}
     return database.update_note(note_id, user_id, **fields)
 
 @app.delete("/notebook/notes/{note_id}")
-async def delete_note(note_id: int, user_id: int = 1):
+def delete_note(note_id: int, user_id: int = 1):
     database.delete_note(note_id, user_id)
     return {"ok": True}
 
@@ -2085,38 +2091,38 @@ class BudgetExpenseCreate(BaseModel):
     merchant: Optional[str] = None
 
 @app.get("/budget/categories")
-async def get_budget_categories(user_id: int = 1):
+def get_budget_categories(user_id: int = 1):
     return database.get_budget_categories(user_id)
 
 @app.post("/budget/categories")
-async def create_budget_category(req: BudgetCategoryCreate, user_id: int = 1):
+def create_budget_category(req: BudgetCategoryCreate, user_id: int = 1):
     return database.add_budget_category(user_id, req.name, req.emoji, req.plan_monthly, req.plan_max)
 
 @app.patch("/budget/categories/{cat_id}")
-async def update_budget_category(cat_id: int, req: BudgetCategoryUpdate, user_id: int = 1):
+def update_budget_category(cat_id: int, req: BudgetCategoryUpdate, user_id: int = 1):
     return database.update_budget_category(cat_id, user_id, req.name, req.emoji, req.plan_monthly, req.plan_max)
 
 @app.delete("/budget/categories/{cat_id}")
-async def delete_budget_category(cat_id: int, user_id: int = 1):
+def delete_budget_category(cat_id: int, user_id: int = 1):
     database.delete_budget_category(cat_id, user_id)
     return {"ok": True}
 
 @app.get("/budget/expenses")
-async def get_budget_expenses(year: int, month: int, user_id: int = 1):
+def get_budget_expenses(year: int, month: int, user_id: int = 1):
     return database.get_budget_expenses(user_id, year, month)
 
 @app.get("/budget/merchants")
-async def get_budget_merchants(user_id: int = 1):
+def get_budget_merchants(user_id: int = 1):
     return database.get_merchant_suggestions(user_id)
 
 @app.post("/budget/expenses")
-async def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
+def create_budget_expense(req: BudgetExpenseCreate, user_id: int = 1):
     return database.add_budget_expense(
         user_id, req.date, req.amount, req.category_id, req.note, req.merchant
     )
 
 @app.patch("/budget/expenses/{exp_id}")
-async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int = 1):
+def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int = 1):
     return database.update_budget_expense(
         exp_id, user_id,
         amount=req.get("amount"),
@@ -2127,17 +2133,17 @@ async def update_budget_expense(exp_id: int, req: dict = Body(...), user_id: int
     )
 
 @app.delete("/budget/expenses/month")
-async def delete_budget_expenses_month(year: int, month: int, user_id: int = 1):
+def delete_budget_expenses_month(year: int, month: int, user_id: int = 1):
     deleted = database.delete_budget_expenses_month(user_id, year, month)
     return {"deleted": deleted}
 
 @app.delete("/budget/expenses/all")
-async def delete_budget_expenses_all(user_id: int = 1):
+def delete_budget_expenses_all(user_id: int = 1):
     deleted = database.delete_budget_expenses_all(user_id)
     return {"deleted": deleted}
 
 @app.delete("/budget/expenses/{exp_id}")
-async def delete_budget_expense(exp_id: int, user_id: int = 1):
+def delete_budget_expense(exp_id: int, user_id: int = 1):
     database.delete_budget_expense(exp_id, user_id)
     return {"ok": True}
 
@@ -2157,7 +2163,7 @@ async def parse_statement(file: UploadFile):
 
 
 @app.post("/budget/import")
-async def import_expenses(req: dict, user_id: int = 1):
+def import_expenses(req: dict, user_id: int = 1):
     """Сохраняет подтверждённые транзакции из выписки в budget_expenses."""
     items = req.get("transactions", [])
     saved = 0
@@ -2213,36 +2219,36 @@ class TripExpenseCreate(BaseModel):
     city: str = ""
 
 @app.get("/trips")
-async def get_trips(user_id: int = 1):
+def get_trips(user_id: int = 1):
     return database.get_trips(user_id)
 
 @app.get("/budget/events")
-async def get_budget_events(year: int, month: int, user_id: int = 1):
+def get_budget_events(year: int, month: int, user_id: int = 1):
     """Поездки и события пересекающиеся с указанным месяцем."""
     return database.get_trips_for_month(user_id, year, month)
 
 @app.post("/trips")
-async def create_trip(req: TripCreate, user_id: int = 1):
+def create_trip(req: TripCreate, user_id: int = 1):
     return database.add_trip(
         user_id, req.name, req.emoji, req.start_date, req.end_date,
         req.planned_total, req.event_type, req.subtitle
     )
 
 @app.get("/trips/{trip_id}/day-notes")
-async def get_day_notes(trip_id: int, user_id: int = 1):
+def get_day_notes(trip_id: int, user_id: int = 1):
     return database.get_trip_day_notes(trip_id)
 
 @app.post("/trips/{trip_id}/day-notes")
-async def upsert_day_note(trip_id: int, req: dict = Body(...), user_id: int = 1):
+def upsert_day_note(trip_id: int, req: dict = Body(...), user_id: int = 1):
     return database.upsert_trip_day_note(trip_id, req["date"], req.get("note",""), req.get("title",""))
 
 @app.delete("/trips/{trip_id}")
-async def delete_trip(trip_id: int, user_id: int = 1):
+def delete_trip(trip_id: int, user_id: int = 1):
     database.delete_trip(trip_id, user_id)
     return {"ok": True}
 
 @app.post("/trips/group")
-async def group_trips(body: dict, user_id: int = 1):
+def group_trips(body: dict, user_id: int = 1):
     """Объединяет две поездки в группу (или добавляет в существующую)."""
     trip_a = int(body["trip_a"])
     trip_b = int(body["trip_b"])
@@ -2251,13 +2257,13 @@ async def group_trips(body: dict, user_id: int = 1):
     return database.group_trips(trip_a, trip_b, user_id, name, emoji)
 
 @app.post("/trips/{trip_id}/ungroup")
-async def ungroup_trip(trip_id: int, user_id: int = 1):
+def ungroup_trip(trip_id: int, user_id: int = 1):
     """Убирает поездку из группы."""
     database.ungroup_trip(trip_id, user_id)
     return {"ok": True}
 
 @app.patch("/trips/{trip_id}")
-async def patch_trip(trip_id: int, body: dict, user_id: int = 1):
+def patch_trip(trip_id: int, body: dict, user_id: int = 1):
     """Обновляет название/emoji/subtitle/план/даты группы или поездки.
 
     Если поездка — город внутри группы, даты и план группы пересчитываются
@@ -2293,11 +2299,11 @@ async def patch_trip(trip_id: int, body: dict, user_id: int = 1):
     return {"ok": True}
 
 @app.get("/trips/{trip_id}/expenses")
-async def get_trip_expenses(trip_id: int, user_id: int = 1):
+def get_trip_expenses(trip_id: int, user_id: int = 1):
     return database.get_trip_expenses(trip_id, user_id)
 
 @app.post("/trips/{trip_id}/expenses")
-async def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 1):
+def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 1):
     return database.add_trip_expense(
         trip_id, user_id, req.date, req.amount,
         req.planned_amount, req.category, req.note, req.emoji, req.city,
@@ -2305,25 +2311,25 @@ async def add_trip_expense(trip_id: int, req: TripExpenseCreate, user_id: int = 
     )
 
 @app.patch("/trip-expenses/{exp_id}/amount")
-async def set_trip_expense_amount(exp_id: int, amount: int, user_id: int = 1):
+def set_trip_expense_amount(exp_id: int, amount: int, user_id: int = 1):
     return database.update_trip_expense_amount(exp_id, user_id, amount)
 
 @app.patch("/trip-expenses/{exp_id}")
-async def patch_trip_expense(exp_id: int, body: dict = Body(...), user_id: int = 1):
+def patch_trip_expense(exp_id: int, body: dict = Body(...), user_id: int = 1):
     return database.update_trip_expense(exp_id, user_id, body)
 
 @app.delete("/trip-expenses/{exp_id}")
-async def delete_trip_expense(exp_id: int, user_id: int = 1):
+def delete_trip_expense(exp_id: int, user_id: int = 1):
     database.delete_trip_expense(exp_id, user_id)
     return {"ok": True}
 
 # ─── Цели (неделя / месяц / год) ───────────────────────────────────────────────────────
 @app.get("/goals")
-async def get_goals(period: str, period_key: str, user_id: int = 1):
+def get_goals(period: str, period_key: str, user_id: int = 1):
     return database.get_goals(user_id, period, period_key)
 
 @app.post("/goals")
-async def add_goal(body: dict = Body(...), user_id: int = 1):
+def add_goal(body: dict = Body(...), user_id: int = 1):
     text = (body.get("text") or "").strip()
     if not text:
         raise HTTPException(400, "Пустая цель")
@@ -2333,11 +2339,11 @@ async def add_goal(body: dict = Body(...), user_id: int = 1):
     return database.add_goal(user_id, body["period"], body["period_key"], text, tag)
 
 @app.patch("/goals/{goal_id}")
-async def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):
+def patch_goal(goal_id: int, body: dict = Body(...), user_id: int = 1):
     return database.update_goal(goal_id, user_id, body)
 
 @app.delete("/goals/{goal_id}")
-async def delete_goal(goal_id: int, user_id: int = 1):
+def delete_goal(goal_id: int, user_id: int = 1):
     database.delete_goal(goal_id, user_id)
     return {"ok": True}
 
@@ -2405,7 +2411,7 @@ class DurakCreateReq(BaseModel):
 
 
 @app.post('/durak/games')
-async def durak_create(req: DurakCreateReq, user_id: int = Query(...)):
+def durak_create(req: DurakCreateReq, user_id: int = Query(...)):
     if req.deck_size not in (24, 36, 52):
         raise HTTPException(400, 'deck_size must be 24, 36 or 52')
     if not (2 <= req.max_players <= 6):
@@ -2423,7 +2429,7 @@ async def durak_create(req: DurakCreateReq, user_id: int = Query(...)):
 
 
 @app.get('/durak/games/{code}')
-async def durak_get(code: str):
+def durak_get(code: str):
     game, players = _durak_full_state(code)
     if not game: raise HTTPException(404, 'Игра не найдена')
     import json
@@ -2569,7 +2575,7 @@ class ChessCreateRequest(BaseModel):
 
 
 @app.post("/chess/games")
-async def chess_create(req: ChessCreateRequest, user_id: int = Query(...)):
+def chess_create(req: ChessCreateRequest, user_id: int = Query(...)):
     code = _gen_code()
     for _ in range(10):
         if not database.get_chess_game(code):
@@ -2587,7 +2593,7 @@ async def chess_create(req: ChessCreateRequest, user_id: int = Query(...)):
 
 
 @app.get("/chess/games/{code}")
-async def chess_get(code: str):
+def chess_get(code: str):
     game = database.get_chess_game(code)
     if not game:
         raise HTTPException(404, "Игра не найдена")
@@ -2620,12 +2626,12 @@ async def chess_join(code: str, user_id: int = Query(...)):
 
 
 @app.get("/chess/stats")
-async def chess_stats(user_id: int = Query(...)):
+def chess_stats(user_id: int = Query(...)):
     return database.get_chess_stats(user_id)
 
 
 @app.get("/chess/history")
-async def chess_history(user_id: int = Query(...)):
+def chess_history(user_id: int = Query(...)):
     return database.get_chess_history(user_id)
 
 
@@ -2717,7 +2723,7 @@ async def chess_ws(websocket: WebSocket, code: str, user_id: int = Query(default
 # ════════════════════════════════════════════════════════════════
 
 @app.post("/billiards/games")
-async def billiards_create(user_id: int = Query(...)):
+def billiards_create(user_id: int = Query(...)):
     code = _gen_code()
     for _ in range(10):
         if not database.get_billiards_game(code):
@@ -2728,7 +2734,7 @@ async def billiards_create(user_id: int = Query(...)):
 
 
 @app.get("/billiards/games/{code}")
-async def billiards_get(code: str):
+def billiards_get(code: str):
     game = database.get_billiards_game(code)
     if not game:
         raise HTTPException(404, "Игра не найдена")
@@ -2817,12 +2823,12 @@ class FriendRequestBody(BaseModel):
 
 
 @app.get("/friends")
-async def list_friends(user_id: int = 1):
+def list_friends(user_id: int = 1):
     return database.get_friends(user_id)
 
 
 @app.get("/friends/requests")
-async def list_friend_requests(user_id: int = 1):
+def list_friend_requests(user_id: int = 1):
     return {
         "incoming": database.get_incoming_requests(user_id),
         "outgoing": database.get_outgoing_requests(user_id),
@@ -2830,7 +2836,7 @@ async def list_friend_requests(user_id: int = 1):
 
 
 @app.post("/friends/request")
-async def send_friend_request(req: FriendRequestBody, user_id: int = 1):
+def send_friend_request(req: FriendRequestBody, user_id: int = 1):
     username = req.username.strip().lower()
     target = database.find_user_public(username)
     if not target:
@@ -2855,21 +2861,21 @@ async def send_friend_request(req: FriendRequestBody, user_id: int = 1):
 
 
 @app.post("/friends/accept/{friendship_id}")
-async def accept_friend_request(friendship_id: int, user_id: int = 1):
+def accept_friend_request(friendship_id: int, user_id: int = 1):
     if not database.accept_friend_request(friendship_id, user_id):
         raise HTTPException(404, "Заявка не найдена")
     return {"message": "Заявка принята"}
 
 
 @app.post("/friends/decline/{friendship_id}")
-async def decline_friend_request(friendship_id: int, user_id: int = 1):
+def decline_friend_request(friendship_id: int, user_id: int = 1):
     if not database.decline_friend_request(friendship_id, user_id):
         raise HTTPException(404, "Заявка не найдена")
     return {"message": "Заявка отклонена"}
 
 
 @app.delete("/friends/{friend_id}")
-async def remove_friend(friend_id: int, user_id: int = 1):
+def remove_friend(friend_id: int, user_id: int = 1):
     if not database.remove_friend(user_id, friend_id):
         raise HTTPException(404, "Друг не найден")
     return {"message": "Удалено из друзей"}
@@ -2952,7 +2958,7 @@ async def wishlist_preview(url: str, user_id: int = 1):
 
 
 @app.post("/wishlist/items")
-async def create_wishlist_item(req: WishlistItemCreate, user_id: int = 1):
+def create_wishlist_item(req: WishlistItemCreate, user_id: int = 1):
     title = req.title.strip()
     if not title:
         raise HTTPException(400, "Название не может быть пустым")
@@ -2964,7 +2970,7 @@ async def create_wishlist_item(req: WishlistItemCreate, user_id: int = 1):
 
 
 @app.put("/wishlist/items/{item_id}")
-async def edit_wishlist_item(item_id: int, req: WishlistItemUpdate, user_id: int = 1):
+def edit_wishlist_item(item_id: int, req: WishlistItemUpdate, user_id: int = 1):
     item = database.get_wishlist_item(item_id)
     if not item or item["user_id"] != user_id:
         raise HTTPException(404, "Вещь не найдена")
@@ -2977,14 +2983,14 @@ async def edit_wishlist_item(item_id: int, req: WishlistItemUpdate, user_id: int
 
 
 @app.delete("/wishlist/items/{item_id}")
-async def remove_wishlist_item(item_id: int, user_id: int = 1):
+def remove_wishlist_item(item_id: int, user_id: int = 1):
     if not database.delete_wishlist_item(item_id, user_id):
         raise HTTPException(404, "Вещь не найдена")
     return {"message": "Удалено"}
 
 
 @app.post("/wishlist/items/{item_id}/reserve")
-async def reserve_wishlist_item(item_id: int, user_id: int = 1):
+def reserve_wishlist_item(item_id: int, user_id: int = 1):
     item = database.get_wishlist_item(item_id)
     if not item:
         raise HTTPException(404, "Вещь не найдена")
@@ -2998,14 +3004,14 @@ async def reserve_wishlist_item(item_id: int, user_id: int = 1):
 
 
 @app.post("/wishlist/items/{item_id}/unreserve")
-async def unreserve_wishlist_item(item_id: int, user_id: int = 1):
+def unreserve_wishlist_item(item_id: int, user_id: int = 1):
     if not database.unreserve_wishlist_item(item_id, user_id):
         raise HTTPException(404, "Резерв не найден")
     return {"message": "Резерв снят"}
 
 
 @app.post("/wishlist/items/{item_id}/contribute")
-async def contribute_wishlist_item(item_id: int, req: ContributeBody, user_id: int = 1):
+def contribute_wishlist_item(item_id: int, req: ContributeBody, user_id: int = 1):
     item = database.get_wishlist_item(item_id)
     if not item:
         raise HTTPException(404, "Вещь не найдена")
@@ -3019,14 +3025,14 @@ async def contribute_wishlist_item(item_id: int, req: ContributeBody, user_id: i
 
 
 @app.delete("/wishlist/items/{item_id}/contribute")
-async def remove_wishlist_contribution(item_id: int, user_id: int = 1):
+def remove_wishlist_contribution(item_id: int, user_id: int = 1):
     if not database.remove_contribution(item_id, user_id):
         raise HTTPException(404, "Вклад не найден")
     return {"message": "Вклад убран"}
 
 
 @app.get("/wishlist/{owner_id}")
-async def get_wishlist(owner_id: int, user_id: int = 1):
+def get_wishlist(owner_id: int, user_id: int = 1):
     if owner_id != user_id and not database.are_friends(owner_id, user_id):
         raise HTTPException(403, "Нет доступа к этому виш-листу")
     return database.get_wishlist_items(owner_id, user_id)
@@ -3096,7 +3102,7 @@ class CardGameCreateReq(BaseModel):
 # ── UNO ────────────────────────────────────────────────────────────────────────
 
 @app.post('/uno/games')
-async def uno_create(req: CardGameCreateReq, user_id: int = Query(...)):
+def uno_create(req: CardGameCreateReq, user_id: int = Query(...)):
     if not (2 <= req.max_players <= 10): raise HTTPException(400, 'max_players 2–10')
     code = _gen_code()
     for _ in range(10):
@@ -3107,7 +3113,7 @@ async def uno_create(req: CardGameCreateReq, user_id: int = Query(...)):
     return {'game': game, 'players': players}
 
 @app.get('/uno/games/{code}')
-async def uno_get(code: str, user_id: int = Query(default=0)):
+def uno_get(code: str, user_id: int = Query(default=0)):
     game = database.get_uno_game(code)
     if not game: raise HTTPException(404, 'Игра не найдена')
     import json as _j
@@ -3201,7 +3207,7 @@ async def uno_ws(websocket: WebSocket, code: str, user_id: int = Query(default=0
 # ── 101 ────────────────────────────────────────────────────────────────────────
 
 @app.post('/game101/games')
-async def g101_create(req: CardGameCreateReq, user_id: int = Query(...)):
+def g101_create(req: CardGameCreateReq, user_id: int = Query(...)):
     if not (2 <= req.max_players <= 6): raise HTTPException(400, 'max_players 2–6')
     code = _gen_code()
     for _ in range(10):
@@ -3211,7 +3217,7 @@ async def g101_create(req: CardGameCreateReq, user_id: int = Query(...)):
     return {'game': game, 'players': database.get_game101_players(game['id'])}
 
 @app.get('/game101/games/{code}')
-async def g101_get(code: str, user_id: int = Query(default=0)):
+def g101_get(code: str, user_id: int = Query(default=0)):
     game = database.get_game101(code)
     if not game: raise HTTPException(404)
     import json as _j

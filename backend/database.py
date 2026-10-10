@@ -28,13 +28,33 @@ def _parse_list(val) -> list:
 _pool = None
 _pool_lock = threading.Lock()
 
+# Обычные эндпоинты FastAPI выполняет в пуле потоков (до 40 разом), а
+# ThreadedConnectionPool при нехватке соединений не ждёт, а падает с
+# PoolError. Семафор ставит лишние запросы в короткую очередь. Таймаут —
+# страховка: если где-то соединение «утекло», лучше прежняя ошибка, чем
+# навсегда зависший запрос.
+_POOL_MAX = 10
+_pool_slots = threading.BoundedSemaphore(_POOL_MAX)
+
+
+def _take_slot():
+    return _pool_slots.acquire(timeout=20)
+
+
+def _give_slot(taken: bool):
+    if taken:
+        try:
+            _pool_slots.release()
+        except ValueError:
+            pass
+
 
 def _build_pool():
     url = os.getenv("DATABASE_URL", "")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     return pg_pool.ThreadedConnectionPool(
-        minconn=1, maxconn=10, dsn=url,
+        minconn=1, maxconn=_POOL_MAX, dsn=url,
         cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
@@ -63,14 +83,22 @@ def _reset_pool():
 class _Conn:
     """Контекст-менеджер: берёт соединение из пула, возвращает обратно."""
     def __enter__(self):
-        self._conn = _get_pool().getconn()
+        self._slot = _take_slot()
+        try:
+            self._conn = _get_pool().getconn()
+        except Exception:
+            _give_slot(self._slot)
+            raise
         return self._conn
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
             if exc_type is not None:
                 self._conn.rollback()
         finally:
-            _get_pool().putconn(self._conn)
+            try:
+                _get_pool().putconn(self._conn)
+            finally:
+                _give_slot(self._slot)
 
 
 def _get_conn():
@@ -83,14 +111,20 @@ def _get_conn():
 class _LegacyConn:
     """Обратная совместимость со старым стилем conn = _get_conn() / conn.close()."""
     def __init__(self):
+        self._slot = _take_slot()
+        self._closed = False
         try:
-            self._conn = _get_pool().getconn()
-            # Проверяем что соединение живое
-            self._conn.cursor().execute("SELECT 1")
+            try:
+                self._conn = _get_pool().getconn()
+                # Проверяем что соединение живое
+                self._conn.cursor().execute("SELECT 1")
+            except Exception:
+                # Соединение мёртвое (Neon заснул) — сбрасываем пул и переподключаемся
+                _reset_pool()
+                self._conn = _get_pool().getconn()
         except Exception:
-            # Соединение мёртвое (Neon заснул) — сбрасываем пул и переподключаемся
-            _reset_pool()
-            self._conn = _get_pool().getconn()
+            _give_slot(self._slot)
+            raise
     def cursor(self, *a, **kw):
         return self._conn.cursor(*a, **kw)
     def commit(self):
@@ -98,7 +132,13 @@ class _LegacyConn:
     def rollback(self):
         return self._conn.rollback()
     def close(self):
-        _get_pool().putconn(self._conn)
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            _get_pool().putconn(self._conn)
+        finally:
+            _give_slot(self._slot)
     def __getattr__(self, name):
         return getattr(self._conn, name)
 

@@ -1,0 +1,31 @@
+# Проверка приложения после каждого изменения: анализатор и тесты.
+# Ошибку видно на GitHub до того, как кто-то соберёт программу у себя.
+name: Flutter
+
+on:
+  push:
+    paths:
+      - "flutter_app/**"
+      - ".github/workflows/flutter.yml"
+  pull_request:
+    paths:
+      - "flutter_app/**"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
