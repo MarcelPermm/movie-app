@@ -591,9 +591,10 @@ class _ProfileMenu extends StatelessWidget {
 /// Кружок с первой буквой имени.
 class _Avatar extends StatelessWidget {
   final String name;
-  final double radius;
 
-  const _Avatar({required this.name, this.radius = 15});
+  const _Avatar({required this.name});
+
+  static const double radius = 15;
 
   @override
   Widget build(BuildContext context) {

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -215,9 +217,21 @@ List<Color> featureColors(FeatureTone tone) {
   }
 }
 
-/// Текст поверх такой карточки: на светлой лиловой — тёмный, на остальных — светлый.
-Color featureForeground(List<Color> colors) =>
-    colors.first.computeLuminance() > 0.5 ? const Color(0xFF111318) : Colors.white;
+/// Текст поверх такой карточки: тёмный или белый — какой контрастнее.
+///
+/// Полупрозрачную карточку («Стекло») сначала накладываем на фон темы,
+/// иначе белая дымка посчитается белой и текст станет тёмным на тёмном.
+Color featureForeground(List<Color> colors) {
+  const ink = Color(0xFF111318);
+  final base = Color.alphaBlend(colors.first, AppColors.bg);
+  double contrast(Color a) {
+    final la = a.computeLuminance();
+    final lb = base.computeLuminance();
+    return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05);
+  }
+
+  return contrast(ink) > contrast(Colors.white) ? ink : Colors.white;
+}
 
 class _Feature extends StatelessWidget {
   final String emoji;

@@ -50,7 +50,10 @@ void main() {
       test('тема Material собирается', () {
         final theme = buildAppTheme();
         expect(theme.brightness, spec.brightness);
-        expect(theme.textTheme.headlineMedium?.fontFamily, spec.displayFont);
+        // У «Классики» свой шрифт не задан — Flutter берёт системный.
+        if (spec.displayFont != null) {
+          expect(theme.textTheme.headlineMedium?.fontFamily, spec.displayFont);
+        }
       });
 
       test('надписи на ярких карточках читаются', () {

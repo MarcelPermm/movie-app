@@ -145,7 +145,7 @@ class _MonkeyAppState extends State<MonkeyApp> with WidgetsBindingObserver {
         fit: StackFit.expand,
         children: [
           const Positioned.fill(child: AppBackdrop()),
-          if (child != null) child,
+          child ?? const SizedBox.shrink(),
         ],
       ),
       // Без этого горизонтальные ленты нельзя тянуть мышью на десктопе.

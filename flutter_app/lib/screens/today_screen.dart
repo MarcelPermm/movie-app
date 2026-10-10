@@ -893,7 +893,6 @@ class _BentoToday extends StatelessWidget {
   const _BentoToday({required this.data, this.onOpenMoney});
 
   static const _blue = Color(0xFF2D3BFF);
-  static const _orange = Color(0xFFFF6A2B);
   static const _lilac = Color(0xFFCDBBFF);
   static const _ink = Color(0xFF131418);
 
@@ -901,6 +900,9 @@ class _BentoToday extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = data;
     final white = Colors.white;
+    // На оранжевой плитке белый текст почти не читается — пишем чернилами.
+    final tripColor = featureColors(FeatureTone.trip).first;
+    final tripInk = featureForeground([tripColor]);
     final cats = d.budget.plannedCategories.take(4).toList();
     final spentBy = d.budget.spentByCategory;
 
@@ -1034,7 +1036,7 @@ class _BentoToday extends StatelessWidget {
                           const SizedBox(width: 14),
                           Expanded(
                             child: _Tile(
-                              color: d.trip == null ? AppColors.surface : _orange,
+                              color: d.trip == null ? AppColors.surface : tripColor,
                               onTap: d.trip == null ? null : () => d.openTrip(context),
                               child: d.trip == null
                                   ? Column(
@@ -1050,18 +1052,18 @@ class _BentoToday extends StatelessWidget {
                                       children: [
                                         Text(
                                           d.trip!.$2 != null ? 'Сейчас в поездке' : 'Следующая поездка',
-                                          style: TextStyle(color: white.withValues(alpha: 0.85), fontWeight: FontWeight.w600),
+                                          style: TextStyle(color: tripInk.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
                                         ),
                                         const Spacer(),
                                         Text(
                                           d.trip!.$1.name,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: AppText.display(36, color: white),
+                                          style: AppText.display(36, color: tripInk),
                                         ),
                                         const Spacer(),
                                         Text(d.tripStatus ?? '',
-                                            style: TextStyle(color: white, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                                            style: TextStyle(color: tripInk, fontSize: 13.5, fontWeight: FontWeight.w600)),
                                       ],
                                     ),
                             ),
@@ -1601,9 +1603,8 @@ class _Kicker extends StatelessWidget {
 class _Leader extends StatelessWidget {
   final Widget left;
   final Widget right;
-  final Widget? under;
 
-  const _Leader({required this.left, required this.right, this.under});
+  const _Leader({required this.left, required this.right});
 
   @override
   Widget build(BuildContext context) {
@@ -1628,7 +1629,6 @@ class _Leader extends StatelessWidget {
               right,
             ],
           ),
-          if (under != null) ...[const SizedBox(height: 5), under!],
         ],
       ),
     );
