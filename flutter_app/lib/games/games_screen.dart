@@ -7,6 +7,9 @@ import 'board_games.dart';
 import 'games_common.dart';
 import 'racing_games.dart';
 import 'reaction_game.dart';
+import 'solo_games.dart';
+import 'sports_games.dart';
+import 'logic_sports.dart' show DartsMode;
 import 'words_game.dart';
 
 class _GameInfo {
@@ -20,6 +23,9 @@ class _GameInfo {
   final (int, int, String)? ask;
   final Widget Function(int players) build;
 
+  /// Дополнительный выбор перед стартом (режим дартса).
+  final Future<Widget?> Function(BuildContext context, int players)? setup;
+
   const _GameInfo({
     required this.emoji,
     required this.title,
@@ -28,6 +34,7 @@ class _GameInfo {
     required this.color,
     required this.build,
     this.ask,
+    this.setup,
   });
 }
 
@@ -70,6 +77,45 @@ class GamesScreen extends StatelessWidget {
       about: 'Передаёте телефон друг другу — экран закрывается, корабли не подсмотреть.',
       color: const Color(0xFF3E8BFF),
       build: (_) => const BattleshipScreen(),
+    ),
+    _GameInfo(
+      emoji: '🎯',
+      title: 'Дартс',
+      players: '1–4 игрока',
+      about: 'Прицел дрожит, как рука. Режимы «301» и «на очки».',
+      color: const Color(0xFF30A46C),
+      ask: (1, 4, 'игрока'),
+      build: (n) => DartsScreen(players: n, mode: DartsMode.x301),
+      setup: (context, n) async {
+        final mode = await pickDartsMode(context);
+        return mode == null ? null : DartsScreen(players: n, mode: mode);
+      },
+    ),
+    _GameInfo(
+      emoji: '🎳',
+      title: 'Боулинг',
+      players: '1–4 игрока',
+      about: 'Свайп — бросок, изгиб свайпа — подкрутка. Честный счёт на 10 фреймов.',
+      color: const Color(0xFF8E7CFF),
+      ask: (1, 4, 'игрока'),
+      build: (n) => BowlingScreen(players: n),
+    ),
+    _GameInfo(
+      emoji: '⛳',
+      title: 'Мини-гольф',
+      players: '1–4 игрока',
+      about: '6 лунок со стенками и песком. Тяни мяч назад, как рогатку.',
+      color: const Color(0xFF2E9E4F),
+      ask: (1, 4, 'игрока'),
+      build: (n) => MiniGolfScreen(players: n),
+    ),
+    _GameInfo(
+      emoji: '⚽',
+      title: 'Пенальти',
+      players: '2 игрока',
+      about: 'Вратарь тайно выбирает угол, бьющий — свайп в ворота. По 5 ударов.',
+      color: const Color(0xFFF5B83D),
+      build: (_) => const PenaltyScreen(),
     ),
     _GameInfo(
       emoji: '⚡',
@@ -116,6 +162,41 @@ class GamesScreen extends StatelessWidget {
     ),
   ];
 
+  static final _solo = <_GameInfo>[
+    _GameInfo(
+      emoji: '🔢',
+      title: '2048',
+      players: 'Для одного',
+      about: 'Свайпами сливай одинаковые плитки. Дойдёшь до 2048?',
+      color: const Color(0xFFEDC22E),
+      build: (_) => const Game2048Screen(),
+    ),
+    _GameInfo(
+      emoji: '🐍',
+      title: 'Змейка',
+      players: 'Для одного',
+      about: 'Собирай яблоки — змейка растёт и ускоряется.',
+      color: const Color(0xFF30A46C),
+      build: (_) => const SnakeScreen(),
+    ),
+    _GameInfo(
+      emoji: '💣',
+      title: 'Сапёр',
+      players: 'Для одного',
+      about: 'Три размера поля, первый ход всегда безопасен. Рекорд по времени.',
+      color: const Color(0xFF8A94A6),
+      build: (_) => const MinesweeperScreen(),
+    ),
+    _GameInfo(
+      emoji: '🧩',
+      title: 'Судоку',
+      players: 'Для одного',
+      about: 'Три уровня, заметки карандашом, ошибки подсвечиваются.',
+      color: const Color(0xFF3E8BFF),
+      build: (_) => const SudokuScreen(),
+    ),
+  ];
+
   Future<void> _open(BuildContext context, _GameInfo g) async {
     var players = 2;
     final ask = g.ask;
@@ -124,7 +205,16 @@ class GamesScreen extends StatelessWidget {
       if (picked == null || !context.mounted) return;
       players = picked;
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => g.build(players)));
+    var screen = g.build(players);
+    final setup = g.setup;
+    if (setup != null) {
+      if (!context.mounted) return;
+      final chosen = await setup(context, players);
+      if (chosen == null) return;
+      screen = chosen;
+    }
+    if (!context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
@@ -132,20 +222,37 @@ class GamesScreen extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         final columns = (box.maxWidth / 360).floor().clamp(1, 3);
-        return GridView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisExtent: 136,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: _games.length + 1,
-          itemBuilder: (context, i) {
-            if (i == 0) return const _Intro();
-            final g = _games[i - 1];
-            return _GameCard(game: g, onTap: () => _open(context, g));
-          },
+        SliverGrid grid(List<_GameInfo> games) => SliverGrid.builder(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisExtent: 136,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: games.length,
+              itemBuilder: (context, i) => _GameCard(game: games[i], onTap: () => _open(context, games[i])),
+            );
+        Widget heading(String text) => Padding(
+              padding: const EdgeInsets.fromLTRB(4, 22, 4, 10),
+              child: Text(text.toUpperCase(), style: kEyebrowStyle),
+            );
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              sliver: SliverToBoxAdapter(child: const _Intro()),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: heading('Компанией · на одном телефоне')),
+            ),
+            SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 16), sliver: grid(_games)),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(child: heading('Для одного')),
+            ),
+            SliverPadding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), sliver: grid(_solo)),
+          ],
         );
       },
     );

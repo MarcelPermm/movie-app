@@ -4,7 +4,10 @@ import 'package:movie_app/games/air_hockey.dart';
 import 'package:movie_app/games/battleship_game.dart';
 import 'package:movie_app/games/board_games.dart';
 import 'package:movie_app/games/racing_games.dart';
+import 'package:movie_app/games/logic_sports.dart';
 import 'package:movie_app/games/reaction_game.dart';
+import 'package:movie_app/games/solo_games.dart';
+import 'package:movie_app/games/sports_games.dart';
 import 'package:movie_app/games/words_game.dart';
 
 /// Каждая игра открывается на экране телефона без ошибок и переполнений.
@@ -20,6 +23,15 @@ void main() {
     'точки ×4': const DotsAndBoxesScreen(players: 4),
     'четыре в ряд': const ConnectFourScreen(),
     'крестики': const TicTacToeScreen(),
+    'дартс ×1': const DartsScreen(players: 1, mode: DartsMode.rounds),
+    'дартс ×4': const DartsScreen(players: 4, mode: DartsMode.x301),
+    'боулинг ×4': const BowlingScreen(players: 4),
+    'гольф ×3': const MiniGolfScreen(players: 3),
+    'пенальти': const PenaltyScreen(),
+    '2048': const Game2048Screen(),
+    'змейка': const SnakeScreen(),
+    'сапёр': const MinesweeperScreen(),
+    'судоку': const SudokuScreen(),
   };
 
   for (final size in const [Size(390, 844), Size(360, 640)]) {

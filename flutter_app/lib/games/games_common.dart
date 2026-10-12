@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/local_store.dart';
 import '../theme.dart';
 
 /// Цвета игроков — одни и те же во всех играх и темах: на общем экране
@@ -105,7 +106,8 @@ Future<int?> pickPlayers(BuildContext context, {required String title, int min =
                     child: Column(
                       children: [
                         Text('$n', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-                        Text(unit, style: TextStyle(color: AppColors.textDim, fontSize: 12)),
+                        Text(n == 1 && unit == 'игрока' ? 'игрок' : unit,
+                            style: TextStyle(color: AppColors.textDim, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -203,3 +205,70 @@ Future<void> showResult(BuildContext context, {required String title, String? su
     ),
   );
 }
+
+/// Лучший результат одиночной игры — хранится на телефоне.
+///
+/// Хранилище может быть недоступно (в тестах его не поднимают) — тогда
+/// рекорд просто не запоминается, игра от этого не ломается.
+class BestScore {
+  static const _key = 'games::best';
+
+  static int get(String game) {
+    try {
+      return (LocalStore.readMap(_key)?[game] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Записать, если это рекорд. Возвращает true, если побит.
+  /// [lowerIsBetter] — для игр на время (сапёр, судоку).
+  static bool submit(String game, int value, {bool lowerIsBetter = false}) {
+    final best = get(game);
+    final better = best == 0 || (lowerIsBetter ? value < best : value > best);
+    if (!better) return false;
+    try {
+      final all = {...?LocalStore.readMap(_key), game: value};
+      LocalStore.writeMap(_key, all);
+    } catch (_) {
+      // Без хранилища рекорд живёт до закрытия экрана.
+    }
+    return true;
+  }
+}
+
+/// Свайп в одну из четырёх сторон — для 2048 и змейки.
+class SwipeArea extends StatelessWidget {
+  final Widget child;
+  final void Function(AxisDirection) onSwipe;
+
+  const SwipeArea({super.key, required this.child, required this.onSwipe});
+
+  @override
+  Widget build(BuildContext context) {
+    Offset? start;
+    var fired = false;
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (e) {
+        start = e.position;
+        fired = false;
+      },
+      // Срабатываем, как только палец ушёл достаточно далеко, а не при
+      // отпускании: так змейка поворачивает без задержки.
+      onPointerMove: (e) {
+        final s = start;
+        if (s == null || fired) return;
+        final d = e.position - s;
+        if (d.distance < 24) return;
+        fired = true;
+        onSwipe(d.dx.abs() > d.dy.abs()
+            ? (d.dx > 0 ? AxisDirection.right : AxisDirection.left)
+            : (d.dy > 0 ? AxisDirection.down : AxisDirection.up));
+      },
+      child: child,
+    );
+  }
+}
+
+String formatSeconds(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
