@@ -172,8 +172,11 @@ void main() {
 
   testWidgets('каталог игр открывается и предлагает выбрать число игроков', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: GamesScreen())));
-    expect(find.text('Реакция'), findsOneWidget);
+    expect(find.text('Аэрохокей'), findsOneWidget);
+    // Каталог длинный: последняя игра — за краем, до неё прокручиваем.
+    await tester.scrollUntilVisible(find.text('Крестики-нолики'), 300);
     expect(find.text('Крестики-нолики'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Реакция'), -300);
     await tester.tap(find.text('Реакция'));
     await tester.pumpAndSettle();
     expect(find.text('Сколько играет?'), findsOneWidget);

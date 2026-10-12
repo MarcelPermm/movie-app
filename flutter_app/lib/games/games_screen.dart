@@ -136,7 +136,7 @@ class GamesScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
-            mainAxisExtent: 128,
+            mainAxisExtent: 136,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -219,6 +219,8 @@ class _GameCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(game.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: AppColors.text, fontSize: 16.5, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text(game.players,
