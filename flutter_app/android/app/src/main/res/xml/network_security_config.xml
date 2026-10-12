@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Плеер открывает страницу-обёртку, которую отдаёт само приложение по
+     http://127.0.0.1 (см. lib/core/player_host_io.dart). Android с 9-й
+     версии запрещает незашифрованный HTTP — без этого исключения плеер
+     показывал бы ERR_CLEARTEXT_NOT_PERMITTED. Всё остальное — только HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
