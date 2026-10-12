@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'air_hockey.dart';
+import 'battleship_game.dart';
 import 'board_games.dart';
 import 'games_common.dart';
+import 'racing_games.dart';
 import 'reaction_game.dart';
 import 'words_game.dart';
 
@@ -34,6 +37,40 @@ class GamesScreen extends StatelessWidget {
   const GamesScreen({super.key});
 
   static final _games = <_GameInfo>[
+    _GameInfo(
+      emoji: '🏒',
+      title: 'Аэрохокей',
+      players: '2 игрока',
+      about: 'Телефон между вами, каждый водит свою биту пальцем. До 7 голов.',
+      color: const Color(0xFF22C3E6),
+      build: (_) => const AirHockeyScreen(),
+    ),
+    _GameInfo(
+      emoji: '🏍️',
+      title: 'Световые мотоциклы',
+      players: '2–4 игрока',
+      about: 'Мотоциклы оставляют стену. Поворачивай вовремя — врезался, выбыл.',
+      color: const Color(0xFFFF7A1A),
+      ask: (2, 4, 'игрока'),
+      build: (n) => LightCyclesScreen(players: n),
+    ),
+    _GameInfo(
+      emoji: '🏎️',
+      title: 'Тап-гонка',
+      players: '2–4 игрока',
+      about: 'Каждый тапает по своей дорожке. Кто быстрее — тот первым на финише.',
+      color: const Color(0xFFE5484D),
+      ask: (2, 4, 'игрока'),
+      build: (n) => TapRaceScreen(players: n),
+    ),
+    _GameInfo(
+      emoji: '🚢',
+      title: 'Морской бой',
+      players: '2 игрока',
+      about: 'Передаёте телефон друг другу — экран закрывается, корабли не подсмотреть.',
+      color: const Color(0xFF3E8BFF),
+      build: (_) => const BattleshipScreen(),
+    ),
     _GameInfo(
       emoji: '⚡',
       title: 'Реакция',
