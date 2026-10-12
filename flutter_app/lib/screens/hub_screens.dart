@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../games/games_screen.dart';
 import '../theme.dart';
 import '../widgets/sub_tabs.dart';
 import 'budget_screen.dart';
@@ -94,6 +95,15 @@ class MoreScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        // Игры — крупно: их открывают в дороге одной рукой, искать в списке
+        // неудобно.
+        _Feature(
+          emoji: '🎲',
+          title: 'Игры на одном телефоне · 2–4 игрока',
+          colors: const [Color(0xFF3E8BFF), Color(0xFF8E7CFF)],
+          onTap: () => Navigator.of(context).push(sectionRoute(const GamesScreen())),
         ),
         const SizedBox(height: 16),
         Container(

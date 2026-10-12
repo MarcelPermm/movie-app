@@ -9,10 +9,12 @@ import '../data/goal_repository.dart';
 import '../data/local_first_repository.dart';
 import '../data/movie_repository.dart';
 import '../data/notebook_repository.dart';
+import '../data/profile_repository.dart';
 import '../data/task_repository.dart';
 import '../data/trip_repository.dart';
 import '../data/wishlist_repository.dart';
 import '../data/warm_up.dart';
+import '../games/games_screen.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'books_screen.dart';
@@ -172,6 +174,13 @@ class _AppShellState extends State<AppShell> {
       icon: Icons.card_giftcard_outlined,
       screen: const WishlistScreen(),
       repo: (c) => c.watch<WishlistRepository>(),
+    ),
+    _Section(
+      label: 'Игры',
+      icon: Icons.sports_esports_outlined,
+      screen: const GamesScreen(),
+      // Игры локальные: синхронизировать нечего, индикатор берём у профиля.
+      repo: (c) => c.watch<ProfileRepository>(),
     ),
   ];
 
