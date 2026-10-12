@@ -25,6 +25,9 @@ class PlayerScreen extends StatefulWidget {
   /// С какого источника начать (см. [Config.watchSources]).
   final String? source;
 
+  /// Источник переключили в плеере — карточка запомнит его для сериала.
+  final ValueChanged<String>? onSourceChanged;
+
   /// Готовый адрес — на случай, если понадобится открыть чужую страницу.
   final String? directUrl;
 
@@ -42,6 +45,7 @@ class PlayerScreen extends StatefulWidget {
     this.season = 1,
     this.episode = 1,
     this.source,
+    this.onSourceChanged,
     this.directUrl,
     this.youtubeId,
   });
@@ -161,6 +165,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _blocked = 0;
       _recoveries = 0;
     });
+    widget.onSourceChanged?.call(source);
     await _load();
   }
 

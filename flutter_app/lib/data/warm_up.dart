@@ -10,6 +10,7 @@ import 'goal_repository.dart';
 import 'movie_repository.dart';
 import 'notebook_repository.dart';
 import 'profile_repository.dart';
+import 'series_repository.dart';
 import 'task_repository.dart';
 import 'trip_repository.dart';
 import 'wishlist_repository.dart';
@@ -29,6 +30,7 @@ Future<void> warmUp(BuildContext context) async {
     context.read<BudgetRepository>().load,
     context.read<TripRepository>().load,
     context.read<MovieRepository>().load,
+    context.read<SeriesRepository>().load,
     context.read<DiscoverRepository>().load,
   ];
   final rest = <Future<void> Function()>[

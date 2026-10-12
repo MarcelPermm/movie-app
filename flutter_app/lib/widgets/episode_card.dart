@@ -11,11 +11,17 @@ class EpisodeCard extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback onPlay;
 
+  /// Серия отмечена просмотренной — галочка в углу кадра.
+  final bool watched;
+  final VoidCallback? onToggleWatched;
+
   const EpisodeCard({
     super.key,
     required this.episode,
     required this.isPlaying,
     required this.onPlay,
+    this.watched = false,
+    this.onToggleWatched,
   });
 
   @override
@@ -79,6 +85,17 @@ class _EpisodeCardState extends State<EpisodeCard> {
                       ),
                     ),
                   ),
+                  if (widget.watched && !widget.isPlaying)
+                    Container(color: AppColors.bg.withValues(alpha: 0.45)),
+                  if (widget.onToggleWatched != null)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: _WatchedToggle(
+                        watched: widget.watched,
+                        onTap: widget.onToggleWatched!,
+                      ),
+                    ),
                   if (widget.isPlaying)
                     Container(
                       color: AppColors.bg.withValues(alpha: 0.55),
@@ -158,6 +175,38 @@ class _EpisodeCardState extends State<EpisodeCard> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Кружок-галочка «просмотрено» в углу кадра. Отдельная кнопка, чтобы
+/// отметка не запускала серию.
+class _WatchedToggle extends StatelessWidget {
+  final bool watched;
+  final VoidCallback onTap;
+
+  const _WatchedToggle({required this.watched, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: watched ? 'Снять отметку' : 'Отметить просмотренной',
+      child: Material(
+        color: watched ? AppColors.green : AppColors.bg.withValues(alpha: 0.72),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Icon(
+              Icons.check,
+              size: 17,
+              color: watched ? AppColors.bg : AppColors.textDim,
+            ),
+          ),
         ),
       ),
     );

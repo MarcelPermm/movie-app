@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/config.dart';
 import '../data/discover_repository.dart';
 import '../data/movie_repository.dart';
+import '../data/series_repository.dart';
 import '../models/movie.dart';
 import '../models/movie_details.dart';
 import '../theme.dart';
@@ -40,7 +41,63 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   @override
   void initState() {
     super.initState();
+    if (_mediaType == 'tv') {
+      // Сериал открывается там, где остановились: сезон, серия и источник.
+      final series = context.read<SeriesRepository>();
+      final last = series.progressOf(widget.movie.id);
+      if (last != null) {
+        _season = last.season;
+        _playingEpisode = last.episode;
+        if (last.source != null && Config.watchSources.containsKey(last.source)) {
+          _source = last.source!;
+        }
+      }
+      series.loadSeen(widget.movie.id);
+    }
     _load();
+  }
+
+  /// Отметить серию просмотренной (или снять отметку).
+  ///
+  /// Если это та серия, на которой стоит «Продолжить», — сдвигаем его на
+  /// следующую: досмотрел — значит дальше смотреть следующую.
+  void _toggleEpisode(Episode ep) {
+    final series = context.read<SeriesRepository>();
+    final id = widget.movie.id;
+    final watched = !series.isSeen(id, _season, ep.episodeNumber);
+    series.setWatched(id, _season, [ep.episodeNumber], watched);
+    if (!watched) return;
+
+    final last = series.progressOf(id);
+    if (last == null || last.season != _season || last.episode != ep.episodeNumber) return;
+    final next = _nextAfter(ep.episodeNumber);
+    if (next != null) series.advance(id, season: next.$1, episode: next.$2);
+  }
+
+  /// «Продолжить S2E5», если сериал уже начинали смотреть.
+  String get _watchLabel {
+    if (_mediaType != 'tv') return 'Смотреть';
+    final last = context.watch<SeriesRepository>().progressOf(widget.movie.id);
+    return last == null ? 'Смотреть' : 'Продолжить ${last.code}';
+  }
+
+  /// Следующая серия: в этом сезоне, а после последней — первая следующего.
+  (int, int)? _nextAfter(int episode) {
+    if (_episodes.any((e) => e.episodeNumber == episode + 1)) return (_season, episode + 1);
+    final seasons = _details?.realSeasons ?? const <SeasonInfo>[];
+    for (final s in seasons) {
+      if (s.seasonNumber > _season && s.episodeCount > 0) return (s.seasonNumber, 1);
+    }
+    return null;
+  }
+
+  void _toggleSeason(bool watched) {
+    context.read<SeriesRepository>().setWatched(
+          widget.movie.id,
+          _season,
+          _episodes.map((e) => e.episodeNumber).toList(),
+          watched,
+        );
   }
 
   Future<void> _load() async {
@@ -204,7 +261,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             foregroundColor: AppColors.bg,
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           ),
-          label: const Text('Смотреть'),
+          label: Text(_watchLabel),
         ),
         FilledButton.icon(
           onPressed: _openTrailer,
@@ -515,13 +572,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Widget _buildSeasons(MovieDetails details) {
+    final series = context.watch<SeriesRepository>();
+    final id = widget.movie.id;
+    final total = _episodes.length;
+    final seen = _episodes.where((e) => series.isSeen(id, _season, e.episodeNumber)).length;
+    final allSeen = total > 0 && seen == total;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             const _SectionTitle('Серии'),
+            if (total > 0) ...[
+              const SizedBox(width: 10),
+              Text(
+                '$seen из $total',
+                style: TextStyle(
+                  color: allSeen ? AppColors.green : AppColors.textDim,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
             const Spacer(),
+            if (total > 0)
+              TextButton(
+                onPressed: () => _toggleSeason(!allSeen),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                child: Text(allSeen ? 'Снять отметки' : 'Весь сезон'),
+              ),
+            const SizedBox(width: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -576,6 +657,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 itemBuilder: (context, i) => EpisodeCard(
                   episode: _episodes[i],
                   isPlaying: _playingEpisode == _episodes[i].episodeNumber,
+                  watched: series.isSeen(id, _season, _episodes[i].episodeNumber),
+                  onToggleWatched: () => _toggleEpisode(_episodes[i]),
                   onPlay: () {
                     setState(() => _playingEpisode = _episodes[i].episodeNumber);
                     _openPlayer(episode: _episodes[i].episodeNumber);
@@ -617,11 +700,42 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   /// Там, где встроенного WebView нет (Linux), остаётся прежнее поведение —
   /// внешний браузер: лучше открыть у соседа, чем не открыть вовсе.
   Future<void> _openPlayer({int? episode}) async {
-    final selectedEpisode = episode ?? _playingEpisode ?? 1;
+    // Главная кнопка у начатого сериала — «Продолжить»: она ведёт на
+    // запомненную серию, даже если в списке сейчас выбран другой сезон.
+    final last = episode == null && _mediaType == 'tv'
+        ? context.read<SeriesRepository>().progressOf(widget.movie.id)
+        : null;
+    final selectedSeason = last?.season ?? _season;
+    final selectedEpisode = episode ?? last?.episode ?? _playingEpisode ?? 1;
 
-    if (_mediaType == 'tv' && episode == null && _playingEpisode == null) {
-      setState(() => _playingEpisode = 1);
+    if (last != null && last.season != _season) {
+      setState(() {
+        _season = last.season;
+        _episodes = const [];
+      });
+      final details = _details;
+      if (details != null) _loadSeason(details);
     }
+    if (_mediaType == 'tv' && episode == null) {
+      setState(() => _playingEpisode = selectedEpisode);
+    }
+
+    final series = context.read<SeriesRepository>();
+    void remember(String source) {
+      if (_mediaType != 'tv') return;
+      final movie = _details?.movie ?? widget.movie;
+      series.recordOpen(
+        showId: widget.movie.id,
+        title: movie.title,
+        posterPath: movie.posterPath,
+        backdropPath: movie.backdropPath,
+        season: selectedSeason,
+        episode: selectedEpisode,
+        source: source,
+      );
+    }
+
+    remember(_source);
 
     if (PlayerScreen.isSupported) {
       await Navigator.of(context).push(MaterialPageRoute(
@@ -630,8 +744,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           mediaType: _mediaType,
           source: _source,
           title: widget.movie.title,
-          season: _season,
+          season: selectedSeason,
           episode: selectedEpisode,
+          // Источник, переключённый в плеере, — тот, что сработал: в
+          // следующий раз сериал откроется сразу в нём.
+          onSourceChanged: (source) {
+            if (mounted) setState(() => _source = source);
+            remember(source);
+          },
         ),
       ));
       return;
@@ -641,7 +761,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       _source,
       _mediaType,
       widget.movie.id,
-      season: _season,
+      season: selectedSeason,
       episode: selectedEpisode,
     );
     final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);

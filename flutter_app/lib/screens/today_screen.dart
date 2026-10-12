@@ -17,6 +17,8 @@ import '../models/trip.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/poster_card.dart';
+import '../widgets/series_today.dart';
+import '../data/series_repository.dart';
 import '../widgets/task_bits.dart';
 import 'hub_screens.dart';
 import 'movie_detail_screen.dart';
@@ -59,6 +61,7 @@ class TodayScreen extends StatelessWidget {
           const SizedBox(height: 18),
           const _TonightCard(),
           const SizedBox(height: 14),
+          const SeriesToday(),
           const _TasksCard(),
           const SizedBox(height: 14),
           _BudgetCard(onOpen: onOpenMoney),
@@ -82,6 +85,7 @@ Widget _refreshable(BuildContext context, Widget child) => RefreshIndicator(
         context.read<BudgetRepository>().refresh(),
         context.read<TripRepository>().refresh(),
         context.read<MovieRepository>().refresh(),
+        context.read<SeriesRepository>().refresh(),
       ]),
       child: child,
     );
@@ -1204,6 +1208,8 @@ class _BentoToday extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 18),
+        const SeriesToday(),
       ],
     );
   }
@@ -1571,6 +1577,8 @@ class _GlassToday extends StatelessWidget {
                           Text('В списке к просмотру', style: TextStyle(color: dim, fontSize: 15)),
                           const SizedBox(height: 12),
                           SizedBox(height: 190, child: _PosterStrip(movies: d.watchlist, radius: 14)),
+                          const SizedBox(height: 28),
+                          const SeriesToday(),
                         ],
                       ),
                     ),
@@ -1837,6 +1845,8 @@ class _PaperToday extends StatelessWidget {
                   if (d.watchlist.isEmpty)
                     Text('Список пуст — добавляйте фильмы в разделе «Кино».',
                         style: TextStyle(color: AppColors.textDim)),
+                  const SizedBox(height: 22),
+                  const SeriesToday(),
                 ],
               ),
             ),
@@ -1969,6 +1979,7 @@ class _ClassicWideToday extends StatelessWidget {
                 children: [
                   const _TonightCard(),
                   const SizedBox(height: 14),
+                  const SeriesToday(),
                   _BudgetCard(onOpen: onOpenMoney),
                   const _TripCard(),
                   const _WatchlistRail(),

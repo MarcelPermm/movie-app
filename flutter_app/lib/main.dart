@@ -19,6 +19,7 @@ import 'data/goal_repository.dart';
 import 'data/movie_repository.dart';
 import 'data/notebook_repository.dart';
 import 'data/profile_repository.dart';
+import 'data/series_repository.dart';
 import 'data/task_repository.dart';
 import 'data/trip_repository.dart';
 import 'data/warm_up.dart';
@@ -75,6 +76,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => ActorRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => ProfileRepository(api: api, session: session)),
         ChangeNotifierProvider(create: (_) => TripRepository(api: api, session: session)),
+        ChangeNotifierProvider(create: (_) => SeriesRepository(api: api, session: session)),
       ],
       child: const MonkeyApp(),
     ),
