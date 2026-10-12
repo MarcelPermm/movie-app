@@ -116,7 +116,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
       const SizedBox(height: 30),
     ];
 
-    void add(String title, String eyebrow, List<Movie> items) {
+    void add(String title, String eyebrow, List<Movie> items, {bool forYou = false}) {
       if (items.isEmpty) return;
       rails.add(MediaRail(
         title: title,
@@ -126,18 +126,22 @@ class _OverviewScreenState extends State<OverviewScreen> {
         onQuickAdd: _quickAdd,
         // «Все» открывает ту же подборку плиткой — с поиском, сортировкой
         // и фильтром по жанрам, как раздел на сайте.
-        onShowAll: () => _openCollection(title, eyebrow, items),
+        onShowAll: () => _openCollection(title, eyebrow, items, forYou: forYou),
       ));
     }
 
-    add('Для тебя', 'подобрано по просмотренному', repo.recommendations);
-    add('Продолжить с того же места', 'твой список', movies.watchlist);
+    // Сначала фильмы, ниже сериалы: смешанная лента путала — «для тебя»
+    // предлагала сериал, когда искали фильм на вечер, и наоборот.
+    add('Фильмы для тебя', 'подобрано по просмотренным фильмам', repo.recommendations, forYou: true);
+    add('Сериалы для тебя', 'подобрано по просмотренным сериалам', repo.recommendationsTv, forYou: true);
+    // Не «Продолжить…»: так теперь называется блок недосмотренных сериалов.
+    add('Из твоего списка', 'хочу посмотреть', movies.watchlist);
     add('Популярные фильмы', 'на этой неделе', repo.popularMovies);
     add('Популярные сериалы', 'на этой неделе', repo.popularTv);
 
     // Жанровые блоки собираем из уже загруженного: три самых частых жанра
     // в популярном. Так главная растёт вширь, не добавляя запросов.
-    final pool = [...repo.popularMovies, ...repo.popularTv, ...repo.recommendations];
+    final pool = [...repo.popularMovies, ...repo.popularTv, ...repo.recommendations, ...repo.recommendationsTv];
     for (final genre in _topGenres(pool, 3)) {
       final byGenre = pool.where((m) => m.genres.contains(genre)).toList();
       if (byGenre.length < 4) continue;
@@ -164,12 +168,13 @@ class _OverviewScreenState extends State<OverviewScreen> {
     return rails;
   }
 
-  void _openCollection(String title, String subtitle, List<Movie> items) {
+  void _openCollection(String title, String subtitle, List<Movie> items, {bool forYou = false}) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CollectionScreen(
         title: title,
         subtitle: subtitle,
         movies: items,
+        relevanceLabel: forYou ? 'По вкусу' : 'По подборке',
       ),
     ));
   }

@@ -15,10 +15,14 @@ class DiscoverRepository extends LocalFirstRepository {
   List<Movie> _popularMovies = [];
   List<Movie> _popularTv = [];
   List<Movie> _recommendations = [];
+  List<Movie> _recommendationsTv = [];
 
   List<Movie> get popularMovies => List.unmodifiable(_popularMovies);
   List<Movie> get popularTv => List.unmodifiable(_popularTv);
   List<Movie> get recommendations => List.unmodifiable(_recommendations);
+
+  /// Сериалы «для тебя» — по просмотренным сериалам, отдельно от фильмов.
+  List<Movie> get recommendationsTv => List.unmodifiable(_recommendationsTv);
 
   bool get isEmpty => _popularMovies.isEmpty && _popularTv.isEmpty;
 
@@ -28,6 +32,7 @@ class DiscoverRepository extends LocalFirstRepository {
   String get _moviesKey => cacheKey('discover::popular::movie');
   String get _tvKey => cacheKey('discover::popular::tv');
   String get _recsKey => cacheKey('discover::recs');
+  String get _recsTvKey => cacheKey('discover::recs::tv');
 
   Future<void> load({bool forceRefresh = false}) async {
     _readFromCache();
@@ -39,6 +44,7 @@ class DiscoverRepository extends LocalFirstRepository {
     _popularMovies = readCache(_moviesKey).map(Movie.fromJson).toList();
     _popularTv = readCache(_tvKey).map(Movie.fromJson).toList();
     _recommendations = readCache(_recsKey).map(Movie.fromJson).toList();
+    _recommendationsTv = readCache(_recsTvKey).map(Movie.fromJson).toList();
   }
 
   Future<void> refresh() => runSync(() async {
@@ -56,13 +62,18 @@ class DiscoverRepository extends LocalFirstRepository {
 
         // Рекомендации считаются дольше и есть не всегда — тянем следом,
         // чтобы они не задерживали появление популярного.
-        try {
-          final recs = await api.get('/recommendations', query: {'media_type': 'movie'});
-          await writeCache(_recsKey, _tagged(recs, 'movie'), fromServer: true);
-          _recommendations = readCache(_recsKey).map(Movie.fromJson).toList();
-        } catch (_) {
-          // Нечего рекомендовать, пока ничего не просмотрено. Это не ошибка.
+        // Фильмы и сериалы — отдельно: у каждого своя подборка по своим
+        // просмотренным. Нет просмотренных сериалов — нет и блока.
+        for (final (type, key) in [('movie', _recsKey), ('tv', _recsTvKey)]) {
+          try {
+            final recs = await api.get('/recommendations', query: {'media_type': type});
+            await writeCache(key, _tagged(recs, type), fromServer: true);
+          } catch (_) {
+            // Нечего рекомендовать, пока ничего не просмотрено. Это не ошибка.
+          }
         }
+        _recommendations = readCache(_recsKey).map(Movie.fromJson).toList();
+        _recommendationsTv = readCache(_recsTvKey).map(Movie.fromJson).toList();
       });
 
   List<Map<String, dynamic>> _tagged(dynamic raw, String mediaType) =>
@@ -179,9 +190,11 @@ class DiscoverRepository extends LocalFirstRepository {
     final data = await api.get('/recommendations', query: query);
     final list = _tagged(data, mediaType);
 
-    if (countries.isEmpty && studioId == 0 && mediaType == 'movie') {
-      await writeCache(_recsKey, list, fromServer: true);
-      _recommendations = list.map(Movie.fromJson).toList();
+    if (countries.isEmpty && studioId == 0) {
+      final tv = mediaType == 'tv';
+      await writeCache(tv ? _recsTvKey : _recsKey, list, fromServer: true);
+      final parsed = list.map(Movie.fromJson).toList();
+      tv ? _recommendationsTv = parsed : _recommendations = parsed;
       notifyListeners();
     }
     return list.map(Movie.fromJson).toList();

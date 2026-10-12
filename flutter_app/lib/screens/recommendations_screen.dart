@@ -8,13 +8,10 @@ import '../models/catalog.dart';
 import '../models/movie.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/media_filters.dart';
 import '../widgets/poster_card.dart';
 import '../widgets/rating_sheet.dart';
-import '../widgets/sub_tabs.dart';
 import 'movie_detail_screen.dart';
-
-/// Как отсортирована подборка.
-enum RecSort { relevance, rating, year }
 
 /// Вкладка «Рекомендации» с фильтрами.
 ///
@@ -37,15 +34,9 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
   /// «фильмы / сериалы» в шапке раздела должно её перезапросить.
   String? _loadedFor;
 
-  final _includeGenres = <String>{};
-  final _excludeGenres = <String>{};
-  final _countries = <String>{};
+  MediaFilter _filter = const MediaFilter();
   int? _studioId;
-  double _minRating = 0;
-  RecSort _sort = RecSort.relevance;
-  bool _filtersOpen = false;
 
-  List<CatalogOption> _genres = const [];
   List<CatalogOption> _studios = const [];
 
   String get _mediaType => context.read<MovieRepository>().mediaType;
@@ -84,17 +75,14 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
       final moviesFuture = _studioId == null
           ? discover.fetchRecommendations(mediaType: mediaType)
           : discover.studioMovies(_studioId!, mediaType);
-      final genresFuture = discover.genres(mediaType);
       final studiosFuture = discover.studios(mediaType);
 
       final movies = await moviesFuture;
-      final genres = await genresFuture;
       final studios = await studiosFuture;
 
       if (!mounted) return;
       setState(() {
         _all = movies;
-        _genres = genres;
         _studios = studios;
       });
     } on ApiException catch (e) {
@@ -106,51 +94,8 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
     }
   }
 
-  /// Фильтры и сортировка поверх загруженного списка.
-  List<Movie> get _filtered {
-    var pool = _all.where((m) {
-      if (_minRating > 0 && m.voteAverage < _minRating) return false;
-
-      if (_includeGenres.isNotEmpty && !m.genres.any(_includeGenres.contains)) return false;
-      if (_excludeGenres.isNotEmpty && m.genres.any(_excludeGenres.contains)) return false;
-
-      if (_countries.isNotEmpty && !m.originCountries.any(_countries.contains)) return false;
-
-      return true;
-    }).toList();
-
-    switch (_sort) {
-      case RecSort.rating:
-        pool.sort((a, b) => b.voteAverage.compareTo(a.voteAverage));
-      case RecSort.year:
-        pool.sort((a, b) => (b.releaseYear ?? 0).compareTo(a.releaseYear ?? 0));
-      case RecSort.relevance:
-        break; // порядок сервера и есть релевантность
-    }
-    return pool;
-  }
-
-  int get _activeFilterCount =>
-      _includeGenres.length +
-      _excludeGenres.length +
-      _countries.length +
-      (_minRating > 0 ? 1 : 0) +
-      (_studioId != null ? 1 : 0);
-
-  void _resetFilters() {
-    // Студия — единственный фильтр, который считает сервер: его сброс
-    // требует нового запроса, остальные пересчитываются на месте.
-    final hadStudio = _studioId != null;
-    setState(() {
-      _includeGenres.clear();
-      _excludeGenres.clear();
-      _countries.clear();
-      _minRating = 0;
-      _sort = RecSort.relevance;
-      _studioId = null;
-    });
-    if (hadStudio) _ensureLoaded();
-  }
+  /// Фильтры и сортировка поверх загруженного списка — на клиенте.
+  List<Movie> get _filtered => _filter.apply(_all);
 
   @override
   Widget build(BuildContext context) {
@@ -159,202 +104,73 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
 
     return Column(
       children: [
-        _buildToolbar(),
-        if (_filtersOpen) _buildFilterPanel(),
+        MediaFilterBar(
+          pool: _all,
+          filter: _filter,
+          onChanged: (f) => setState(() => _filter = f),
+          extra: [
+            if (_studios.isNotEmpty)
+              FilterButton(
+                label: _studioName ?? (_mediaType == 'tv' ? 'Площадка' : 'Студия'),
+                active: _studioId != null,
+                onTap: _pickStudio,
+              ),
+          ],
+        ),
         const Divider(height: 1),
         Expanded(child: _buildBody(movies)),
       ],
     );
   }
 
-  Widget _buildToolbar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 8),
-      child: Row(
-        children: [
-          SegmentedToggle<RecSort>(
-            value: _sort,
-            options: const {
-              RecSort.relevance: 'По вкусу',
-              RecSort.rating: 'По рейтингу',
-              RecSort.year: 'По году',
-            },
-            onChanged: (v) => setState(() => _sort = v),
-          ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
-            icon: Icon(
-              _filtersOpen ? Icons.expand_less : Icons.tune,
-              size: 18,
-              color: _activeFilterCount > 0 ? AppColors.gold : AppColors.textDim,
-            ),
-            label: Text(
-              _activeFilterCount > 0 ? 'Фильтры · $_activeFilterCount' : 'Фильтры',
-              style: TextStyle(
-                color: _activeFilterCount > 0 ? AppColors.gold : AppColors.textDim,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  String? get _studioName {
+    for (final s in _studios) {
+      if (s.id == _studioId) return s.name;
+    }
+    return null;
   }
 
-  Widget _buildFilterPanel() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _filterLabel('Жанры', 'нажми ещё раз — исключить'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: _genres.map((g) {
-              final included = _includeGenres.contains(g.name);
-              final excluded = _excludeGenres.contains(g.name);
-              return GestureDetector(
-                // Три состояния по кругу: нейтрально → включить → исключить.
-                // Это ровно тот же жест, что в панелях фильтров на сайте.
-                onTap: () => setState(() {
-                  if (included) {
-                    _includeGenres.remove(g.name);
-                    _excludeGenres.add(g.name);
-                  } else if (excluded) {
-                    _excludeGenres.remove(g.name);
-                  } else {
-                    _includeGenres.add(g.name);
-                  }
-                }),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: included
-                        ? AppColors.gold
-                        : excluded
-                            ? AppColors.red.withValues(alpha: 0.18)
-                            : AppColors.bg,
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    border: Border.all(
-                      color: included
-                          ? AppColors.gold
-                          : excluded
-                              ? AppColors.red
-                              : AppColors.border,
-                    ),
-                  ),
-                  child: Text(
-                    excluded ? '− ${g.name}' : g.name,
-                    style: TextStyle(
-                      color: included
-                          ? AppColors.bg
-                          : excluded
-                              ? AppColors.red
-                              : AppColors.textDim,
-                      fontSize: 12,
-                      fontWeight: included ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
+  /// Студию считает сервер: выбор перезапрашивает подборку.
+  void _pickStudio() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.sheet,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: 560),
+      builder: (sheetContext) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                _mediaType == 'tv' ? 'Площадка' : 'Студия',
+                style: TextStyle(color: AppColors.text, fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final option in [null, ..._studios])
+              ListTile(
+                dense: true,
+                leading: Icon(
+                  _studioId == option?.id ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  color: _studioId == option?.id ? AppColors.gold : AppColors.textDim,
+                  size: 20,
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          _filterLabel('Страна'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: CountryOption.all
-                .map((c) => FilterChipPill(
-                      label: c.label,
-                      selected: _countries.contains(c.code),
-                      onTap: () => setState(() {
-                        _countries.contains(c.code)
-                            ? _countries.remove(c.code)
-                            : _countries.add(c.code);
-                      }),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 16),
-          _filterLabel(
-            _mediaType == 'tv' ? 'Площадка' : 'Студия',
-            'подборка перезапросится',
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              FilterChipPill(
-                label: 'Любая',
-                selected: _studioId == null,
+                title: Text(option?.name ?? 'Любая', style: TextStyle(color: AppColors.text)),
                 onTap: () {
-                  if (_studioId == null) return;
-                  setState(() => _studioId = null);
+                  Navigator.pop(sheetContext);
+                  if (_studioId == option?.id) return;
+                  setState(() => _studioId = option?.id);
                   _ensureLoaded();
                 },
               ),
-              ..._studios.map((s) => FilterChipPill(
-                    label: s.name,
-                    selected: _studioId == s.id,
-                    onTap: () {
-                      setState(() => _studioId = _studioId == s.id ? null : s.id);
-                      _ensureLoaded();
-                    },
-                  )),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _filterLabel(
-            'Рейтинг TMDB',
-            _minRating == 0 ? 'любой' : 'от ${_minRating.toStringAsFixed(1)}',
-          ),
-          Slider(
-            value: _minRating,
-            min: 0,
-            max: 9,
-            divisions: 18,
-            activeColor: AppColors.gold,
-            inactiveColor: AppColors.border,
-            label: _minRating == 0 ? 'любой' : _minRating.toStringAsFixed(1),
-            onChanged: (v) => setState(() => _minRating = v),
-          ),
-          if (_activeFilterCount > 0)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _resetFilters,
-                child: Text('Сбросить всё', style: TextStyle(color: AppColors.textDim)),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
-
-  Widget _filterLabel(String text, [String? hint]) => Row(
-        children: [
-          Text(
-            text.toUpperCase(),
-            style: TextStyle(
-              color: AppColors.textDim,
-              fontSize: 10,
-              letterSpacing: 0.9,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (hint != null) ...[
-            const SizedBox(width: 8),
-            Text(hint, style: TextStyle(color: AppColors.textDim, fontSize: 10.5)),
-          ],
-        ],
-      );
 
   Widget _buildBody(List<Movie> movies) {
     if (_loading && _all.isEmpty) {
@@ -370,7 +186,7 @@ class _RecommendationsTabState extends State<RecommendationsTab> {
         emoji: '◌',
         text: _all.isEmpty
             ? 'Подборка пока пуста'
-            : 'С такими фильтрами ничего не осталось',
+            : 'С такими фильтрами пусто — нажми «Сбросить»',
       );
     }
 

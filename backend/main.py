@@ -1539,7 +1539,8 @@ async def book_similar(book_id: str):
 async def get_recommendations(country: str = "", studio_id: int = 0, media_type: str = "movie", user_id: int = 1):
     watched = database.get_watched(media_type, user_id)
     if not watched:
-        raise HTTPException(400, "Добавь хотя бы один фильм в просмотренное")
+        what = "сериал" if media_type == "tv" else "фильм"
+        raise HTTPException(400, f"Добавь хотя бы один {what} в просмотренное")
 
     dismissed     = database.get_dismissed(media_type, user_id)
     dismissed_ids = {m["movie_id"] for m in dismissed}
