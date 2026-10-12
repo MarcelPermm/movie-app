@@ -25,17 +25,22 @@ class Config {
   /// поэтому запас щедрый — но UI на него не смотрит, он уже отрисован из кэша.
   static const Duration requestTimeout = Duration(seconds: 60);
 
-  /// Источники плеера — как в Streambert (github.com/truelockmc/streambert),
-  /// где они проверены на десктопе. Прежние адреса (vidsrc.to,
-  /// player.videasy.net, 2embed.cc) устарели: страница плеера открывалась,
-  /// но отвечала «We couldn't find that». Первый в списке — по умолчанию.
+  /// Источники плеера.
+  ///
+  /// Первые три — те же адреса, что на сайте: там они работают, потому что
+  /// встроены в iframe. Приложение встраивает их так же (core/player_page.dart).
+  /// Остальные — актуальные адреса из Streambert
+  /// (github.com/truelockmc/streambert, src/utils/api.js), про запас.
   static const watchSources = {
-    'videasy': 'Videasy',
     'vidsrc': 'VidSrc',
+    'videasy': 'Videasy',
+    '2embed': '2Embed',
+    'vsembed': 'VidSrc · vsembed.su',
+    'videasy_to': 'Videasy · .to',
     'vidking': 'Vidking',
   };
 
-  static const defaultWatchSource = 'videasy';
+  static const defaultWatchSource = 'vidsrc';
 
   /// Ссылка на плеер конкретной серии или фильма.
   static String embedUrl(
@@ -47,21 +52,36 @@ class Config {
   }) {
     final isTv = mediaType == 'tv';
     switch (source) {
-      case 'vidsrc':
+      case 'videasy':
+        return isTv
+            ? 'https://player.videasy.net/tv/$tmdbId/$season/$episode'
+            : 'https://player.videasy.net/movie/$tmdbId';
+      case '2embed':
+        return isTv
+            ? 'https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode'
+            : 'https://www.2embed.cc/embed/$tmdbId';
+      case 'vsembed':
         return isTv
             ? 'https://vsembed.su/embed/tv/$tmdbId/$season/$episode'
             : 'https://vsembed.su/embed/movie/$tmdbId';
+      case 'videasy_to':
+        return isTv
+            ? 'https://player.videasy.to/tv/$tmdbId/$season/$episode?overlay=true'
+            : 'https://player.videasy.to/movie/$tmdbId?overlay=true';
       case 'vidking':
         return isTv
             ? 'https://www.vidking.net/embed/tv/$tmdbId/$season/$episode?autoPlay=true'
             : 'https://www.vidking.net/embed/movie/$tmdbId?autoPlay=true';
-      case 'videasy':
+      case 'vidsrc':
       default:
         return isTv
-            ? 'https://player.videasy.to/tv/$tmdbId/$season/$episode?overlay=true'
-            : 'https://player.videasy.to/movie/$tmdbId?overlay=true';
+            ? 'https://vidsrc.to/embed/tv/$tmdbId/$season/$episode'
+            : 'https://vidsrc.to/embed/movie/$tmdbId';
     }
   }
+
+  /// Встраиваемый плеер YouTube — для iframe на странице-обёртке.
+  static String youtubeEmbedUrl(String key) => 'https://www.youtube.com/embed/$key?autoplay=1&rel=0';
 
   static String youtubeUrl(String key) => 'https://www.youtube.com/watch?v=$key';
 }

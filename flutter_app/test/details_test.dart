@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movie_app/core/config.dart';
+import 'package:movie_app/core/player_page.dart';
 import 'package:movie_app/models/movie.dart';
 import 'package:movie_app/models/movie_details.dart';
 
@@ -113,33 +114,51 @@ void main() {
     });
   });
 
-  group('Config.embedUrl: адреса источников как в Streambert', () {
-    test('фильм не содержит сезон и серию', () {
-      expect(Config.embedUrl('videasy', 'movie', 550), 'https://player.videasy.to/movie/550?overlay=true');
-      expect(Config.embedUrl('vidsrc', 'movie', 550), 'https://vsembed.su/embed/movie/550');
-      expect(Config.embedUrl('vidking', 'movie', 550), 'https://www.vidking.net/embed/movie/550?autoPlay=true');
+  group('Config.embedUrl: адреса источников', () {
+    test('первые три — как на сайте', () {
+      expect(Config.embedUrl('vidsrc', 'movie', 550), 'https://vidsrc.to/embed/movie/550');
+      expect(Config.embedUrl('videasy', 'movie', 550), 'https://player.videasy.net/movie/550');
+      expect(Config.embedUrl('2embed', 'movie', 550), 'https://www.2embed.cc/embed/550');
     });
 
     test('сериал подставляет сезон и серию', () {
       expect(
-        Config.embedUrl('videasy', 'tv', 1399, season: 2, episode: 5),
-        'https://player.videasy.to/tv/1399/2/5?overlay=true',
+        Config.embedUrl('vidsrc', 'tv', 1399, season: 2, episode: 5),
+        'https://vidsrc.to/embed/tv/1399/2/5',
       );
       expect(
-        Config.embedUrl('vidsrc', 'tv', 1399, season: 2, episode: 5),
+        Config.embedUrl('vsembed', 'tv', 1399, season: 2, episode: 5),
         'https://vsembed.su/embed/tv/1399/2/5',
       );
     });
 
-    test('у каждого источника в списке есть свой адрес', () {
+    test('каждый источник из списка разрешён страницей-обёрткой', () {
       for (final id in Config.watchSources.keys) {
-        expect(Config.embedUrl(id, 'movie', 1), startsWith('https://'));
+        expect(embedAllowed(Config.embedUrl(id, 'movie', 1)), isTrue, reason: id);
+        expect(embedAllowed(Config.embedUrl(id, 'tv', 1, season: 1, episode: 2)), isTrue, reason: id);
       }
+      expect(embedAllowed(Config.youtubeEmbedUrl('abc')), isTrue);
       expect(Config.watchSources, contains(Config.defaultWatchSource));
     });
 
     test('неизвестный источник не ломает ссылку, а падает на источник по умолчанию', () {
-      expect(Config.embedUrl('нет-такого', 'movie', 1), contains('videasy.to'));
+      expect(Config.embedUrl('нет-такого', 'movie', 1), contains('vidsrc.to'));
+    });
+  });
+
+  group('Страница-обёртка плеера', () {
+    test('чужие адреса не встраиваются', () {
+      expect(embedAllowed('https://evil.com/x'), isFalse);
+      expect(embedAllowed('https://vidsrc.to.evil.com/'), isFalse);
+      expect(embedAllowed('http://vidsrc.to/embed/movie/1'), isFalse);
+      expect(embedAllowed('javascript:alert(1)'), isFalse);
+      expect(embedAllowed('https://vidsrc-embed.ru/embed/movie/1'), isTrue);
+    });
+
+    test('адрес экранируется в атрибуте iframe', () {
+      final html = playerPageHtml('https://vidsrc.to/x?a=1&b="><script>');
+      expect(html, contains('<iframe src="https://vidsrc.to/x?a=1&amp;b=&quot;&gt;&lt;script&gt;"'));
+      expect(html, isNot(contains('"><script>')));
     });
   });
 }

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/ad_block.dart';
 import '../core/config.dart';
+import '../core/player_host.dart';
 import '../theme.dart';
 
 /// Встроенный плеер.
@@ -70,12 +71,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _loading = true;
   int _blocked = 0;
 
-  /// Адрес, который открывает WebView: плеер источника напрямую, как в
-  /// Streambert, — без промежуточных страниц на сайте или сервере.
-  String get _url {
-    // Трейлер — обычной страницей ролика: /embed верхним уровнем YouTube
-    // не играет (ошибка 153), а своей страницы-обёртки на Windows нет.
-    if (widget.youtubeId != null) return Config.youtubeUrl(widget.youtubeId!);
+  /// Адрес плеера источника (или встраиваемого ролика YouTube).
+  String get _embedUrl {
+    if (widget.youtubeId != null) return Config.youtubeEmbedUrl(widget.youtubeId!);
     return widget.directUrl ??
         Config.embedUrl(
           _source,
@@ -86,19 +84,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
         );
   }
 
+  /// Что открыто в WebView: страница-обёртка с плеером в iframe, которую
+  /// отдаёт само приложение, — так источник видит то же, что на сайте.
+  /// null — страница ещё готовится.
+  String? _pageUrl;
+
+  /// Адрес страницы для текущего источника. Если обёртку поднять не удалось
+  /// (или это веб, где она не нужна), — сам плеер источника.
+  Future<String> _resolvePage() async => await PlayerHost.pageUrl(_embedUrl) ?? _embedUrl;
+
+  /// Загрузить текущий источник: при первом показе — в initialUrlRequest,
+  /// потом — в уже созданный WebView.
+  Future<void> _load() async {
+    final url = await _resolvePage();
+    if (!mounted) return;
+    final first = _pageUrl == null;
+    setState(() {
+      _pageUrl = url;
+      _loading = true;
+    });
+    if (!first) await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// Верхний кадр должен оставаться на странице, которую мы открыли.
+  /// Плеер внутри iframe ходит по своим доменам как хочет.
+  bool _isOurTop(WebUri? uri) {
+    final host = uri?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return true; // about:blank и т. п.
+    final ours = Uri.parse(_pageUrl ?? _embedUrl).host.toLowerCase();
+    if (ours == '127.0.0.1' || ours == 'localhost') return host == ours;
+    return _rootDomain(host) == _rootDomain(ours);
+  }
+
+  /// Открыта ли наша обёртка (а не источник напрямую).
+  bool get _wrapped => _pageUrl != null && _pageUrl != _embedUrl;
+
   /// Отсекаем по списку рекламных доменов, а не по списку разрешённых:
   /// источники ходят на свои CDN, адреса которых меняются.
   bool _isAdHost(WebUri? uri) {
     final host = uri?.host.toLowerCase();
     if (host == null || host.isEmpty) return false;
     return AdBlock.blockedDomains.any((d) => host == d || host.endsWith('.$d'));
-  }
-
-  /// Тот же ли это сайт, что открытый плеер: сравниваем по «корню» домена,
-  /// потому что плеер живёт на поддоменах.
-  bool _isSameSite(String? host) {
-    if (host == null || host.isEmpty) return true;
-    return _rootDomain(host.toLowerCase()) == _rootDomain(Uri.parse(_url).host.toLowerCase());
   }
 
   /// «player.videasy.to» → «videasy.to»
@@ -118,8 +150,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _backToPlayer() async {
     if (_recoveries >= 3) return;
     _recoveries++;
-    setState(() => _loading = true);
-    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
+    await _load();
   }
 
   Future<void> _switchSource(String source) async {
@@ -130,11 +161,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _blocked = 0;
       _recoveries = 0;
     });
-    await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
+    await _load();
   }
 
   Future<void> _openExternally() async {
-    await launchUrl(Uri.parse(_url), mode: LaunchMode.externalApplication);
+    // Та же обёртка: открытый сам по себе, источник в браузере отвечает 403.
+    await launchUrl(Uri.parse(_pageUrl ?? _embedUrl), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -197,7 +229,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
       body: Stack(
         children: [
-          Positioned.fill(child: _buildWebView()),
+          if (_pageUrl != null) Positioned.fill(child: _buildWebView(_pageUrl!)),
           if (_loading)
             Positioned.fill(
               child: ColoredBox(
@@ -210,7 +242,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Widget _buildWebView() {
+  Widget _buildWebView(String initialUrl) {
     // Windows-реализация плагина заметно моложе остальных: часть настроек
     // и обратных вызовов там не поддержана, и попытка их применить роняет
     // экран ошибкой разбора («type 'Null' is not a subtype of type String»).
@@ -220,7 +252,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     return InAppWebView(
       // Только обычная загрузка по адресу: initialData на Windows не поддержан.
-      initialUrlRequest: URLRequest(url: WebUri(_url)),
+      initialUrlRequest: URLRequest(url: WebUri(initialUrl)),
       initialSettings: InAppWebViewSettings(
         // Реклама сначала не загружается…
         contentBlockers: limited ? const [] : AdBlock.rules,
@@ -277,12 +309,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
         // Переходы без клика (редиректы плеера на свои домены) и переходы
         // внутри iframe не трогаем: на этом плеер и ломался.
         final byClick = action.hasGesture ?? false;
-        if (byClick && action.isForMainFrame && !_isSameSite(uri?.host)) {
+        if (byClick && action.isForMainFrame && !_isOurTop(uri)) {
           if (mounted) setState(() => _blocked++);
           return NavigationActionPolicy.CANCEL;
         }
 
         return NavigationActionPolicy.ALLOW;
+      },
+
+      // Реклама всё-таки увела всё окно — возвращаем страницу с плеером.
+      // Только для обёртки: сам плеер живёт в iframe и верхний кадр не
+      // трогает, так что любой уход — чужой.
+      onUpdateVisitedHistory: (controller, url, _) async {
+        if (!_wrapped || url == null || _isOurTop(url)) return;
+        if (!mounted) return;
+        setState(() => _blocked++);
+        await _backToPlayer();
       },
 
       // Источники иногда подсовывают «скачать плеер» — не наш случай.
