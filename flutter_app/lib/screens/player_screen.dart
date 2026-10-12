@@ -290,7 +290,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) setState(() => _loading = false);
       },
 
-      // Попытка открыть новое окно — почти всегда реклама.
+      // Попытка открыть новое окно — почти всегда реклама. На Windows после
+      // отказа плагин грузит её адрес в этот же WebView — такой переход
+      // отменяет shouldOverrideUrlLoading.
       onCreateWindow: (_, _) async {
         if (mounted) setState(() => _blocked++);
         return false;
@@ -305,11 +307,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return NavigationActionPolicy.CANCEL;
         }
 
-        // Клик, который уводит всё окно на посторонний сайт, — реклама.
-        // Переходы без клика (редиректы плеера на свои домены) и переходы
-        // внутри iframe не трогаем: на этом плеер и ломался.
+        // В обёртке плеер живёт внутри iframe, и верхний кадр ему не нужен:
+        // любой уход окна со страницы-обёртки — реклама. Отменяем его сразу,
+        // а не перезагружаем плеер потом — иначе видео начинается заново.
+        // Признака клика тут не ждём: на Windows плагин его не передаёт, а
+        // рекламное окно, от которого мы отказались в onCreateWindow, он
+        // открывает прямо в этом же WebView — тоже переходом верхнего кадра.
+        //
+        // Без обёртки источник сам и есть верхний кадр: там отсекаем только
+        // уход по клику, а свои редиректы плеера не трогаем.
+        final leavesTop = action.isForMainFrame && !_isOurTop(uri);
         final byClick = action.hasGesture ?? false;
-        if (byClick && action.isForMainFrame && !_isOurTop(uri)) {
+        if (leavesTop && (_wrapped || byClick)) {
           if (mounted) setState(() => _blocked++);
           return NavigationActionPolicy.CANCEL;
         }
