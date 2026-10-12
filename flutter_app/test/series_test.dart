@@ -50,6 +50,16 @@ void main() {
     expect(UpcomingEpisode.tryParse({'show_id': 1, 'air_date': null}), isNull);
   });
 
+  test('заглушки вроде «Эпизод 1» не показываются', () {
+    UpcomingEpisode named(String n) =>
+        UpcomingEpisode(showId: 1, title: 'С', season: 1, episode: 1, name: n, airDate: DateTime(2026));
+    expect(named('Эпизод 1').realName, '');
+    expect(named('Episode 12').realName, '');
+    expect(named('Серия 3').realName, '');
+    expect(named('Пилот').realName, 'Пилот');
+    expect(named('Эпизод с котом').realName, 'Эпизод с котом');
+  });
+
   test('прогресс переживает сохранение в кэш', () {
     const p = TvProgress(showId: 7, title: 'Сериал', season: 2, episode: 5, source: 'vidsrc');
     final back = TvProgress.fromJson(p.toJson());

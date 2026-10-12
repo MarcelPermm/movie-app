@@ -242,17 +242,50 @@ class MovieRepository extends LocalFirstRepository {
 
   // ─── Поиск ──────────────────────────────────────────────────────────
 
-  /// Параметр называется `q` — так его ждёт эндпоинт /search.
+  /// Ищет и фильмы, и сериалы сразу — как обещает подсказка в поле.
+  ///
+  /// Раньше искалось только в текущей вкладке, и «Во все тяжкие» из
+  /// вкладки «Фильмы» не находился вовсе. Тип проставляем сами: без него
+  /// найденный сериал открывался как фильм.
   Future<List<Movie>> search(String query) async {
-    if (query.trim().isEmpty) return const [];
-    final data = await api.get('/search', query: {
-      'q': query.trim(),
-      'media_type': _mediaType,
-    });
-    final list = data is Map ? (data['results'] as List? ?? const []) : (data as List? ?? const []);
-    return list
-        .whereType<Map>()
-        .map((e) => Movie.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    final q = query.trim();
+    if (q.isEmpty) return const [];
+
+    Future<List<Movie>> one(String type) async {
+      final data = await api.get('/search', query: {'q': q, 'media_type': type});
+      final list = data is Map ? (data['results'] as List? ?? const []) : (data as List? ?? const []);
+      return list
+          .whereType<Map>()
+          .map((e) => Movie.fromJson({...Map<String, dynamic>.from(e), 'media_type': type}))
+          .toList();
+    }
+
+    // Текущая вкладка — первой: при равенстве её результаты выше.
+    final types = _mediaType == 'tv' ? const ['tv', 'movie'] : const ['movie', 'tv'];
+    final results = await Future.wait(types.map(one));
+    return rankSearch(q, [...results[0], ...results[1]]);
   }
+}
+
+/// Порядок результатов поиска по двум спискам сразу.
+///
+/// TMDB сортирует каждый список сам, но списков два — нужно их слить. Точное
+/// совпадение названия всегда первым, дальше —
+/// по числу голосов: популярное «Во все тяжкие» выше документалки о нём.
+/// Сортировка устойчивая, поэтому при равенстве сохраняется порядок TMDB.
+List<Movie> rankSearch(String query, List<Movie> items) {
+  final q = query.trim().toLowerCase();
+  // «Начало названия» отдельной ступенью не считаем: TMDB отдаёт русские
+  // названия, и «Breaking Bad Wolf» обгонял бы сам сериал «Во все тяжкие».
+  int tier(Movie m) => m.title.toLowerCase() == q ? 0 : 1;
+
+  final indexed = items.indexed.toList();
+  indexed.sort((a, b) {
+    final byTier = tier(a.$2).compareTo(tier(b.$2));
+    if (byTier != 0) return byTier;
+    final byVotes = b.$2.voteCount.compareTo(a.$2.voteCount);
+    if (byVotes != 0) return byVotes;
+    return a.$1.compareTo(b.$1);
+  });
+  return indexed.map((e) => e.$2).toList();
 }

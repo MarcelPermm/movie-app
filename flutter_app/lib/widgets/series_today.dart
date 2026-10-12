@@ -297,7 +297,7 @@ class _UpcomingRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    [item.code, if (item.name.isNotEmpty) item.name].join(' · '),
+                    [item.code, if (item.realName.isNotEmpty) item.realName].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: AppColors.textDim, fontSize: 12),

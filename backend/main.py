@@ -529,7 +529,10 @@ async def search_movies(q: str, media_type: str = "movie", user_id: int = 1):
         items = [normalize_tv(m) for m in items]
     watched_map   = database.get_watched_map(media_type, user_id)
     watchlist_ids = database.get_watchlist_ids(media_type, user_id)
+    # media_type — явно: у TMDB его нет в ответах /search/tv, и сериал
+    # из поиска открывался в приложении как фильм.
     return [{**m,
+             "media_type":   media_type,
              "is_watched":   m["id"] in watched_map,
              "user_rating":  watched_map.get(m["id"], {}).get("user_rating"),
              "is_watchlist": m["id"] in watchlist_ids} for m in items]
@@ -1250,7 +1253,11 @@ async def books_popular(user_id: int = 1):
                 if b["cover"] and (b["description"] or vi.get("description")):
                     seen.add(bid)
                     items.append(b)
-        _books_cache["popular"] = (now, items)
+        # Пустую подборку не запоминаем: обычно это Google ответил 429
+        # (квота без ключа общая на всех), и через минуту всё наладится.
+        # Иначе экран «Книги» оставался пустым целый час.
+        if items:
+            _books_cache["popular"] = (now, items)
 
     read_ids    = {r["book_id"] for r in database.get_books_read(user_id)}
     wish_ids    = {w["book_id"] for w in database.get_books_wishlist(user_id)}
@@ -1261,7 +1268,16 @@ async def books_popular(user_id: int = 1):
 async def books_search(q: str = "", user_id: int = 1):
     if not q.strip():
         raise HTTPException(400, "Пустой запрос")
-    data = await books_get("/volumes", q=q, maxResults=20, printType="books", orderBy="relevance")
+    try:
+        data = await books_get("/volumes", q=q, maxResults=20, printType="books", orderBy="relevance")
+    except httpx.HTTPStatusError as e:
+        # 429 — Google исчерпал квоту: без GOOGLE_BOOKS_API_KEY она общая на
+        # всех и кончается постоянно. Говорим это прямо, а не «500».
+        if e.response.status_code == 429:
+            raise HTTPException(503, "Google Books временно не отвечает: исчерпана квота. Попробуй позже")
+        raise HTTPException(502, "Google Books не ответил")
+    except httpx.HTTPError:
+        raise HTTPException(502, "Google Books не ответил")
     items = [normalize_book(i) for i in data.get("items", [])]
     read_ids = {r["book_id"] for r in database.get_books_read(user_id)}
     wish_ids = {w["book_id"] for w in database.get_books_wishlist(user_id)}

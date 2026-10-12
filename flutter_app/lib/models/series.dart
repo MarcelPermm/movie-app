@@ -118,6 +118,12 @@ class UpcomingEpisode {
 
   String get code => episodeCode(season, episode);
 
+  /// Название серии, если оно настоящее. TMDB часто подставляет заглушку
+  /// «Эпизод 1» — рядом с «S2E1» она только повторяет номер.
+  String get realName => _placeholderName.hasMatch(name.trim()) ? '' : name;
+
+  static final _placeholderName = RegExp(r'^(Эпизод|Серия|Episode)\s*\d+$', caseSensitive: false);
+
   /// Сколько дней до выхода: 0 — сегодня, отрицательное — уже вышла.
   int daysFrom(DateTime now) => airDate.difference(DateTime(now.year, now.month, now.day)).inDays;
 

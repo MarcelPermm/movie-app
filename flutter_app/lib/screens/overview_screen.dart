@@ -208,7 +208,7 @@ class _OverviewScreenState extends State<OverviewScreen> {
           return found
               .map((m) => SearchResult(
                     title: m.title,
-                    subtitle: m.shortMeta,
+                    subtitle: m.isTv ? ['Сериал', if (m.shortMeta.isNotEmpty) m.shortMeta].join('  ·  ') : m.shortMeta,
                     imageUrl: m.posterUrl,
                     payload: m,
                   ))

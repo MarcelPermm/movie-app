@@ -10,4 +10,8 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Без ключа Google Books делит общую квоту со всеми и отвечает 429.
+      # Ключ бесплатный: console.cloud.google.com → Books API → Credentials.
+      - key: GOOGLE_BOOKS_API_KEY
+        sync: false
     autoDeploy: true
