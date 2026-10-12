@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -69,7 +69,18 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --build-number=${{ github.run_number }}
+        run: |
+          set -o pipefail
+          flutter build apk --release --build-number=${{ github.run_number }} 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      # Логи Actions видны только после входа на GitHub, а аннотации —
+      # всем. При ошибке выносим хвост лога туда, чтобы причину было видно.
+      - name: Причина ошибки
+        if: failure()
+        run: |
+          grep -E "error|Error|FAILURE|What went wrong|Exception|>" "$RUNNER_TEMP/build.log" \
+            | grep -v "^\s*$" | tail -n 40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > "$RUNNER_TEMP/tail.txt" || true
+          echo "::error title=flutter build apk::$(cat "$RUNNER_TEMP/tail.txt")"
 
       - name: Имя файла
         run: |
