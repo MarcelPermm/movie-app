@@ -264,6 +264,7 @@ async def startup():
     database.init_trips_tables()
     database.init_goals_table()
     database.init_wishlist_tables()
+    database.init_tv_tables()
     try:
         database.init_chess_tables()
         print("✅ Шахматные таблицы готовы")
@@ -569,8 +570,12 @@ async def popular_movies(media_type: str = "movie", user_id: int = 1):
 # ─── Детали фильма / сериала ──────────────────────────────────────────────────
 # Кэш TMDB-части (не зависит от пользователя). user-specific (is_watched, оценка)
 # добавляется на каждый запрос отдельно — это быстро (один DB-look-up).
-_details_cache = {}    # {(movie_id, media_type): (timestamp, tmdb_only_dict)}
+# Ограничен по размеру: без предела он копил каждую открытую карточку
+# навсегда, а на бесплатном Render всего 512 МБ памяти.
+from collections import OrderedDict
+_details_cache: "OrderedDict" = OrderedDict()   # {(movie_id, media_type): (timestamp, tmdb_only_dict)}
 _DETAILS_TTL = 600     # 10 минут
+_DETAILS_MAX = 300     # карточек в памяти; самые давние вытесняются
 
 
 async def _fetch_details_tmdb(movie_id: int, media_type: str) -> dict:
@@ -579,6 +584,7 @@ async def _fetch_details_tmdb(movie_id: int, media_type: str) -> dict:
     now = _time.time()
     cached = _details_cache.get(cache_key)
     if cached and now - cached[0] < _DETAILS_TTL:
+        _details_cache.move_to_end(cache_key)
         return cached[1]
 
     prefix = "/tv" if media_type == "tv" else "/movie"
@@ -622,6 +628,9 @@ async def _fetch_details_tmdb(movie_id: int, media_type: str) -> dict:
                 out["imdb_rating"]     = round(float(imdb_stats["rating"]), 1)
 
     _details_cache[cache_key] = (now, out)
+    _details_cache.move_to_end(cache_key)
+    while len(_details_cache) > _DETAILS_MAX:
+        _details_cache.popitem(last=False)
     return out
 
 
@@ -732,6 +741,156 @@ async def tv_season_episodes(show_id: int, season_number: int):
         }
         for ep in data.get("episodes", [])
     ]
+
+
+# ─── Сериалы: продолжить просмотр, отметки серий, новые серии ────────────────
+
+class TvProgressRequest(BaseModel):
+    title:         str = ""
+    poster_path:   Optional[str] = None
+    backdrop_path: Optional[str] = None
+    season:        int = 1
+    episode:       int = 1
+    source:        Optional[str] = None
+    user_id:       int = 1
+
+
+class EpisodesWatchedRequest(BaseModel):
+    season:   int
+    episodes: list[int]
+    watched:  bool = True
+    user_id:  int = 1
+
+
+@app.get("/tv/progress")
+def tv_progress(user_id: int = 1, limit: int = 10):
+    """Последние открытые сериалы: на какой серии и в каком источнике остановились."""
+    return database.get_tv_progress(user_id, max(1, min(limit, 30)))
+
+
+@app.put("/tv/progress/{show_id}")
+def save_tv_progress(show_id: int, req: TvProgressRequest):
+    if req.season < 0 or req.episode < 1:
+        raise HTTPException(400, "Неверный номер серии")
+    return database.save_tv_progress(
+        req.user_id, show_id, req.title, req.poster_path, req.backdrop_path,
+        req.season, req.episode, req.source,
+    )
+
+
+@app.delete("/tv/progress/{show_id}")
+def delete_tv_progress(show_id: int, user_id: int = 1):
+    """Убрать сериал из «Продолжить просмотр»."""
+    database.delete_tv_progress(user_id, show_id)
+    return {"ok": True}
+
+
+@app.get("/tv/{show_id}/watched-episodes")
+def watched_episodes(show_id: int, user_id: int = 1):
+    return database.get_watched_episodes(user_id, show_id)
+
+
+@app.post("/tv/{show_id}/watched-episodes")
+def mark_episodes(show_id: int, req: EpisodesWatchedRequest):
+    """Отметить или снять одну серию или сразу весь сезон."""
+    if len(req.episodes) > 500:
+        raise HTTPException(400, "Слишком много серий за раз")
+    database.set_episodes_watched(req.user_id, show_id, req.season, req.episodes, req.watched)
+    return {"ok": True}
+
+
+# Даты выхода серий меняются редко, а сериалов в списке бывает десятки —
+# держим только нужные поля, по часу, и не больше 500 сериалов.
+_tv_air_cache: "OrderedDict" = OrderedDict()   # {show_id: (timestamp, dict)}
+_TV_AIR_TTL = 3600
+_TV_AIR_MAX = 500
+
+
+async def _tv_air_info(show_id: int) -> dict | None:
+    now = _time.time()
+    cached = _tv_air_cache.get(show_id)
+    if cached and now - cached[0] < _TV_AIR_TTL:
+        return cached[1]
+    try:
+        d = await tmdb_get(f"/tv/{show_id}")
+    except Exception:
+        return cached[1] if cached else None
+    info = {
+        "title":         d.get("name") or d.get("original_name") or "",
+        "poster_path":   d.get("poster_path"),
+        "backdrop_path": d.get("backdrop_path"),
+        "next":          d.get("next_episode_to_air"),
+        "last":          d.get("last_episode_to_air"),
+    }
+    _tv_air_cache[show_id] = (now, info)
+    _tv_air_cache.move_to_end(show_id)
+    while len(_tv_air_cache) > _TV_AIR_MAX:
+        _tv_air_cache.popitem(last=False)
+    return info
+
+
+@app.get("/tv/upcoming")
+async def tv_upcoming(user_id: int = 1, days_ahead: int = 30, days_back: int = 7):
+    """Новые серии сериалов, которые человек ждёт или смотрит.
+
+    Сериалы — из «Хочу посмотреть» и из «Продолжить просмотр». Для каждого:
+    ближайшая серия, если она выйдет в ближайшие days_ahead дней, и последняя
+    вышедшая, если она свежая (days_back) и ещё не отмечена просмотренной.
+    """
+    from datetime import date, timedelta
+
+    watchlist = await asyncio.to_thread(database.get_watchlist, "tv", user_id)
+    progress = await asyncio.to_thread(database.get_tv_progress, user_id, 30)
+    show_ids = list(dict.fromkeys(
+        [p["show_id"] for p in progress] + [m["movie_id"] for m in watchlist]
+    ))[:40]
+    if not show_ids:
+        return []
+
+    infos = await asyncio.gather(*(_tv_air_info(sid) for sid in show_ids))
+    seen = await asyncio.to_thread(database.get_watched_episode_keys, user_id, show_ids)
+
+    today = date.today()
+    horizon = today + timedelta(days=max(0, min(days_ahead, 90)))
+    oldest = today - timedelta(days=max(0, min(days_back, 30)))
+    in_progress = {p["show_id"] for p in progress}
+
+    def parse(raw):
+        try:
+            return date.fromisoformat(raw) if raw else None
+        except ValueError:
+            return None
+
+    out = []
+    for sid, info in zip(show_ids, infos):
+        if not info:
+            continue
+        candidates = []
+        nxt, last = info.get("next"), info.get("last")
+        if nxt:
+            candidates.append(nxt)
+        if last and not (nxt and nxt.get("id") == last.get("id")):
+            candidates.append(last)
+        for ep in candidates:
+            air = parse(ep.get("air_date"))
+            if air is None or air < oldest or air > horizon:
+                continue
+            season, number = ep.get("season_number"), ep.get("episode_number")
+            if air <= today and (sid, season, number) in seen:
+                continue
+            out.append({
+                "show_id":       sid,
+                "title":         info["title"],
+                "poster_path":   info["poster_path"],
+                "backdrop_path": info["backdrop_path"],
+                "season":        season,
+                "episode":       number,
+                "name":          ep.get("name") or "",
+                "air_date":      air.isoformat(),
+                "watching":      sid in in_progress,
+            })
+    out.sort(key=lambda e: (e["air_date"], e["title"]))
+    return out
 
 
 # ─── Любимые актёры ──────────────────────────────────────────────────────────

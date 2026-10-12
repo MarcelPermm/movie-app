@@ -2739,3 +2739,139 @@ get_game101          = lambda code:        _get_card_game('game101', code)
 get_game101_players  = lambda gid:         _get_card_game_players('game101', gid)
 join_game101         = lambda gid,uid,seat:_join_card_game('game101', gid, uid, seat)
 save_game101_state   = lambda code,st,status=None: _save_card_game_state('game101', code, st, status)
+
+
+# ─── Сериалы: где остановился и какие серии видел ────────────────────────────
+# tv_progress — последняя открытая в плеере серия (одна строка на сериал):
+# из неё «Продолжить просмотр» на экране «Сегодня».
+# watched_episodes — отмеченные серии: прогресс сезона «7 из 10».
+
+def init_tv_tables():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tv_progress (
+                user_id       INTEGER NOT NULL,
+                show_id       INTEGER NOT NULL,
+                title         TEXT NOT NULL DEFAULT '',
+                poster_path   TEXT,
+                backdrop_path TEXT,
+                season        INTEGER NOT NULL DEFAULT 1,
+                episode       INTEGER NOT NULL DEFAULT 1,
+                source        TEXT,
+                updated_at    TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (user_id, show_id)
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS watched_episodes (
+                user_id    INTEGER NOT NULL,
+                show_id    INTEGER NOT NULL,
+                season     INTEGER NOT NULL,
+                episode    INTEGER NOT NULL,
+                watched_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (user_id, show_id, season, episode)
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tv_progress(user_id: int, limit: int = 10) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT show_id, title, poster_path, backdrop_path, season, episode, source, updated_at "
+            "FROM tv_progress WHERE user_id=%s ORDER BY updated_at DESC LIMIT %s",
+            (user_id, limit))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def save_tv_progress(user_id: int, show_id: int, title: str, poster_path, backdrop_path,
+                     season: int, episode: int, source) -> dict:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO tv_progress (user_id, show_id, title, poster_path, backdrop_path, season, episode, source)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (user_id, show_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                poster_path = COALESCE(EXCLUDED.poster_path, tv_progress.poster_path),
+                backdrop_path = COALESCE(EXCLUDED.backdrop_path, tv_progress.backdrop_path),
+                season = EXCLUDED.season,
+                episode = EXCLUDED.episode,
+                source = COALESCE(EXCLUDED.source, tv_progress.source),
+                updated_at = NOW()
+            RETURNING show_id, title, poster_path, backdrop_path, season, episode, source, updated_at
+        """, (user_id, show_id, title, poster_path, backdrop_path, season, episode, source))
+        row = dict(cur.fetchone())
+        conn.commit()
+        return row
+    finally:
+        conn.close()
+
+
+def delete_tv_progress(user_id: int, show_id: int) -> None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tv_progress WHERE user_id=%s AND show_id=%s", (user_id, show_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_watched_episodes(user_id: int, show_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT season, episode FROM watched_episodes WHERE user_id=%s AND show_id=%s "
+            "ORDER BY season, episode",
+            (user_id, show_id))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_watched_episode_keys(user_id: int, show_ids: list) -> set:
+    """{(show_id, season, episode)} — для ленты новых серий, одним запросом."""
+    if not show_ids:
+        return set()
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT show_id, season, episode FROM watched_episodes WHERE user_id=%s AND show_id = ANY(%s)",
+            (user_id, list(show_ids)))
+        return {(r["show_id"], r["season"], r["episode"]) for r in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def set_episodes_watched(user_id: int, show_id: int, season: int, episodes: list, watched: bool) -> None:
+    """Отметить (или снять) сразу несколько серий одного сезона."""
+    if not episodes:
+        return
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        if watched:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO watched_episodes (user_id, show_id, season, episode) VALUES %s "
+                "ON CONFLICT DO NOTHING",
+                [(user_id, show_id, season, int(e)) for e in episodes])
+        else:
+            cur.execute(
+                "DELETE FROM watched_episodes WHERE user_id=%s AND show_id=%s AND season=%s AND episode = ANY(%s)",
+                (user_id, show_id, season, [int(e) for e in episodes]))
+        conn.commit()
+    finally:
+        conn.close()
