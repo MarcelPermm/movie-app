@@ -248,6 +248,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
+  /// «В избранное»: о новых сериях избранного сериала напоминает «Сегодня».
+  Widget _buildFollowButton() {
+    final series = context.watch<SeriesRepository>();
+    final followed = series.isFollowed(widget.movie.id);
+    return Tooltip(
+      message: followed
+          ? 'Новые серии показываются на «Сегодня»'
+          : 'Напомню на «Сегодня», когда выйдет новая серия',
+      child: FilledButton.icon(
+        onPressed: () {
+          final movie = _details?.movie ?? widget.movie;
+          series.toggleFollow(showId: widget.movie.id, title: movie.title, posterPath: movie.posterPath);
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text(followed
+                  ? 'Убрано из избранного'
+                  : 'В избранном — новые серии будут на «Сегодня»'),
+            ));
+        },
+        icon: Icon(followed ? Icons.star : Icons.star_border, size: 20),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xCC12121A),
+          foregroundColor: followed ? AppColors.gold : AppColors.text,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        label: Text(followed ? 'В избранном' : 'В избранное'),
+      ),
+    );
+  }
+
   Widget _buildPlayButtons() {
     return Wrap(
       spacing: 8,
@@ -273,6 +304,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           ),
           label: const Text('Трейлер'),
         ),
+        if (_mediaType == 'tv') _buildFollowButton(),
         // Источники те же, что на сайте: если один не отдаёт видео,
         // выручает другой. Во встроенном плеере переключатель свой —
         // здесь он остаётся только для запасного выхода в браузер.

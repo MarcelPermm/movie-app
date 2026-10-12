@@ -4,10 +4,11 @@ const API = typeof API_BASE_URL !== "undefined"
   : (location.hostname === "127.0.0.1" || location.hostname === "localhost")
     ? "http://127.0.0.1:8000"
     : "";
-const TMDB_IMG  = "https://image.tmdb.org/t/p/w500";   // полноразмерный — для модалок и hero
-const TMDB_CARD = "https://image.tmdb.org/t/p/w342";   // средний — для карточек и постеров в гриде
-const TMDB_SM   = "https://image.tmdb.org/t/p/w185";   // мелкий — для скролл-карточек на главной
-const TMDB_LOGO = "https://image.tmdb.org/t/p/w92";
+// Картинки — через сервер: у части провайдеров image.tmdb.org не открывается.
+const TMDB_IMG  = `${API}/img/w500`;   // полноразмерный — для модалок и hero
+const TMDB_CARD = `${API}/img/w342`;   // средний — для карточек и постеров в гриде
+const TMDB_SM   = `${API}/img/w185`;   // мелкий — для скролл-карточек на главной
+const TMDB_LOGO = `${API}/img/w92`;
 
 const state = {
   // Глобальный mediaType больше не управляется тоггом в шапке.
@@ -1140,7 +1141,7 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
   // ─── Шаблон БОЛЬШОЙ карточки в карусели (5 шт) ─────────────────────────
   const bigCardHTML = (m, idx, total) => {
     const backdrop = m.backdrop_path
-      ? `https://image.tmdb.org/t/p/w1280${m.backdrop_path}`
+      ? `${API}/img/w1280${m.backdrop_path}`
       : (m.poster_path ? `${TMDB_IMG}${m.poster_path}` : null);
     const title    = (m.title || m.name || "").toUpperCase();
     const year     = (m.release_date || m.first_air_date || "").slice(0, 4) || "—";
@@ -1392,7 +1393,7 @@ function renderMonoHomepage(movies, tvShows, recs, recsTv) {
 
 function renderHero(movie) {
   const backdropUrl = movie.backdrop_path
-    ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+    ? `${API}/img/original${movie.backdrop_path}`
     : null;
   const posterUrl = movie.poster_path ? `${TMDB_CARD}${movie.poster_path}` : null;
   const year      = (movie.release_date || movie.first_air_date || "").slice(0, 4) || "";
@@ -2513,7 +2514,7 @@ function renderMovieContent(movie) {
   const userRating  = state.watched.get(movieId) ?? movie.watched_info?.user_rating;
   const review      = movie.watched_info?.review;
   const posterUrl   = movie.poster_path ? `${TMDB_IMG}${movie.poster_path}` : null;
-  const backdropUrl = movie.backdrop_path ? `https://image.tmdb.org/t/p/w1280${movie.backdrop_path}` : posterUrl;
+  const backdropUrl = movie.backdrop_path ? `${API}/img/w1280${movie.backdrop_path}` : posterUrl;
   const year        = (movie.release_date || "").slice(0, 4) || "—";
   const rating      = movie.vote_average != null ? Number(movie.vote_average).toFixed(1) : "—";
   const tmdbVotesL  = fmtVotes(movie.vote_count);
@@ -3765,7 +3766,7 @@ function renderProfile(s, actorsData) {
   // Актёры
   const actorsHTML = actors.map(a => {
     const img = a.profile_path
-      ? `<img class="profile-actor-photo" src="https://image.tmdb.org/t/p/w185${a.profile_path}" loading="lazy" />`
+      ? `<img class="profile-actor-photo" src="${API}/img/w185${a.profile_path}" loading="lazy" />`
       : `<div class="profile-actor-no-photo">👤</div>`;
     const movieBadge = a.movie_count ? `<span class="badge-movie">🎬 ${a.movie_count}</span>` : "";
     const tvBadge    = a.tv_count    ? `<span class="badge-tv">📺 ${a.tv_count}</span>` : "";
@@ -4094,7 +4095,7 @@ function renderProfileMono(s, actorsData) {
   // Топ актёры
   const actorsHTML = actors.slice(0, 8).map(a => {
     const img = a.profile_path
-      ? `<img class="mono-actor-photo" src="https://image.tmdb.org/t/p/w185${a.profile_path}" loading="lazy" />`
+      ? `<img class="mono-actor-photo" src="${API}/img/w185${a.profile_path}" loading="lazy" />`
       : `<div class="mono-actor-nophoto"></div>`;
     return `
       <div class="mono-actor" data-actor-id="${a.id || ""}">

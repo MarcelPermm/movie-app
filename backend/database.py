@@ -2875,3 +2875,64 @@ def set_episodes_watched(user_id: int, show_id: int, season: int, episodes: list
         conn.commit()
     finally:
         conn.close()
+
+
+# ─── Избранные сериалы ───────────────────────────────────────────────────────
+# Сериалы, за которыми следят: их новые серии всегда показываются на
+# «Сегодня», даже если сериала нет ни в «Хочу посмотреть», ни в начатых.
+
+def init_tv_follows_table():
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tv_follows (
+                user_id     INTEGER NOT NULL,
+                show_id     INTEGER NOT NULL,
+                title       TEXT NOT NULL DEFAULT '',
+                poster_path TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (user_id, show_id)
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tv_follows(user_id: int) -> list:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT show_id, title, poster_path, created_at FROM tv_follows "
+            "WHERE user_id=%s ORDER BY created_at DESC",
+            (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def follow_tv(user_id: int, show_id: int, title: str, poster_path) -> None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO tv_follows (user_id, show_id, title, poster_path) VALUES (%s,%s,%s,%s)
+            ON CONFLICT (user_id, show_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                poster_path = COALESCE(EXCLUDED.poster_path, tv_follows.poster_path)
+        """, (user_id, show_id, title, poster_path))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def unfollow_tv(user_id: int, show_id: int) -> None:
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tv_follows WHERE user_id=%s AND show_id=%s", (user_id, show_id))
+        conn.commit()
+    finally:
+        conn.close()

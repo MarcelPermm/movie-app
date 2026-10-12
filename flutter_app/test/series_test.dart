@@ -43,10 +43,13 @@ void main() {
       'episode': 5,
       'air_date': '2026-10-13',
       'watching': true,
+      'favorite': true,
     });
     expect(ok, isNotNull);
     expect(ok!.code, 'S2E5');
     expect(ok.watching, isTrue);
+    expect(ok.favorite, isTrue);
+    expect(ok.withFavorite(false).favorite, isFalse);
     expect(UpcomingEpisode.tryParse({'show_id': 1, 'air_date': null}), isNull);
   });
 

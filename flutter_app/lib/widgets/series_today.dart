@@ -223,6 +223,8 @@ class _UpcomingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    // Вышедшая серия избранного сериала — главная новость блока.
+    final fresh = items.any((e) => e.favorite && e.daysFrom(now) <= 0);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       decoration: cardDecoration(),
@@ -234,7 +236,7 @@ class _UpcomingCard extends StatelessWidget {
               Icon(Icons.notifications_active_outlined, size: 18, color: AppColors.gold),
               const SizedBox(width: 8),
               Text(
-                'Новые серии',
+                fresh ? 'Вышла новая серия' : 'Новые серии',
                 style: TextStyle(color: AppColors.text, fontSize: 15, fontWeight: FontWeight.w700),
               ),
             ],
@@ -289,11 +291,21 @@ class _UpcomingRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      if (item.favorite) ...[
+                        Icon(Icons.star, size: 14, color: AppColors.gold),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(

@@ -14,6 +14,11 @@ class SeriesRepository extends LocalFirstRepository {
   List<TvProgress> _progress = [];
   List<UpcomingEpisode> _upcoming = [];
 
+  /// Избранные сериалы: о их новых сериях напоминает «Сегодня».
+  Set<int> _follows = {};
+
+  bool isFollowed(int showId) => _follows.contains(showId);
+
   /// Отмеченные серии по сериалам: showId → {(сезон, серия)}.
   final Map<int, Set<(int, int)>> _seen = {};
 
@@ -22,6 +27,7 @@ class SeriesRepository extends LocalFirstRepository {
 
   String get _progressKey => cacheKey('tv_progress');
   String get _upcomingKey => cacheKey('tv_upcoming');
+  String get _followsKey => cacheKey('tv_follows');
   String _seenKey(int showId) => cacheKey('tv_seen::$showId');
 
   TvProgress? progressOf(int showId) {
@@ -41,11 +47,14 @@ class SeriesRepository extends LocalFirstRepository {
   void _readCache() {
     _progress = readCache(_progressKey).map(TvProgress.fromJson).toList();
     _upcoming = readCache(_upcomingKey).map(UpcomingEpisode.tryParse).whereType<UpcomingEpisode>().toList();
+    _follows = readCache(_followsKey).map((j) => asInt(j['show_id'])).toSet();
   }
 
   Future<void> refresh() => runSync(() async {
         final progress = await api.get('/tv/progress');
         await writeCache(_progressKey, (progress as List?) ?? const [], fromServer: true);
+        final follows = await api.get('/tv/follows');
+        await writeCache(_followsKey, (follows as List?) ?? const [], fromServer: true);
         // Новые серии — отдельным запросом: он ходит в TMDB и бывает
         // медленным, но «Продолжить» не должно его ждать.
         _progress = readCache(_progressKey).map(TvProgress.fromJson).toList();
@@ -120,6 +129,41 @@ class SeriesRepository extends LocalFirstRepository {
       () => api.delete('/tv/progress/$showId'),
       rollback: () => _progress = backup,
     );
+  }
+
+  // ─── Избранное ──────────────────────────────────────────────────────
+
+  /// Добавить сериал в избранное или убрать оттуда.
+  ///
+  /// После добавления сразу освежаем ленту новых серий: человек ждёт, что
+  /// ближайшая серия появится на «Сегодня», а не через полчаса.
+  Future<void> toggleFollow({required int showId, required String title, String? posterPath}) async {
+    final follow = !isFollowed(showId);
+    final backup = {..._follows};
+    follow ? _follows.add(showId) : _follows.remove(showId);
+    if (!follow) {
+      _upcoming = _upcoming
+          .map((u) => u.showId == showId ? u.withFavorite(false) : u)
+          .toList();
+    }
+    notifyListeners();
+    await writeCache(_followsKey, _follows.map((id) => {'show_id': id}).toList());
+
+    final ok = await push(
+      () => follow
+          ? api.put('/tv/follows/$showId', body: {'title': title, 'poster_path': ?posterPath})
+          : api.delete('/tv/follows/$showId'),
+      rollback: () => _follows = backup,
+    );
+    if (ok == null && lastError != null) return;
+    try {
+      final upcoming = await api.get('/tv/upcoming');
+      await writeCache(_upcomingKey, (upcoming as List?) ?? const [], fromServer: true);
+      _upcoming = readCache(_upcomingKey).map(UpcomingEpisode.tryParse).whereType<UpcomingEpisode>().toList();
+      notifyListeners();
+    } on ApiException {
+      // Обновится при следующей синхронизации.
+    }
   }
 
   // ─── Отметки серий ──────────────────────────────────────────────────
@@ -198,5 +242,6 @@ class SeriesRepository extends LocalFirstRepository {
         'name': u.name,
         'air_date': u.airDate.toIso8601String().substring(0, 10),
         'watching': u.watching,
+        'favorite': u.favorite,
       };
 }

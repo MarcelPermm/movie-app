@@ -9,13 +9,15 @@ class Config {
     defaultValue: 'https://movie-app-xwuo.onrender.com',
   );
 
-  /// Базовые URL картинок TMDB (совпадают с фронтендом).
-  static const String tmdbCard = 'https://image.tmdb.org/t/p/w342';
-  static const String tmdbPoster = 'https://image.tmdb.org/t/p/w500';
-  static const String tmdbBackdrop = 'https://image.tmdb.org/t/p/w1280';
-  static const String tmdbStill = 'https://image.tmdb.org/t/p/w300';
-  static const String tmdbProfile = 'https://image.tmdb.org/t/p/w185';
-  static const String tmdbLogo = 'https://image.tmdb.org/t/p/w154';
+  /// Картинки TMDB — через наш сервер (/img на бэкенде): у части
+  /// провайдеров image.tmdb.org не открывается, и вместо постеров были
+  /// пустые карточки. Размеры те же, что у TMDB.
+  static const String tmdbCard = '$apiBaseUrl/img/w342';
+  static const String tmdbPoster = '$apiBaseUrl/img/w500';
+  static const String tmdbBackdrop = '$apiBaseUrl/img/w1280';
+  static const String tmdbStill = '$apiBaseUrl/img/w300';
+  static const String tmdbProfile = '$apiBaseUrl/img/w185';
+  static const String tmdbLogo = '$apiBaseUrl/img/w154';
 
   /// Как часто фоновая синхронизация освежает данные сама по себе.
   /// Всё, что свежее этого срока, читается из локального кэша без похода в сеть.

@@ -88,6 +88,9 @@ class UpcomingEpisode {
   /// Сериал уже смотрят (он в «Продолжить»), а не только ждут в списке.
   final bool watching;
 
+  /// Сериал в избранном — о нём напоминаем в первую очередь.
+  final bool favorite;
+
   const UpcomingEpisode({
     required this.showId,
     required this.title,
@@ -98,6 +101,7 @@ class UpcomingEpisode {
     this.name = '',
     required this.airDate,
     this.watching = false,
+    this.favorite = false,
   });
 
   static UpcomingEpisode? tryParse(Map<String, dynamic> j) {
@@ -113,10 +117,24 @@ class UpcomingEpisode {
       name: asString(j['name']),
       airDate: DateTime(air.year, air.month, air.day),
       watching: asBool(j['watching']),
+      favorite: asBool(j['favorite']),
     );
   }
 
   String get code => episodeCode(season, episode);
+
+  UpcomingEpisode withFavorite(bool value) => UpcomingEpisode(
+        showId: showId,
+        title: title,
+        posterPath: posterPath,
+        backdropPath: backdropPath,
+        season: season,
+        episode: episode,
+        name: name,
+        airDate: airDate,
+        watching: watching,
+        favorite: value,
+      );
 
   /// Название серии, если оно настоящее. TMDB часто подставляет заглушку
   /// «Эпизод 1» — рядом с «S2E1» она только повторяет номер.

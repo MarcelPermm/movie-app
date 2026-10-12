@@ -265,6 +265,7 @@ async def startup():
     database.init_goals_table()
     database.init_wishlist_tables()
     database.init_tv_tables()
+    database.init_tv_follows_table()
     try:
         database.init_chess_tables()
         print("✅ Шахматные таблицы готовы")
@@ -306,6 +307,36 @@ async def startup():
 async def shutdown():
     if http_client:
         await http_client.aclose()
+
+
+# ─── Картинки TMDB через сервер ──────────────────────────────────────────────
+# У части провайдеров image.tmdb.org не открывается (DNS отвечает 127.0.0.1),
+# и в приложении вместо постеров пустые карточки. Сервер стоит за границей
+# и до TMDB достаёт, поэтому картинки идут через него. Ответ кэшируется на
+# устройстве надолго: путь картинки у TMDB не меняется никогда.
+_IMG_SIZES = {"w92", "w154", "w185", "w300", "w342", "w500", "w780", "w1280", "original"}
+_IMG_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|svg|webp)$")
+_IMG_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+              "svg": "image/svg+xml", "webp": "image/webp"}
+
+
+@app.get("/img/{size}/{name}")
+async def tmdb_image(size: str, name: str):
+    from fastapi.responses import Response
+    if size not in _IMG_SIZES or not _IMG_NAME.match(name):
+        raise HTTPException(404, "Нет такой картинки")
+    try:
+        r = await http_client.get(f"https://image.tmdb.org/t/p/{size}/{name}")
+    except httpx.HTTPError:
+        raise HTTPException(502, "TMDB не ответил")
+    if r.status_code != 200:
+        raise HTTPException(404 if r.status_code == 404 else 502, "Картинка недоступна")
+    ext = name.rsplit(".", 1)[1].lower()
+    return Response(
+        r.content,
+        media_type=r.headers.get("content-type", _IMG_TYPES[ext]),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @app.get("/ping")
@@ -788,6 +819,30 @@ def delete_tv_progress(show_id: int, user_id: int = 1):
     return {"ok": True}
 
 
+class TvFollowRequest(BaseModel):
+    title:       str = ""
+    poster_path: Optional[str] = None
+    user_id:     int = 1
+
+
+@app.get("/tv/follows")
+def tv_follows(user_id: int = 1):
+    """Избранные сериалы — о их новых сериях напоминает «Сегодня»."""
+    return database.get_tv_follows(user_id)
+
+
+@app.put("/tv/follows/{show_id}")
+def follow_tv(show_id: int, req: TvFollowRequest):
+    database.follow_tv(req.user_id, show_id, req.title, req.poster_path)
+    return {"ok": True}
+
+
+@app.delete("/tv/follows/{show_id}")
+def unfollow_tv(show_id: int, user_id: int = 1):
+    database.unfollow_tv(user_id, show_id)
+    return {"ok": True}
+
+
 @app.get("/tv/{show_id}/watched-episodes")
 def watched_episodes(show_id: int, user_id: int = 1):
     return database.get_watched_episodes(user_id, show_id)
@@ -836,16 +891,20 @@ async def _tv_air_info(show_id: int) -> dict | None:
 async def tv_upcoming(user_id: int = 1, days_ahead: int = 30, days_back: int = 7):
     """Новые серии сериалов, которые человек ждёт или смотрит.
 
-    Сериалы — из «Хочу посмотреть» и из «Продолжить просмотр». Для каждого:
-    ближайшая серия, если она выйдет в ближайшие days_ahead дней, и последняя
-    вышедшая, если она свежая (days_back) и ещё не отмечена просмотренной.
+    Сериалы — избранные, из «Продолжить просмотр» и из «Хочу посмотреть».
+    Для каждого: ближайшая серия, если она выйдет в ближайшие days_ahead дней,
+    и последняя вышедшая, если она свежая (days_back) и ещё не отмечена
+    просмотренной. За избранными следим внимательнее: горизонт вдвое дальше,
+    и в списке они идут первыми — ради них человек и нажал «В избранное».
     """
     from datetime import date, timedelta
 
     watchlist = await asyncio.to_thread(database.get_watchlist, "tv", user_id)
     progress = await asyncio.to_thread(database.get_tv_progress, user_id, 30)
+    follows = await asyncio.to_thread(database.get_tv_follows, user_id)
+    # Избранные — первыми, чтобы предел в 40 сериалов их никогда не отрезал.
     show_ids = list(dict.fromkeys(
-        [p["show_id"] for p in progress] + [m["movie_id"] for m in watchlist]
+        [f["show_id"] for f in follows] + [p["show_id"] for p in progress] + [m["movie_id"] for m in watchlist]
     ))[:40]
     if not show_ids:
         return []
@@ -854,9 +913,10 @@ async def tv_upcoming(user_id: int = 1, days_ahead: int = 30, days_back: int = 7
     seen = await asyncio.to_thread(database.get_watched_episode_keys, user_id, show_ids)
 
     today = date.today()
-    horizon = today + timedelta(days=max(0, min(days_ahead, 90)))
-    oldest = today - timedelta(days=max(0, min(days_back, 30)))
+    ahead = max(0, min(days_ahead, 90))
+    back = max(0, min(days_back, 30))
     in_progress = {p["show_id"] for p in progress}
+    favorites = {f["show_id"] for f in follows}
 
     def parse(raw):
         try:
@@ -868,6 +928,9 @@ async def tv_upcoming(user_id: int = 1, days_ahead: int = 30, days_back: int = 7
     for sid, info in zip(show_ids, infos):
         if not info:
             continue
+        fav = sid in favorites
+        horizon = today + timedelta(days=min(ahead * 2, 90) if fav else ahead)
+        oldest = today - timedelta(days=min(back * 2, 30) if fav else back)
         candidates = []
         nxt, last = info.get("next"), info.get("last")
         if nxt:
@@ -891,8 +954,9 @@ async def tv_upcoming(user_id: int = 1, days_ahead: int = 30, days_back: int = 7
                 "name":          ep.get("name") or "",
                 "air_date":      air.isoformat(),
                 "watching":      sid in in_progress,
+                "favorite":      fav,
             })
-    out.sort(key=lambda e: (e["air_date"], e["title"]))
+    out.sort(key=lambda e: (not e["favorite"], e["air_date"], e["title"]))
     return out
 
 
